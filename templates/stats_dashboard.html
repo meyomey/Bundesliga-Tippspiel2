@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+{% block title %}Statistiken · {{ user.username }}{% endblock %}
+{% block content %}
+
+<a href="{{ url_for('main.profile') }}" class="back-link">← Profil</a>
+
+<div class="page-header">
+  <div>
+    <span class="overline">📊 SAISON {{ current_md }}.</span>
+    <h1>Statistik-Dashboard</h1>
+    <p class="muted small">{{ user.username }} · {{ total_points }} Punkte · {{ total_tips }} Tipps</p>
+  </div>
+</div>
+
+<div class="stats-grid">
+
+  <!-- KPI-Kacheln -->
+  <div class="card stat-kpi"><div class="kpi-num">{{ total_points }}</div><div class="kpi-lbl">Punkte</div></div>
+  <div class="card stat-kpi"><div class="kpi-num">{{ total_tips }}</div><div class="kpi-lbl">Tipps</div></div>
+  {% if insights %}
+  <div class="card stat-kpi"><div class="kpi-num">{{ insights.avg_points_per_match }}</div><div class="kpi-lbl">Ø Punkte/Spiel</div></div>
+  <div class="card stat-kpi"><div class="kpi-num">{{ joker_count }}</div><div class="kpi-lbl">Joker genutzt</div></div>
+  {% endif %}
+  <div class="card stat-kpi"><div class="kpi-num">{{ trend.current_rank or '?' }}</div><div class="kpi-lbl">Rang</div></div>
+  {% if trend.delta and trend.delta != 0 %}
+  <div class="card stat-kpi"><div class="kpi-num {% if trend.delta > 0 %}text-ok{% else %}text-danger{% endif %}">{{ '%+d'|format(trend.delta) }}</div><div class="kpi-lbl">Plätze vs. letzte Woche</div></div>
+  {% endif %}
+  <div class="card stat-kpi"><div class="kpi-num">{{ joker_avg }}</div><div class="kpi-lbl">Ø Joker-Punkte</div></div>
+</div>
+
+<div class="stats-charts">
+
+  <!-- 1. Punkte-Verlauf -->
+  <div class="card chart-card wide">
+    <h3>📈 Punkte-Verlauf pro Spieltag</h3>
+    <canvas id="pointsChart" height="80"></canvas>
+  </div>
+
+  <!-- 2. Tipp-Qualität pro Spieltag (gestapeltes Balken) -->
+  <div class="card chart-card wide">
+    <h3>📊 Tipp-Qualität pro Spieltag</h3>
+    <canvas id="accuracyChart" height="80"></canvas>
+  </div>
+
+  <!-- 3. Tipp-Verteilung -->
+  {% if insights %}
+  <div class="card chart-card">
+    <h3>🎯 Tipp-Verteilung</h3>
+    <canvas id="tendencyChart" height="80"></canvas>
+  </div>
+  {% endif %}
+
+  <!-- 4. Beliebteste Tipps -->
+  <div class="card chart-card">
+    <h3>🏅 Beliebteste Tipps</h3>
+    <canvas id="topTipsChart" height="80"></canvas>
+  </div>
+
+  <!-- 5. Joker-Erfolg -->
+  <div class="card chart-card">
+    <h3>⚡ Joker-Erfolg</h3>
+    <canvas id="jokerChart" height="80"></canvas>
+  </div>
+
+  <!-- 6. Vergleich mit KI-Bots -->
+  <div class="card chart-card">
+    <h3>🤖 vs KI-Bots</h3>
+    <canvas id="botChart" height="80"></canvas>
+  </div>
+
+  <!-- 7. Tipp-Stil -->
+  {% if insights %}
+  <div class="card chart-card">
+    <h3>🧠 Tipp-Stil</h3>
+    <p class="muted small">Häufigster Tipp: <strong>{{ insights.most_common_tip }}</strong> ({{ insights.most_common_pct }}%)</p>
+    <table class="mini-table">
+      <tr><td>Heimsiege</td><td>{{ insights.tendency_pct.home }}%</td></tr>
+      <tr><td>Unentschieden</td><td>{{ insights.tendency_pct.draw }}%</td></tr>
+      <tr><td>Auswärtssiege</td><td>{{ insights.tendency_pct.away }}%</td></tr>
+    </table>
+  </div>
+  {% endif %}
+
+  <!-- 8. Rangliste vs Bots -->
+  <div class="card chart-card wide">
+    <h3>🏆 Rangliste — Du vs Bots</h3>
+    <table class="mini-table">
+      {% for b in bot_comparison %}
+      <tr class="{% if b.is_me %}highlight-row{% endif %}">
+        <td>{{ loop.index }}.</td>
+        <td>{{ b.name }} {% if b.is_me %}<span class="badge badge-sm">DU</span>{% endif %}</td>
+        <td><strong>{{ b.points }}</strong> Pkt</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const teal = '#14b8a6';
+  const blue = '#3b82f6';
+  const green = '#10b981';
+  const yellow = '#f59e0b';
+  const red = '#ef4444';
+  const purple = '#8b5cf6';
+
+  // 1. Punkte-Verlauf
+  const ptsCtx = document.getElementById('pointsChart');
+  if (ptsCtx) {
+    new Chart(ptsCtx, {
+      type: 'line',
+      data: {
+        labels: [{{ md_labels_all|safe }}],
+        datasets: [{
+          label: 'Punkte',
+          data: [{{ md_data_all|safe }}],
+          borderColor: teal,
+          backgroundColor: teal + '20',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 4,
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { title: { display: true, text: 'Spieltag' } },
+          y: { beginAtZero: true, title: { display: true, text: 'Punkte' } }
+        }
+      }
+    });
+  }
+
+  // 2. Tipp-Qualität (gestapelt)
+  const accCtx = document.getElementById('accuracyChart');
+  if (accCtx) {
+    new Chart(accCtx, {
+      type: 'bar',
+      data: {
+        labels: [{{ acc_labels|safe }}],
+        datasets: [
+          { label: 'Exakt %', data: [{{ acc_exact|safe }}], backgroundColor: green },
+          { label: 'Differenz %', data: [{{ acc_diff|safe }}], backgroundColor: blue },
+          { label: 'Tendenz %', data: [{{ acc_tendency|safe }}], backgroundColor: yellow },
+          { label: 'Daneben %', data: [{{ acc_wrong|safe }}], backgroundColor: red },
+        ]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          x: { stacked: true, title: { display: true, text: 'Spieltag' } },
+          y: { stacked: true, max: 100, title: { display: true, text: '%' } }
+        },
+        plugins: {
+          tooltip: {
+            callbacks: {
+              label: function(ctx) { return ctx.dataset.label + ': ' + ctx.parsed.y.toFixed(1) + '%'; }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // 3. Tipp-Tendenz (donut)
+  {% if insights %}
+  const tendCtx = document.getElementById('tendencyChart');
+  if (tendCtx) {
+    new Chart(tendCtx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Heimsieg ({{ insights.tendency_pct.home }}%)', 'Unentschieden ({{ insights.tendency_pct.draw }}%)', 'Auswärtssieg ({{ insights.tendency_pct.away }}%)'],
+        datasets: [{
+          data: [{{ insights.tendency_pct.home }}, {{ insights.tendency_pct.draw }}, {{ insights.tendency_pct.away }}],
+          backgroundColor: [green, yellow, blue],
+        }]
+      },
+      options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+    });
+  }
+  {% endif %}
+
+  // 4. Beliebteste Tipps
+  const tipsCtx = document.getElementById('topTipsChart');
+  if (tipsCtx) {
+    new Chart(tipsCtx, {
+      type: 'bar',
+      data: {
+        labels: [{{ top_tip_labels|safe }}],
+        datasets: [{
+          label: 'Anzahl',
+          data: [{{ top_tip_data|safe }}],
+          backgroundColor: purple,
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true } }
+      }
+    });
+  }
+
+  // 5. Joker-Erfolg
+  const jokerCtx = document.getElementById('jokerChart');
+  if (jokerCtx) {
+    new Chart(jokerCtx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Erfolgreich ({{ joker_success }})', 'Daneben ({{ joker_fail }})'],
+        datasets: [{
+          data: [{{ joker_success }}, {{ joker_fail }}],
+          backgroundColor: [yellow, red],
+        }]
+      },
+      options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+    });
+  }
+
+  // 6. KI-Bot Vergleich
+  const botCtx = document.getElementById('botChart');
+  if (botCtx) {
+    new Chart(botCtx, {
+      type: 'bar',
+      data: {
+        labels: [{% for b in bot_comparison %}'{{ b.name }}'{% if not loop.last %},{% endif %}{% endfor %}],
+        datasets: [{
+          label: 'Punkte',
+          data: [{% for b in bot_comparison %}{{ b.points }}{% if not loop.last %},{% endif %}{% endfor %}],
+          backgroundColor: [{% for b in bot_comparison %}'{{ teal if b.is_me else blue }}'{% if not loop.last %},{% endif %}{% endfor %}],
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true } }
+      }
+    });
+  }
+});
+</script>
+{% endblock %}
