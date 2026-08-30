@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Admin · Sync{% endblock %}
+{% block content %}
+<a href="{{ url_for('admin.dashboard') }}" class="back-link">← Admin</a>
+<div class="page-header">
+  <div>
+    <span class="overline">DATENQUELLEN</span>
+    <h1>🔄 API Sync</h1>
+    <p class="muted small">Prüft football-data.org/OpenLigaDB und synchronisiert Spielplan, Ergebnisse und Live-Status.</p>
+  </div>
+  <div class="header-actions">
+    <a href="{{ url_for('admin.sync', run=1) }}" class="btn-primary">⚡ Sync jetzt starten</a>
+  </div>
+</div>
+
+<div class="admin-stats">
+  <div class="admin-stat"><div class="as-icon">🏆</div><div><div class="as-num">{{ diag.competition_code }}</div><div class="as-lbl">Competition</div></div></div>
+  <div class="admin-stat"><div class="as-icon">📅</div><div><div class="as-num">{{ diag.season }}</div><div class="as-lbl">Saison-Code</div></div></div>
+  <div class="admin-stat"><div class="as-icon">⚽</div><div><div class="as-num">{{ diag.teams_total }}</div><div class="as-lbl">Teams aktuell <small class="muted">({{ diag.all_teams_total }} gesamt)</small></div></div></div>
+  <div class="admin-stat"><div class="as-icon">🎮</div><div><div class="as-num">{{ diag.matches_total }}</div><div class="as-lbl">Spiele aktuell</div></div></div>
+</div>
+
+<div class="card">
+  <h2>Checks</h2>
+  <div class="grid-3">
+    {% for key, label in [
+      ('football_data_token','football-data Token'),
+      ('openligadb_available','OpenLigaDB erreichbar'),
+      ('active_competition','Aktive Competition'),
+      ('teams_seeded','Teams vorhanden'),
+      ('has_matches','Spiele vorhanden')
+    ] %}
+      <div class="count-tile"><strong>{{ '✅' if diag.checks.get(key) else '⚠️' }}</strong><small>{{ label }}</small></div>
+    {% endfor %}
+  </div>
+  {% if diag.warnings %}
+    <div class="flash flash-warning" style="margin-top:12px"><ul style="margin-left:18px">{% for w in diag.warnings %}<li>{{ w }}</li>{% endfor %}</ul></div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Letzter Sync</h2>
+  {% if diag.last_sync %}
+    <table class="mini-table">
+      <tr><td>Zeit</td><td>{{ diag.last_sync.at }}</td></tr>
+      <tr><td>Status</td><td>{{ '✅ OK' if diag.last_sync.ok else '❌ Fehler' }}</td></tr>
+      <tr><td>Quelle</td><td>{{ diag.last_sync.source }}</td></tr>
+      <tr><td>Neu/Aktualisiert</td><td>{{ diag.last_sync.created or 0 }} / {{ diag.last_sync.updated or 0 }}</td></tr>
+      <tr><td>Meldung</td><td>{{ diag.last_sync.msg }}</td></tr>
+    </table>
+  {% else %}
+    <p class="muted">Noch kein Sync-Ergebnis gespeichert.</p>
+  {% endif %}
+</div>
+{% endblock %}

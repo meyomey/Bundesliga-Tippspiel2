@@ -5,7 +5,7 @@
 <div class="page-header">
   <div>
     <h1>🏆 Rangliste{% if current_md %} <small class="muted">· ST {{ current_md }}</small>{% endif %}</h1>
-    <p class="muted small">Bei Gleichstand: Punkte → Exakt → Diff → Tendenz → Tipps</p>
+    <p class="muted small">{{ active_competition_name }} · Saison {{ active_competition_season }} · Bei Gleichstand: Punkte → Exakt → Diff → Tendenz → Tipps</p>
   </div>
   <div class="header-actions">
     <select onchange="location.href=this.value">
@@ -14,9 +14,21 @@
       <option value="{{ url_for('main.leaderboard', matchday=md) }}" {{ 'selected' if md == current_md }}>Spieltag {{ md }}</option>
       {% endfor %}
     </select>
-    <a href="{{ url_for('main.matchday_winners') }}" class="btn-ghost btn-sm" title="Spieltagsieger-Chronik">🏆 Sieger</a>
-    <a href="{{ url_for('main.export_csv') }}" class="btn-ghost btn-sm">📥</a>
   </div>
+</div>
+
+<div class="lb-switcher card flat">
+  <a href="{{ url_for('main.leaderboard', matchday=current_md) if current_md else url_for('main.leaderboard') }}" class="lb-switch active">
+    <span>🏆</span><strong>Rangliste</strong>
+  </a>
+  <a href="{{ url_for('main.matchday_winners') }}" class="lb-switch">
+    <span>👑</span><strong>Spieltagsieger</strong>
+  </a>
+</div>
+
+<div class="ux-hint lb-profile-hint card flat">
+  <strong>💡 Spieler-Info</strong>
+  <span>Desktop: Name oder Avatar überfahren zeigt vollen Namen &amp; Lieblingsverein. Smartphone: Spieler kurz antippen.</span>
 </div>
 
 {# Macro für die Tooltip-Card.
@@ -24,8 +36,7 @@
    (oder der aktuelle Betrachter Admin ist - der sieht alles).
    None wird als True interpretiert (Default = öffentlich). #}
 {% macro player_tooltip(user) %}
-  {% set is_public = user.show_full_name in (true, none, 1) %}
-  {% set show_name = user.full_name and (is_public or current_user.is_admin or user.id == current_user.id) %}
+  {% set show_name = user.full_name %}
   <span class="player-tooltip" role="tooltip">
     <span class="pt-head">
       {% if user.avatar and user.avatar != 'default.png' %}
@@ -36,12 +47,7 @@
       <span class="pt-names">
         <strong>{{ user.username }}</strong>
         {% if show_name %}
-          <small>
-            {{ user.full_name }}
-            {% if not user.show_full_name and current_user.is_admin %}
-              <span class="pt-private-tag" title="Nur für Admin sichtbar">🔒</span>
-            {% endif %}
-          </small>
+          <small>{{ user.full_name }}</small>
         {% endif %}
       </span>
     </span>
@@ -74,7 +80,7 @@
           {% if r.rank == 1 %}🥇
           {% elif r.rank == 2 %}🥈
           {% elif r.rank == 3 %}🥉
-          {% else %}<span class="rank-num">#{{ r.rank }}</span>{% endif %}
+          {% else %}<span class="rank-num">{{ r.rank }}</span>{% endif %}
         </div>
         <div class="lb-card-user has-tooltip" tabindex="0">
           {% if r.user.avatar and r.user.avatar != 'default.png' %}
@@ -153,15 +159,15 @@
         <tr>
           <th>#</th>
           <th>Spieler</th>
-          <th class="center" title="Tipps insgesamt">∑</th>
-          <th class="center exact-col">EX</th>
-          <th class="center diff-col">DIF</th>
-          <th class="center tend-col">TEN</th>
-          <th class="center wrong-col">✗</th>
-          <th class="center" title="Joker">⚡</th>
-          <th class="center" title="Spieltagsiege">🏆</th>
-          <th class="center">QUOTE</th>
-          <th class="right">PKT</th>
+          <th class="center" title="Anzahl abgegebener Tipps">Tipps</th>
+          <th class="center exact-col" title="Exakter Ergebnistipp">Exakt</th>
+          <th class="center diff-col" title="Richtige Tordifferenz">Diff</th>
+          <th class="center tend-col" title="Richtige Tendenz">Tendenz</th>
+          <th class="center wrong-col" title="Falscher Tipp">Falsch</th>
+          <th class="center" title="Gesetzte Joker">Joker</th>
+          <th class="center" title="Gewonnene Spieltage">ST-Siege</th>
+          <th class="center" title="Quote exakter Tipps">Quote</th>
+          <th class="right" title="Gesamtpunkte">Pkt</th>
           <th></th>
         </tr>
       </thead>
@@ -172,7 +178,7 @@
             {% if r.rank == 1 %}🥇
             {% elif r.rank == 2 %}🥈
             {% elif r.rank == 3 %}🥉
-            {% else %}<span class="rank-num">#{{ r.rank }}</span>{% endif %}
+            {% else %}<span class="rank-num">{{ r.rank }}</span>{% endif %}
           </td>
           <td>
             <div class="user-cell has-tooltip" tabindex="0">
@@ -226,13 +232,22 @@
   </div>
 </div>
 
-<div class="legend">
-  <span><b class="exact-col">EX</b> Exakter Tipp</span>
-  <span><b class="diff-col">DIF</b> Tordifferenz</span>
-  <span><b class="tend-col">TEN</b> Tendenz</span>
-  <span><b class="wrong-col">✗</b> Falsch</span>
-  <span><b>⚡</b> Joker</span>
-  <span><b>🏆</b> Spieltagsiege</span>
+<div class="legend leaderboard-legend">
+  <span><b>Tipps</b> abgegebene Tipps</span>
+  <span><b class="exact-col">Exakt</b> Ergebnis stimmt genau</span>
+  <span><b class="diff-col">Diff</b> richtige Tordifferenz</span>
+  <span><b class="tend-col">Tendenz</b> Sieger/Remis richtig</span>
+  <span><b class="wrong-col">Falsch</b> daneben</span>
+  <span><b>Joker</b> eingesetzte Joker</span>
+  <span><b>ST-Siege</b> Spieltagssiege</span>
+</div>
+
+<div class="card export-actions-card">
+  <div>
+    <h3>📥 Export</h3>
+    <p class="muted small">Lade deine Tipps als CSV-Datei herunter.</p>
+  </div>
+  <a href="{{ url_for('main.export_csv') }}" class="btn-ghost btn-sm">CSV herunterladen</a>
 </div>
 
 {% endblock %}

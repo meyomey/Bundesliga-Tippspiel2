@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Admin · Wartungscenter{% endblock %}
+{% block content %}
+<script>document.body.classList.add('admin-subpage', 'admin-maintenance-page');</script>
+
+<a href="{{ url_for('admin.dashboard') }}" class="back-link">← Admin</a>
+
+<div class="page-header">
+  <div>
+    <span class="overline">WARTUNG</span>
+    <h1>🧰 Wartungscenter</h1>
+    <p class="muted small">Hilfreich fuer Netcup ohne SSH: Reparaturen und Deployment-Checks direkt im Adminbereich.</p>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+  <h2>Systemstatus</h2>
+  <div class="admin-stats" style="margin-bottom:0;">
+    <div class="admin-stat"><div class="as-icon">🛡️</div><div><div class="as-num">{{ 'OK' if health.db_ok else '!' }}</div><div class="as-lbl">Datenbank</div></div></div>
+    <div class="admin-stat"><div class="as-icon">🐍</div><div><div class="as-num">{{ health.python_version }}</div><div class="as-lbl">Python</div></div></div>
+    <div class="admin-stat"><div class="as-icon">⚽</div><div><div class="as-num">{{ health.teams_total }}</div><div class="as-lbl">Teams</div></div></div>
+    <div class="admin-stat"><div class="as-icon">🌐</div><div><div class="as-num">{{ health.remote_logos }}</div><div class="as-lbl">Externe Logos</div></div></div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+  <h2>🚀 Netcup/Deployment Check</h2>
+  {% if health.warnings %}
+    <div class="flash flash-warning">
+      <strong>Hinweise:</strong>
+      <ul style="margin:6px 0 0 18px;">
+      {% for w in health.warnings %}<li>{{ w }}</li>{% endfor %}
+      </ul>
+    </div>
+  {% else %}
+    <div class="flash flash-success">✅ Keine kritischen Deployment-Hinweise gefunden.</div>
+  {% endif %}
+  <div class="grid-3">
+    {% for key, label in [
+      ('secret_secure','SECRET_KEY sicher'),
+      ('admin_password_secure','Admin-Passwort sicher'),
+      ('public_base_url','PUBLIC_BASE_URL gesetzt'),
+      ('telegram_secret','Telegram Secret gesetzt'),
+      ('vendor_exists','vendor/ vorhanden'),
+      ('uploads_writable','Uploads beschreibbar'),
+      ('logos_writable','Logo-Ordner beschreibbar'),
+      ('sqlite_writable','SQLite-Ordner beschreibbar')
+    ] %}
+      <div class="count-tile">
+        <strong>{{ '✅' if health.checks.get(key) else '⚠️' }}</strong>
+        <small>{{ label }}</small>
+      </div>
+    {% endfor %}
+  </div>
+  <details style="margin-top:12px;">
+    <summary class="muted" style="cursor:pointer">Details anzeigen</summary>
+    <div class="backup-info-box">
+      <div><strong>App</strong><span>{{ health.app_root }}</span></div>
+      <div><strong>Vendor</strong><span>{{ health.vendor_dir }}</span></div>
+      <div><strong>Uploads</strong><span>{{ health.uploads_dir }}</span></div>
+      <div><strong>Logos</strong><span>{{ health.logo_dir }}</span></div>
+      {% if health.sqlite_path %}<div><strong>SQLite</strong><span>{{ health.sqlite_path }}</span></div>{% endif %}
+    </div>
+    <p class="muted small" style="margin-top:10px">Pakete:
+      {% for pkg, ok in health.packages.items() %}
+        <span class="chip">{{ '✅' if ok else '⚠️' }} {{ pkg }}</span>
+      {% endfor %}
+    </p>
+  </details>
+</div>
+
+<div class="admin-section">
+  <h2 class="admin-section-title">🖼️ Logos</h2>
+  <div class="admin-grid-3">
+    <form method="post" action="{{ url_for('admin.maintenance_run') }}" class="admin-tile">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="task" value="logos">
+      <div class="t-icon">🖼️</div>
+      <h3>Logos lokalisieren</h3>
+      <p>Externe Teamlogos nach static/team_logos laden und DB auf lokale Pfade setzen.</p>
+      <button class="btn-primary btn-sm" style="margin-top:10px">Starten</button>
+    </form>
+    <form method="post" action="{{ url_for('admin.maintenance_run') }}" class="admin-tile" onsubmit="return confirm('Alle lokalen Logos neu laden/ueberschreiben?')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="task" value="logos_force">
+      <div class="t-icon">🔁</div>
+      <h3>Logos neu laden</h3>
+      <p>Erzwingt erneuten Download bzw. Fallback-Erzeugung fuer alle Teams.</p>
+      <button class="btn-ghost btn-sm" style="margin-top:10px">Neu laden</button>
+    </form>
+  </div>
+</div>
+
+<div class="admin-section">
+  <h2 class="admin-section-title">🔧 Reparatur</h2>
+  <div class="admin-grid-3">
+    {% for task, icon, title, text in [
+      ('points','🧮','Punkte neu berechnen','Alle Tipps anhand aktueller Ergebnisse neu bewerten.'),
+      ('matchday_winners','🏆','Spieltagsieger neu berechnen','Spieltagsieger-Chronik aus Ergebnissen aktualisieren.'),
+      ('badges','🏅','Badges neu prüfen','Badge-Regeln fuer alle User erneut anwenden.'),
+      ('specials','⭐','Sondertipps auswerten','Sondertipps anhand korrekter Antworten neu bewerten.'),
+      ('archive_bots','🤖','Bots aus Ewiger Tabelle entfernen','Historische Archiv-Eintraege von KI-Bots aus der Ewigen Tabelle entfernen.')
+    ] %}
+    <form method="post" action="{{ url_for('admin.maintenance_run') }}" class="admin-tile">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="task" value="{{ task }}">
+      <div class="t-icon">{{ icon }}</div>
+      <h3>{{ title }}</h3>
+      <p>{{ text }}</p>
+      <button class="btn-ghost btn-sm" style="margin-top:10px">Ausführen</button>
+    </form>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

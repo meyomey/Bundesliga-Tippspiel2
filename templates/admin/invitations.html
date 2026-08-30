@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Einladungen{% endblock %}
+{% block content %}
+<a href="{{ url_for('admin.dashboard') }}" class="back-link">← Admin</a>
+
+<div class="page-header">
+  <div>
+    <span class="overline">REGISTRIERUNG</span>
+    <h1>✉️ Einladungen</h1>
+    <p class="muted small">Einladungscodes prüfen, erstellen, deaktivieren oder löschen.</p>
+  </div>
+</div>
+
+<section class="card">
+  <h2>Neuen Code erstellen</h2>
+  <form method="post" action="{{ url_for('admin.invitation_create') }}" class="grid-3" style="grid-template-columns:2fr 1fr 1fr auto;align-items:end">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>E-Mail optional <input class="input" name="email" placeholder="leer = teilbarer Link"></label>
+    <label>Nutzungen <input class="input" name="max_uses" type="number" min="1" max="100" value="1"></label>
+    <label>Tage gültig <input class="input" name="days" type="number" min="1" max="365" value="30"></label>
+    <button class="btn-primary">Erstellen</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Codes ({{ invites|length }})</h2>
+  <div class="scroll-x">
+    <table class="table">
+      <thead><tr><th>Code</th><th>E-Mail</th><th>Von</th><th>Nutzung</th><th>Status</th><th>Aktion</th></tr></thead>
+      <tbody>
+      {% for inv in invites %}
+        {% set expired = inv.expires_at and inv.expires_at < now_dt %}
+        {% set used_up = inv.max_uses and inv.uses >= inv.max_uses %}
+        <tr>
+          <td><code>{{ inv.code }}</code></td>
+          <td>{{ inv.email or 'teilbar' }}</td>
+          <td>{{ inv.invited_by.username if inv.invited_by else '—' }}</td>
+          <td>{{ inv.uses }}/{{ inv.max_uses or '∞' }}</td>
+          <td>{% if expired %}<span class="status status-finished">abgelaufen</span>{% elif used_up %}<span class="status status-finished">verbraucht</span>{% else %}<span class="status status-scheduled">aktiv</span>{% endif %}</td>
+          <td>
+            {% if not used_up %}
+            <form method="post" action="{{ url_for('admin.invitation_deactivate', invite_id=inv.id) }}" style="display:inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn-ghost btn-xs">Deaktivieren</button>
+            </form>
+            {% endif %}
+            <form method="post" action="{{ url_for('admin.invitation_delete', invite_id=inv.id) }}" style="display:inline" onsubmit="return confirm('Code löschen?')">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn-danger btn-xs">Löschen</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

@@ -30,6 +30,9 @@
       <a href="{{ url_for('admin.backup_download') }}" class="btn-primary btn-block" style="margin-top:16px">
         ⬇ Datenbank-Backup herunterladen
       </a>
+      <a href="{{ url_for('admin.backup_zip_download') }}" class="btn-ghost btn-block" style="margin-top:8px">
+        📦 Komplett-Backup als ZIP (DB + Uploads + Logos)
+      </a>
     {% else %}
       <button class="btn-ghost btn-block" disabled style="margin-top:16px">Kein Backup möglich</button>
     {% endif %}

@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Admin · Siegerehrung{% endblock %}
+{% block content %}
+<a href="{{ url_for('admin.dashboard') }}" class="back-link">← Admin</a>
+
+<div class="page-header">
+  <div>
+    <span class="overline">SAISONABSCHLUSS</span>
+    <h1>🎤 Siegerehrung</h1>
+    <p class="muted small">{{ data.competition.name if data.competition else 'Wettbewerb' }} · Saison {{ data.season }}</p>
+  </div>
+  <div class="header-actions">
+    <a class="btn-primary" href="{{ url_for('admin.season_awards_pdf') }}">📄 PDF herunterladen</a>
+  </div>
+</div>
+
+<section class="card award-show-hero">
+  <h2>🏆 Podium</h2>
+  <div class="podium-grid">
+    {% for r in data.podium %}
+      <div class="podium-card rank-{{ r.rank }}">
+        <div class="podium-medal">{% if r.rank == 1 %}🥇{% elif r.rank == 2 %}🥈{% else %}🥉{% endif %}</div>
+        <h3>{{ r.user.username }}</h3>
+        <strong>{{ r.points }} Punkte</strong>
+        <small>{{ r.exact }} exakte Tipps</small>
+      </div>
+    {% endfor %}
+  </div>
+</section>
+
+<div class="grid-12">
+  <section class="card span-6">
+    <div class="card-header"><h2>🎁 Preise</h2><small class="muted">aus Admin → Preise & Pott</small></div>
+    {% if data.prizes %}
+      <div class="award-list">
+      {% for row in data.prizes %}
+        <div class="award-row">
+          <span class="award-icon">{{ row.prize.icon }}</span>
+          <div><strong>{{ row.prize.title }}</strong><small>{{ row.prize.description or '' }}</small></div>
+          <div class="right"><strong>{{ row.user.username if row.user else '—' }}</strong><small>{{ row.prize.amount or '' }}</small></div>
+        </div>
+      {% endfor %}
+      </div>
+    {% else %}<p class="muted">Keine aktiven Preise konfiguriert.</p>{% endif %}
+  </section>
+
+  <section class="card span-6">
+    <div class="card-header"><h2>✨ Sonderauszeichnungen</h2><small class="muted">automatisch berechnet</small></div>
+    <div class="award-list">
+    {% for a in data.awards %}
+      <div class="award-row">
+        <span class="award-icon">{{ a.icon }}</span>
+        <div><strong>{{ a.title }}</strong><small>{{ a.value }}</small></div>
+        <div class="right"><strong>{{ a.user.username if a.user else '—' }}</strong></div>
+      </div>
+    {% endfor %}
+    </div>
+  </section>
+</div>
+
+<section class="card" style="overflow:auto;">
+  <div class="card-header"><h2>📋 Abschlusstabelle</h2><small class="muted">{{ data.leaderboard|length }} Spieler</small></div>
+  <table class="table compact extended">
+    <thead><tr><th>Rang</th><th>Spieler</th><th class="right">Pkt</th><th class="center">Exakt</th><th class="center">Diff</th><th class="center">Tendenz</th><th class="center">ST-Siege</th></tr></thead>
+    <tbody>
+    {% for r in data.leaderboard %}
+      <tr><td>{{ r.rank }}</td><td>{{ r.user.username }}</td><td class="right pts-num">{{ r.points }}</td><td class="center">{{ r.exact }}</td><td class="center">{{ r.diff }}</td><td class="center">{{ r.tendency }}</td><td class="center">{{ data.matchday_winners|selectattr('user_id','equalto',r.user.id)|list|length }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<style>
+.award-show-hero{background:linear-gradient(135deg,var(--primary-soft),transparent)}.podium-grid{display:grid;grid-template-columns:1fr;gap:12px}.podium-card{text-align:center;border:1px solid var(--border);border-radius:18px;padding:18px;background:var(--surface-2)}.podium-medal{font-size:42px}.podium-card h3{font-size:22px;margin:8px 0}.podium-card strong{display:block;font-size:18px;color:var(--primary-text)}.podium-card.rank-1{order:-1;border-color:var(--joker)}@media(min-width:760px){.podium-grid{grid-template-columns:repeat(3,1fr)}.podium-card.rank-1{transform:translateY(-8px)}}.award-list{display:flex;flex-direction:column;gap:10px}.award-row{display:grid;grid-template-columns:42px minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px;border:1px solid var(--border);border-radius:14px;background:var(--surface-2)}.award-icon{font-size:28px}.award-row small{display:block;color:var(--text-muted);font-size:12px}.right{text-align:right}
+</style>
+{% endblock %}

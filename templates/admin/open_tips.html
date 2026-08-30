@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Admin · Offene Tipps{% endblock %}
+{% block content %}
+<a href="{{ url_for('admin.dashboard') }}" class="back-link">← Admin</a>
+
+<div class="page-header">
+  <div>
+    <span class="overline">TIPPKONTROLLE</span>
+    <h1>⏰ Offene Tipps</h1>
+    <p class="muted small">Spieltag {{ current_md }} · {{ total_missing }} fehlende Tipps bei {{ open_matches|length }} noch offenen Spielen</p>
+  </div>
+  <div class="header-actions">
+    <select onchange="location.href='{{ url_for('admin.admin_open_tips') }}?matchday='+this.value">
+      {% for md in matchdays %}<option value="{{ md }}" {{ 'selected' if md == current_md }}>Spieltag {{ md }}</option>{% endfor %}
+    </select>
+    <form method="post" action="{{ url_for('admin.admin_open_tips') }}" onsubmit="return confirm('Reminder an alle Spieler mit offenen Tipps fuer diesen Spieltag senden?')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="matchday" value="{{ current_md }}">
+      <button class="btn-primary btn-sm" type="submit">🔔 Reminder senden</button>
+    </form>
+  </div>
+</div>
+
+<div class="admin-stats">
+  <div class="admin-stat"><div class="as-icon">🎮</div><div><div class="as-num">{{ matches|length }}</div><div class="as-lbl">Spiele gesamt</div></div></div>
+  <div class="admin-stat"><div class="as-icon">🔓</div><div><div class="as-num">{{ open_matches|length }}</div><div class="as-lbl">noch tippbar</div></div></div>
+  <div class="admin-stat"><div class="as-icon">⏰</div><div><div class="as-num">{{ total_missing }}</div><div class="as-lbl">fehlende Tipps</div></div></div>
+  <div class="admin-stat highlight"><div class="as-icon">✅</div><div><div class="as-num">{{ rows|selectattr('missing_count','equalto',0)|list|length }}</div><div class="as-lbl">komplett</div></div></div>
+</div>
+
+<div class="card" style="overflow:auto;">
+  {% if not rows %}
+    <p class="muted">Keine Spieler gefunden.</p>
+  {% else %}
+  <table class="table compact extended open-tips-table">
+    <thead><tr><th>Spieler</th><th class="center">Status</th><th class="center">Quote</th><th>Fehlende Spiele</th></tr></thead>
+    <tbody>
+      {% for r in rows %}
+      <tr class="{{ 'ok' if r.missing_count == 0 else 'warn' }}">
+        <td><strong>{{ r.user.username }}</strong></td>
+        <td class="center">{{ r.tipped }}/{{ r.total }}</td>
+        <td class="center"><span class="quote-pill">{{ r.completion_pct }}%</span></td>
+        <td>
+          {% if r.missing %}
+            <div class="missing-match-list">
+              {% for m in r.missing %}
+                <a href="{{ url_for('main.match_detail', match_id=m.id) }}" class="chip" title="{{ m.kickoff|de_local('%d.%m. %H:%M') }}">
+                  {{ m.home_team.short_name }}-{{ m.away_team.short_name }} · {{ m.kickoff|de_local('%d.%m. %H:%M') }}
+                </a>
+              {% endfor %}
+            </div>
+          {% else %}
+            <span class="status status-finished">alles getippt</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+
+<style>
+.open-tips-table tr.warn { background: rgba(245,158,11,.06); }
+.open-tips-table tr.ok { opacity:.82; }
+.missing-match-list { display:flex; flex-wrap:wrap; gap:6px; }
+</style>
+{% endblock %}

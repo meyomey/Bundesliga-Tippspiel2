@@ -2,12 +2,22 @@
 {% block title %}🏆 Gewinne &amp; Pott{% endblock %}
 {% block content %}
 
-<div class="page-header">
+<div class="page-header prizes-header">
   <div>
     <h1>🏆 Gewinne &amp; Saisonpott</h1>
     <p class="muted small">Wer am Ende oben steht, gewinnt — schau hier, was es zu holen gibt!</p>
   </div>
+  <div class="header-actions">
+    <a href="#aktueller-pott" class="btn-ghost btn-sm pot-jump-link">💳 Zum Pott &amp; Zahlung ↓</a>
+  </div>
 </div>
+
+{% if pot.prize_notes %}
+<section class="card prize-notes-card">
+  <strong>ℹ️ Hinweis zu den Gewinnen</strong>
+  <p>{{ pot.prize_notes }}</p>
+</section>
+{% endif %}
 
 <!-- Preis-Karten zuerst -->
 {% if not prizes %}
@@ -52,7 +62,7 @@
           {% if r.rank == 1 %}🥇
           {% elif r.rank == 2 %}🥈
           {% elif r.rank == 3 %}🥉
-          {% else %}#{{ r.rank }}{% endif %}
+          {% else %}{{ r.rank }}{% endif %}
         </span>
         <span class="user">
           {{ r.user.username }}
@@ -68,7 +78,7 @@
 {% endif %}
 
 <!-- Pott-Übersicht (jetzt am ENDE der Seite) -->
-<div class="pot-banner" style="margin-top:24px">
+<div class="pot-banner" id="aktueller-pott" style="margin-top:24px">
   <div class="pot-main">
     <div class="pot-amount-box">
       <span class="pot-amount-num">{{ pot.pot_total }}</span>
@@ -93,6 +103,12 @@
   <p class="muted small">
     Einsatz pro Spieler: <strong>{{ pot.amount_per }} {{ pot.currency }}</strong>
   </p>
+  {% if pot.payment_text %}
+  <div class="payment-info-box">
+    <strong>💳 {{ pot.payment_title or 'Zahlungsinformationen' }}</strong>
+    <p>{{ pot.payment_text|linkify }}</p>
+  </div>
+  {% endif %}
 </div>
 
 {% endblock %}

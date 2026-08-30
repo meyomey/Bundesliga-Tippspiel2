@@ -20,17 +20,24 @@
       {{ form.submit(class_='btn-primary btn-block') }}
     </form>
 
+
+    <div class="registration-mode-hint">
+      {% if registration_mode == 'open' %}
+        ✅ Registrierung ist aktuell offen.
+      {% elif registration_mode == 'closed' %}
+        🔒 Registrierung ist aktuell geschlossen.
+      {% else %}
+        ✉️ Registrierung nur mit Einladungscode.
+      {% endif %}
+    </div>
+
     <div class="auth-meta">
       <a href="{{ url_for('auth.password_reset_request') }}">Passwort vergessen?</a>
       <span>·</span>
       <a href="{{ url_for('auth.register') }}">Konto erstellen</a>
     </div>
 
-    <div class="demo-hint">
-      <strong>Standard-Admin:</strong><br>
-      <code>admin@tippspiel.de</code> / <code>admin123</code><br>
-      <small>(beim ersten Login bitte sofort ändern!)</small>
-    </div>
+
   </div>
 </div>
 {% endblock %}

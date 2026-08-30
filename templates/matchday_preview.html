@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Spieltags-Preview{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <span class="overline">VORSCHAU</span>
+    <h1>🔮 Spieltags-Preview</h1>
+    <p class="muted small">Spieltag {{ matchday }} · {{ active_competition_name }} {{ active_competition_season }} · Community-Trends ohne individuelle Tipps vor Anpfiff</p>
+  </div>
+  <div class="header-actions">
+    <select onchange="location.href='{{ url_for('main.matchday_preview') }}/'+this.value">
+      {% for md in matchdays %}<option value="{{ md }}" {{ 'selected' if md == matchday }}>Spieltag {{ md }}</option>{% endfor %}
+    </select>
+    <a class="btn-ghost btn-sm" href="{{ url_for('main.matchday_recap', matchday=matchday) }}">📊 Recap</a>
+    <a class="btn-ghost btn-sm" href="{{ url_for('main.quick_tip', matchday=matchday) }}">⚡ Schnelltipp</a>
+  </div>
+</div>
+
+<div class="stats-grid" style="margin-bottom:16px;">
+  <div class="card stat-kpi"><div class="kpi-num">{{ preview.overall_completion_pct }}%</div><div class="kpi-lbl">Tippquote</div></div>
+  <div class="card stat-kpi"><div class="kpi-num">{{ preview.total_predictions }}</div><div class="kpi-lbl">Tipps abgegeben</div></div>
+  <div class="card stat-kpi"><div class="kpi-num">{{ preview.users_count }}</div><div class="kpi-lbl">Mitspieler</div></div>
+  <div class="card stat-kpi"><div class="kpi-num">{{ preview.missing_users|length }}</div><div class="kpi-lbl">mit offenen Tipps</div></div>
+</div>
+
+{% if preview.top_match %}
+<div class="card">
+  <h2>🔥 Top-Spiel nach Tippaktivität</h2>
+  <p>
+    <strong>{{ preview.top_match.match.home_team.short_name }} – {{ preview.top_match.match.away_team.short_name }}</strong>
+    · {{ preview.top_match.tips }} Tipps · häufigster Tipp: <strong>{{ preview.top_match.top_score }}</strong>
+  </p>
+</div>
+{% endif %}
+
+<div class="grid-12">
+  {% for row in preview.matches %}
+  <section class="card span-6">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+      <h2 style="margin:0">{{ row.match.home_team.short_name }} – {{ row.match.away_team.short_name }}</h2>
+      <span class="status status-{{ row.match.status }}">{{ row.match.status }}</span>
+    </div>
+    <p class="muted small">{{ row.match.kickoff|de_local('%a, %d.%m. %H:%M') }} · {{ row.tips }}/{{ preview.users_count }} Tipps · {{ row.joker_count }} Joker</p>
+    <div class="tendency-row" style="margin:10px 0;">
+      <div class="td-segment home" style="width:{{ row.home_pct }}%">🏠 {{ row.home_pct }}%</div>
+      <div class="td-segment draw" style="width:{{ row.draw_pct }}%">⚖ {{ row.draw_pct }}%</div>
+      <div class="td-segment away" style="width:{{ row.away_pct }}%">✈ {{ row.away_pct }}%</div>
+    </div>
+    <p class="muted small">Häufigster Tipp: <strong>{{ row.top_score }}</strong> ({{ row.top_score_count }}×) · fehlend: {{ row.missing }}</p>
+  </section>
+  {% endfor %}
+</div>
+
+{% if preview.missing_users %}
+<div class="card">
+  <h2>⏰ Noch offene Tipps</h2>
+  <p class="muted small">Spieler mit mindestens einem offenen Tipp für diesen Spieltag:</p>
+  <p>{% for u in preview.missing_users[:30] %}<span class="chip">{{ u.username }}</span> {% endfor %}{% if preview.missing_users|length > 30 %}<span class="muted">…</span>{% endif %}</p>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -537,3 +537,847 @@
     display: none;
   }
 }
+
+/* ============================================================
+   Mobile Swipe/Card-Polish 2026
+   Ziel: bessere Lesbarkeit, weniger gestaucht, Swipe zwischen Spielen
+   ============================================================ */
+@media (max-width: 767px) {
+  .qt-page {
+    max-width: none;
+    padding: 10px 0 18px;
+  }
+  .qt-header,
+  .qt-status-bar,
+  .qt-footer {
+    margin-left: 12px;
+    margin-right: 12px;
+  }
+  .qt-header-top { gap: 10px; margin-bottom: 10px; }
+  .qt-header-text h1 { font-size: 21px; }
+  .qt-subtitle { font-size: 12px; }
+  .qt-progress-container { padding: 9px 11px; }
+  .qt-status-bar { padding: 9px 11px; font-size: 12px; }
+
+  .qt-matches-list {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: calc(100vw - 24px);
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x mandatory;
+    gap: 12px;
+    padding: 0 12px 12px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .qt-matches-list::-webkit-scrollbar { display: none; }
+  .qt-match-card {
+    scroll-snap-align: center;
+    min-height: 430px;
+    padding: 14px;
+    border-radius: 18px;
+    gap: 12px;
+    box-shadow: 0 8px 22px rgba(0,0,0,.16);
+  }
+  [data-theme="light"] .qt-match-card { box-shadow: 0 8px 20px rgba(15,23,42,.10); }
+
+  .qt-match-time {
+    justify-content: space-between;
+    gap: 6px;
+    padding-bottom: 9px;
+  }
+  .qt-time-display { font-size: 16px; }
+  .qt-matchday-badge { font-size: 9px; }
+
+  .qt-teams-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .qt-team-block {
+    width: 100%;
+    min-height: 70px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    border-radius: 14px;
+    padding: 10px;
+    gap: 10px;
+  }
+  .qt-home,
+  .qt-away {
+    justify-content: flex-start;
+    text-align: left;
+  }
+  .qt-home .qt-team-details,
+  .qt-away .qt-team-details,
+  .qt-away-details {
+    align-items: flex-start;
+    text-align: left;
+  }
+  .qt-home {
+    flex-direction: row;
+  }
+  .qt-away {
+    flex-direction: row-reverse;
+  }
+  .qt-team-logo-wrap {
+    width: 52px;
+    height: 52px;
+  }
+  .qt-team-details { flex: 1; min-width: 0; }
+  .qt-team-name {
+    font-size: 18px;
+    line-height: 1.15;
+    font-weight: 850;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    hyphens: auto;
+  }
+  .qt-team-meta { margin-top: 4px; gap: 4px; }
+  .form-dot { width: 15px; height: 15px; font-size: 8px; }
+
+  .qt-score-block {
+    order: 2;
+    width: 100%;
+    padding: 10px 0 6px;
+    background: linear-gradient(135deg, var(--primary-soft), transparent);
+    border-radius: 16px;
+  }
+  .qt-score-inputs { gap: 8px; justify-content: center; }
+  .qt-input-num {
+    width: 64px;
+    height: 58px;
+    border-radius: 14px;
+    font-size: 27px;
+    background: var(--surface);
+  }
+  .qt-colon { font-size: 30px; }
+  .qt-steppers {
+    width: 100%;
+    justify-content: center;
+    gap: 7px;
+    margin-top: 6px;
+  }
+  .qt-step-btn {
+    width: 44px;
+    height: 32px;
+    border-radius: 9px;
+    font-size: 17px;
+  }
+  .qt-stepper-gap { width: 20px; }
+
+  .qt-joker-bar {
+    padding-top: 10px;
+    display: flex;
+    justify-content: center;
+  }
+  .qt-joker-label {
+    width: 100%;
+    justify-content: center;
+    padding: 10px 14px;
+    font-size: 14px;
+  }
+
+  .qt-footer { padding: 12px; border-radius: 16px; }
+  .qt-legend-bar { gap: 8px; font-size: 11px; margin-bottom: 10px; }
+  .qt-actions { display: grid; grid-template-columns: 1fr; gap: 8px; }
+  .qt-btn-random,
+  .qt-btn-save { width: 100%; min-height: 42px; }
+}
+
+@media (max-width: 380px) {
+  .qt-matches-list { grid-auto-columns: calc(100vw - 18px); padding-left: 9px; padding-right: 9px; }
+  .qt-header,
+  .qt-status-bar,
+  .qt-footer { margin-left: 9px; margin-right: 9px; }
+  .qt-team-name { font-size: 16px; }
+  .qt-team-logo-wrap { width: 46px; height: 46px; }
+  .qt-input-num { width: 58px; height: 54px; font-size: 25px; }
+}
+
+/* Zwischenstand Mobile Layout entfernt: finale Grid-Variante folgt direkt. */
+
+/* ============================================================
+   Mobile QuickTip Final Layout: 2 Team-Spalten + Tipp darunter
+   Kein Swipe, keine gestapelten Logos/Stepper.
+   DOM bleibt gleich, Layout wird per CSS Grid sauber angeordnet.
+   ============================================================ */
+@media (max-width: 767px) {
+  .qt-matches-list {
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: visible !important;
+    scroll-snap-type: none !important;
+    gap: 14px !important;
+    padding: 0 12px 12px !important;
+  }
+
+  .qt-match-card {
+    width: 100% !important;
+    min-height: auto !important;
+    padding: 14px !important;
+    border-radius: 18px !important;
+    scroll-snap-align: none !important;
+  }
+
+  .qt-teams-row {
+    display: grid !important;
+    grid-template-columns: minmax(0,1fr) minmax(0,1fr) 20px minmax(0,1fr) minmax(0,1fr) !important;
+    grid-template-rows: auto auto auto !important;
+    grid-template-areas:
+      "home home mid away away"
+      "homeScore homeScore colon awayScore awayScore"
+      "homeMinus homePlus gap awayMinus awayPlus" !important;
+    column-gap: 6px !important;
+    row-gap: 9px !important;
+    align-items: stretch !important;
+  }
+
+  .qt-team-block {
+    min-width: 0 !important;
+    width: 100% !important;
+    min-height: 132px !important;
+    padding: 10px 7px !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 15px !important;
+    background: var(--surface-2) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 7px !important;
+    text-align: center !important;
+  }
+
+  .qt-home { grid-area: home !important; }
+  .qt-away { grid-area: away !important; }
+
+  /* Auswaertsblock hat im HTML Logo nach den Details: mobil trotzdem Logo nach oben */
+  .qt-away .qt-team-logo-wrap { order: -1 !important; }
+
+  .qt-home .qt-team-details,
+  .qt-away .qt-team-details,
+  .qt-away-details {
+    align-items: center !important;
+    text-align: center !important;
+    width: 100% !important;
+  }
+
+  .qt-team-logo-wrap {
+    width: 54px !important;
+    height: 54px !important;
+    margin: 0 auto !important;
+  }
+  .qt-team-logo {
+    max-width: 54px !important;
+    max-height: 54px !important;
+  }
+  .qt-team-name {
+    width: 100% !important;
+    font-size: 15px !important;
+    line-height: 1.14 !important;
+    font-weight: 850 !important;
+    text-align: center !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: normal !important;
+    hyphens: auto !important;
+    color: var(--text) !important;
+  }
+  .qt-team-meta {
+    justify-content: center !important;
+    gap: 4px !important;
+  }
+
+  /* Inhalt des Score-Blocks als Grid-Items der .qt-teams-row behandeln */
+  .qt-score-block,
+  .qt-score-inputs,
+  .qt-steppers {
+    display: contents !important;
+  }
+
+  .qt-score-inputs input:first-of-type {
+    grid-area: homeScore !important;
+    justify-self: center !important;
+  }
+  .qt-score-inputs input:last-of-type {
+    grid-area: awayScore !important;
+    justify-self: center !important;
+  }
+  .qt-colon {
+    grid-area: colon !important;
+    align-self: center !important;
+    justify-self: center !important;
+    font-size: 24px !important;
+    font-weight: 900 !important;
+  }
+
+  .qt-input-num {
+    width: 66px !important;
+    height: 58px !important;
+    border-radius: 14px !important;
+    font-size: 28px !important;
+    background: var(--surface) !important;
+    border-width: 2px !important;
+  }
+
+  .qt-steppers .qt-step-btn:nth-child(1) { grid-area: homeMinus !important; justify-self: end !important; }
+  .qt-steppers .qt-step-btn:nth-child(2) { grid-area: homePlus !important; justify-self: start !important; }
+  .qt-steppers .qt-stepper-gap { grid-area: gap !important; display: block !important; width: 20px !important; }
+  .qt-steppers .qt-step-btn:nth-child(4) { grid-area: awayMinus !important; justify-self: end !important; }
+  .qt-steppers .qt-step-btn:nth-child(5) { grid-area: awayPlus !important; justify-self: start !important; }
+
+  .qt-step-btn {
+    width: 39px !important;
+    height: 32px !important;
+    border-radius: 10px !important;
+    font-size: 17px !important;
+  }
+
+  .qt-joker-bar {
+    padding-top: 12px !important;
+    margin-top: 4px !important;
+  }
+  .qt-joker-label {
+    width: 100% !important;
+    justify-content: center !important;
+    padding: 10px 12px !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .qt-teams-row {
+    grid-template-columns: minmax(0,1fr) minmax(0,1fr) 16px minmax(0,1fr) minmax(0,1fr) !important;
+    column-gap: 4px !important;
+  }
+  .qt-team-block {
+    min-height: 122px !important;
+    padding: 9px 5px !important;
+  }
+  .qt-team-logo-wrap,
+  .qt-team-logo {
+    width: 48px !important;
+    height: 48px !important;
+  }
+  .qt-team-name { font-size: 13.5px !important; }
+  .qt-input-num { width: 58px !important; height: 54px !important; font-size: 25px !important; }
+  .qt-step-btn { width: 34px !important; height: 30px !important; }
+}
+
+/* Spieltag-Auswahl im Schnelltipp */
+.qt-md-switcher {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.qt-md-switcher label {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.qt-md-switcher select {
+  min-height: 38px;
+  padding: 8px 10px;
+  font-size: 14px;
+}
+@media (max-width: 767px) {
+  .qt-md-switcher {
+    margin-left: 12px;
+    margin-right: 12px;
+  }
+}
+
+/* ============================================================
+   Schnelltipp-Usability-Feinschliff 2026-07
+   Kompakter, klarere Zeit/Status, sichtbare Stepper, Joker-Status
+   ============================================================ */
+.qt-page {
+  max-width: 900px;
+}
+.qt-header {
+  display: grid;
+  gap: 10px;
+}
+.qt-header-top { margin-bottom: 0; }
+.qt-md-switcher { margin-bottom: 0; }
+.qt-progress-container {
+  display: grid;
+  gap: 6px;
+  padding: 9px 12px;
+}
+.qt-progress-info {
+  margin-bottom: 0;
+  align-items: baseline;
+}
+.qt-progress-label { font-weight: 900; color: var(--text); }
+.qt-progress-value { font-size: 13px; }
+.qt-status-bar {
+  margin-bottom: 12px;
+  padding: 7px 11px;
+  border-radius: 999px;
+  font-size: 12px;
+  width: fit-content;
+  max-width: 100%;
+}
+.qt-match-card {
+  padding: 13px 14px;
+  gap: 9px;
+}
+.qt-match-time {
+  justify-content: flex-start;
+  gap: 7px;
+  padding-bottom: 8px;
+  flex-wrap: wrap;
+}
+.qt-day-name,
+.qt-date-display,
+.qt-time-display {
+  font-size: 13px;
+}
+.qt-time-display {
+  color: var(--primary);
+  font-weight: 900;
+}
+.qt-card-status {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+.qt-card-status.is-open {
+  border-color: rgba(245,158,11,.35);
+  background: rgba(245,158,11,.10);
+  color: #f59e0b;
+}
+.qt-card-status.is-saved {
+  border-color: rgba(34,197,94,.35);
+  background: rgba(34,197,94,.10);
+  color: #22c55e;
+}
+.qt-card-status.is-locked {
+  border-color: rgba(148,163,184,.28);
+  color: var(--text-muted);
+}
+.qt-team-meta:empty,
+.form-dots:empty { display: none; }
+.qt-pos-badge {
+  min-height: 18px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+}
+.qt-score-block { gap: 5px; }
+.qt-input-num {
+  border-color: rgba(148,163,184,.45);
+}
+.qt-steppers {
+  display: flex;
+}
+.qt-step-btn {
+  min-width: 38px;
+  font-weight: 900;
+}
+.qt-joker-bar {
+  padding-top: 7px;
+}
+.qt-joker-label {
+  padding: 7px 13px;
+}
+.qt-joker-label.is-active .qt-joker-text { font-weight: 900; }
+.qt-match-card.has-joker .qt-card-status::after {
+  content: " · ⚡ Joker";
+  color: #fbbf24;
+}
+@media (min-width: 768px) {
+  .qt-page { max-width: 920px; }
+  .qt-match-card { padding: 14px 18px; }
+  .qt-team-logo-wrap { width: 44px; height: 44px; }
+  .qt-team-name { font-size: 16px; }
+  .qt-score-block { width: 150px; }
+  .qt-input-num { width: 48px; height: 50px; font-size: 23px; }
+  .qt-colon { font-size: 26px; }
+  .qt-steppers { display: flex !important; }
+  .qt-step-btn { width: 36px; height: 26px; }
+  .qt-joker-hint { display: inline; }
+}
+@media (max-width: 767px) {
+  .qt-header { gap: 9px; }
+  .qt-progress-value { font-size: 12px; }
+  .qt-status-bar {
+    width: auto;
+    margin-top: 0;
+    margin-bottom: 10px;
+    border-radius: 12px;
+  }
+  .qt-match-card {
+    padding: 12px !important;
+    gap: 8px !important;
+  }
+  .qt-match-time {
+    justify-content: flex-start !important;
+    padding-bottom: 7px !important;
+  }
+  .qt-card-status {
+    margin-left: 0;
+    width: 100%;
+    justify-content: center;
+    order: 5;
+  }
+  .qt-team-block {
+    min-height: 112px !important;
+    padding: 9px 6px !important;
+  }
+  .qt-team-logo-wrap,
+  .qt-team-logo {
+    width: 48px !important;
+    height: 48px !important;
+  }
+  .qt-team-name { font-size: 14px !important; }
+  .qt-pos-badge { font-size: 9px !important; }
+  .qt-input-num {
+    width: 62px !important;
+    height: 54px !important;
+    font-size: 26px !important;
+  }
+  .qt-step-btn {
+    width: 38px !important;
+    height: 32px !important;
+    background: var(--surface) !important;
+    border-color: rgba(148,163,184,.55) !important;
+  }
+  .qt-joker-bar {
+    padding-top: 8px !important;
+    margin-top: 0 !important;
+  }
+  .qt-joker-label {
+    padding: 9px 10px !important;
+    font-size: 13px !important;
+  }
+}
+@media (max-width: 380px) {
+  .qt-team-block { min-height: 106px !important; }
+  .qt-team-name { font-size: 13px !important; }
+  .qt-input-num { width: 56px !important; height: 50px !important; }
+  .qt-step-btn { width: 33px !important; height: 30px !important; }
+}
+
+/* ============================================================
+   Schnelltipp mobile kompakter 2026-08
+   ============================================================ */
+body.quick-tip-page .bottom-tipstatus { display: none !important; }
+.qt-status-inline {
+  margin: 4px 0 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  width: auto !important;
+  color: var(--text-muted) !important;
+  font-size: 11px !important;
+}
+.qt-status-inline.qt-status-ok { color: #22c55e !important; }
+.qt-status-inline.qt-status-err { color: var(--danger) !important; }
+.qt-status-inline.qt-status-warn { color: var(--warning) !important; }
+
+@media (max-width: 767px) {
+  body.quick-tip-page { padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important; }
+  .qt-page { padding-top: 6px !important; }
+  .qt-header { gap: 7px !important; margin-bottom: 10px !important; }
+  .qt-header-top { margin-bottom: 6px !important; }
+  .qt-md-switcher {
+    grid-template-columns: auto minmax(0,1fr) !important;
+    padding: 8px 10px !important;
+    border-radius: 12px !important;
+  }
+  .qt-md-switcher select { min-height: 34px !important; height: 36px !important; }
+  .qt-progress-container {
+    padding: 8px 10px !important;
+    border-radius: 12px !important;
+  }
+  .qt-progress-info { font-size: 12px !important; }
+  .qt-progress-track { height: 7px !important; }
+  .qt-status-inline {
+    display: flex !important;
+    justify-content: flex-start !important;
+    gap: 6px !important;
+    font-size: 11px !important;
+    line-height: 1.25 !important;
+  }
+
+  .qt-matches-list { gap: 10px !important; }
+  .qt-match-card {
+    padding: 10px !important;
+    gap: 7px !important;
+    border-radius: 16px !important;
+  }
+  .qt-match-time {
+    padding-bottom: 6px !important;
+    gap: 6px !important;
+  }
+  .qt-day-name,
+  .qt-date-display,
+  .qt-time-display { font-size: 12px !important; }
+  .qt-matchday-badge { font-size: 9px !important; padding: 2px 6px !important; }
+  .qt-card-status {
+    order: 0 !important;
+    width: auto !important;
+    margin-left: auto !important;
+    padding: 2px 7px !important;
+    font-size: 10px !important;
+    border-radius: 999px !important;
+  }
+
+  .qt-teams-row { row-gap: 7px !important; column-gap: 7px !important; }
+  .qt-team-block {
+    min-height: 96px !important;
+    padding: 8px 6px !important;
+    gap: 5px !important;
+    border-radius: 14px !important;
+  }
+  .qt-team-logo-wrap,
+  .qt-team-logo {
+    width: 42px !important;
+    height: 42px !important;
+  }
+  .qt-team-name {
+    font-size: 13px !important;
+    line-height: 1.12 !important;
+    max-height: 2.25em !important;
+    overflow: hidden !important;
+  }
+  .qt-pos-badge {
+    font-size: 8.5px !important;
+    padding: 1px 5px !important;
+  }
+
+  .qt-input-num {
+    width: 58px !important;
+    height: 50px !important;
+    font-size: 24px !important;
+    border-radius: 13px !important;
+  }
+  .qt-colon { font-size: 24px !important; }
+  .qt-step-btn {
+    width: 36px !important;
+    height: 30px !important;
+    border-radius: 9px !important;
+  }
+
+  .qt-joker-bar {
+    padding-top: 7px !important;
+    margin-top: 0 !important;
+  }
+  .qt-joker-label {
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    padding: 8px 12px !important;
+    border-radius: 999px !important;
+    font-size: 12.5px !important;
+    margin: 0 auto !important;
+  }
+  .qt-joker-label.is-active {
+    box-shadow: 0 0 0 2px rgba(251,191,36,.22) !important;
+  }
+  .qt-joker-hint { display: none !important; }
+}
+
+@media (max-width: 380px) {
+  .qt-team-block { min-height: 90px !important; }
+  .qt-team-logo-wrap,
+  .qt-team-logo { width: 38px !important; height: 38px !important; }
+  .qt-team-name { font-size: 12.3px !important; }
+  .qt-input-num { width: 52px !important; height: 48px !important; font-size: 23px !important; }
+  .qt-step-btn { width: 32px !important; height: 29px !important; }
+}
+
+/* ============================================================
+   Light Mode Fix: farbliche Spielkarten-Umrandungen sichtbar
+   Der globale Light-Mode-Override in style.css setzt border-color mit
+   !important zurueck. Deshalb muessen Schnelltipp-Akzente hier explizit
+   und spaeter geladen wiederhergestellt werden.
+   ============================================================ */
+html[data-theme="light"] .qt-match-card.has-tip {
+  border-color: rgba(13,148,136,.55) !important;
+  border-left: 4px solid var(--primary) !important;
+  box-shadow: 0 8px 22px rgba(15,23,42,.08), 0 0 0 1px rgba(13,148,136,.08) inset !important;
+}
+
+html[data-theme="light"] .qt-match-card.has-joker {
+  border-color: rgba(245,158,11,.95) !important;
+  border-left-color: var(--joker) !important;
+  background: linear-gradient(135deg, rgba(251,191,36,.18), rgba(255,255,255,0) 62%), var(--surface) !important;
+  box-shadow: 0 8px 24px rgba(146,64,14,.12), 0 0 0 1px rgba(245,158,11,.14) inset !important;
+}
+
+html[data-theme="light"] .qt-match-card.has-tip.has-joker {
+  border-left-color: var(--joker) !important;
+}
+
+/* Schnelltipp: Details-Link pro Spiel */
+.qt-details-link {
+  margin-left: auto;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+.qt-details-link:hover,
+.qt-details-link:focus-visible {
+  border-color: var(--primary);
+  color: var(--primary-text);
+  outline: none;
+}
+@media (max-width: 767px) {
+  .qt-details-link {
+    order: 6;
+    width: 100%;
+    text-align: center;
+    padding: 5px 8px;
+  }
+}
+
+/* Schnelltipp: einfacher Spieltag-Wechsel per Zurück/Vor statt nur Dropdown */
+.qt-md-switcher.qt-md-nav {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+.qt-md-nav-row {
+  display: grid;
+  grid-template-columns: auto minmax(120px, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+.qt-md-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.qt-md-nav-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary-text);
+}
+.qt-md-nav-btn.primary {
+  border-color: rgba(20,184,166,.35);
+  background: var(--primary-soft);
+}
+.qt-md-nav-btn.disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+@media (max-width: 767px) {
+  .qt-md-switcher.qt-md-nav {
+    grid-template-columns: 1fr !important;
+    gap: 6px !important;
+  }
+  .qt-md-nav-row {
+    grid-template-columns: 52px minmax(0, 1fr) 52px;
+    gap: 6px;
+  }
+  .qt-md-nav-btn {
+    min-height: 36px;
+    padding: 7px 8px;
+    font-size: 12px;
+  }
+  .qt-md-nav-btn:not(.disabled) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+/* Schnelltipp: schneller Wechsel zur Tippübersicht */
+.qt-secondary-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin: -2px 0 2px;
+}
+.qt-overview-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 12px;
+  border: 1px solid rgba(20,184,166,.32);
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: var(--primary-text);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 850;
+}
+.qt-overview-link small {
+  color: var(--text-muted);
+  font-weight: 750;
+}
+.qt-overview-link:hover {
+  border-color: var(--primary);
+  transform: translateY(-1px);
+}
+@media (max-width: 767px) {
+  .qt-secondary-actions {
+    justify-content: stretch;
+    margin: 0 12px 2px;
+  }
+  .qt-overview-link {
+    width: 100%;
+    justify-content: center;
+    min-height: 36px;
+    padding: 7px 10px;
+    border-radius: 12px;
+    font-size: 12.5px;
+  }
+  .qt-overview-link small {
+    display: none;
+  }
+}
+
+/* Schnelltipp: Tippübersicht-Link kompakt in den Kopfbereich ziehen */
+.qt-header-top .qt-header-text {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.qt-overview-link-header {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+@media (max-width: 767px) {
+  .qt-header-top .qt-overview-link-header {
+    width: auto;
+    min-width: 42px;
+    min-height: 40px;
+    padding: 0 10px;
+    border-radius: 12px;
+  }
+  .qt-header-top .qt-overview-link-header strong {
+    display: none;
+  }
+  .qt-header-top .qt-overview-link-header span {
+    font-size: 17px;
+  }
+}

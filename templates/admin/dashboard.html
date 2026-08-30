@@ -2,120 +2,121 @@
 {% block title %}Admin · Wulmstörper Tipprunde{% endblock %}
 {% block content %}
 
-<!-- Header -->
-<div class="admin-header">
-  <div>
-    <span class="overline">VERWALTUNG</span>
-    <h1>Admin-Bereich</h1>
-    <p class="muted small">Spieler, Spiele, Punkte und alle Einstellungen an einem Ort.</p>
-  </div>
-  <div class="header-actions">
-    <a href="{{ url_for('admin.sync') }}" class="btn-primary btn-sm" title="Spiele &amp; Ergebnisse von der API holen">
-      ⚡ API Sync starten
-    </a>
-  </div>
-</div>
-
-<!-- Statistik-Bar -->
-<div class="admin-stats">
-  <div class="admin-stat">
-    <div class="as-icon">👥</div>
+<section class="admin-home">
+  <header class="admin-hero card">
     <div>
-      <div class="as-num">{{ stats.users }}</div>
-      <div class="as-lbl">Spieler</div>
+      <span class="overline">VERWALTUNG</span>
+      <h1>Admin-Bereich</h1>
+      <p class="muted small">{{ active_competition_name }} · Saison {{ active_competition_season }}</p>
     </div>
-  </div>
-  <div class="admin-stat">
-    <div class="as-icon">📅</div>
-    <div>
-      <div class="as-num">{{ stats.matches }}</div>
-      <div class="as-lbl">Spiele <small class="muted">({{ stats.finished }} beendet)</small></div>
+    <div class="admin-hero-actions">
+      <a href="{{ url_for('admin.admin_open_tips') }}" class="btn-ghost btn-sm">🔔 Offene Tipps</a>
+      <a href="{{ url_for('admin.sync') }}" class="btn-primary btn-sm">⚡ API Sync</a>
     </div>
-  </div>
-  <div class="admin-stat">
-    <div class="as-icon">🎯</div>
-    <div>
-      <div class="as-num">{{ stats.predictions }}</div>
-      <div class="as-lbl">Tipps abgegeben</div>
-    </div>
-  </div>
-  <div class="admin-stat highlight">
-    <div class="as-icon">💰</div>
-    <div>
-      <div class="as-num">{{ pot.pot_total }} {{ pot.currency }}</div>
-      <div class="as-lbl">{{ pot.paid_count }}/{{ pot.total_count }} bezahlt</div>
-    </div>
-  </div>
-</div>
+  </header>
 
-<!-- Hauptbereiche -->
-<div class="admin-section">
-  <h2 class="admin-section-title">📊 Spielbetrieb</h2>
-  <div class="admin-grid-3">
-    <a href="{{ url_for('admin.matches') }}" class="admin-tile">
-      <div class="t-icon">📅</div>
-      <h3>Spiele &amp; Ergebnisse</h3>
-      <p>Spielplan ansehen, Ergebnisse manuell bearbeiten</p>
+  <div class="admin-stats admin-stats-compact">
+    <a href="{{ url_for('admin.users') }}" class="admin-stat">
+      <div class="as-icon">👥</div>
+      <div>
+        <div class="as-num">{{ stats.accounts }}</div>
+        <div class="as-lbl">Konten <small class="muted">{{ stats.users }} Spieler · {{ stats.bots }} Bots</small></div>
+      </div>
     </a>
-    <a href="{{ url_for('admin.sync') }}" class="admin-tile">
-      <div class="t-icon">⚡</div>
-      <h3>API Sync</h3>
-      <p>football-data.org &amp; OpenLigaDB Fallback</p>
+    <a href="{{ url_for('admin.matches') }}" class="admin-stat">
+      <div class="as-icon">📅</div>
+      <div><div class="as-num">{{ stats.matches }}</div><div class="as-lbl">Spiele <small class="muted">({{ stats.finished }} beendet)</small></div></div>
     </a>
-    <a href="{{ url_for('admin.special_questions') }}" class="admin-tile">
-      <div class="t-icon">⭐</div>
-      <h3>Sonderfragen</h3>
-      <p>Meister, Torschützenkönig, eigene Bonusfragen</p>
+    <a href="{{ url_for('admin.admin_open_tips') }}" class="admin-stat">
+      <div class="as-icon">🎯</div>
+      <div><div class="as-num">{{ stats.predictions }}</div><div class="as-lbl">Tipps abgegeben</div></div>
+    </a>
+    <a href="{{ url_for('admin.admin_prizes') }}" class="admin-stat highlight">
+      <div class="as-icon">💰</div>
+      <div><div class="as-num">{{ pot.pot_total }} {{ pot.currency }}</div><div class="as-lbl">{{ pot.paid_count }}/{{ pot.total_count }} bezahlt</div></div>
     </a>
   </div>
-</div>
 
-<div class="admin-section">
-  <h2 class="admin-section-title">👥 Spieler &amp; Pott</h2>
-  <div class="admin-grid-3">
-    <a href="{{ url_for('admin.users') }}" class="admin-tile">
-      <div class="t-icon">👥</div>
-      <h3>Spielerverwaltung</h3>
-      <p>Spieler bearbeiten, Bezahlung markieren, Daten ändern</p>
-    </a>
-    <a href="{{ url_for('admin.admin_prizes') }}" class="admin-tile">
-      <div class="t-icon">🏆</div>
-      <h3>Preise &amp; Pott</h3>
-      <p>{{ pot.pot_total }} {{ pot.currency }} im Pott · {{ pot.paid_count }}/{{ pot.total_count }} bezahlt</p>
-    </a>
-    <a href="{{ url_for('admin.badges') }}" class="admin-tile">
-      <div class="t-icon">🏅</div>
-      <h3>Badges</h3>
-      <p>Auto-Vergabe konfigurieren oder manuell verteilen</p>
-    </a>
-    <a href="{{ url_for('admin.admin_bots') }}" class="admin-tile">
-      <div class="t-icon">🤖</div>
-      <h3>KI-Tippgegner</h3>
-      <p>Tipp-Bots konfigurieren, Schwierigkeit anpassen, Tipps anstoßen</p>
-    </a>
-  </div>
-</div>
+  <section class="admin-focus card">
+    <div class="admin-focus-head">
+      <div>
+        <h2>Wichtigste Aufgaben</h2>
+        <p class="muted small">Die Bereiche, die du im laufenden Spielbetrieb am häufigsten brauchst.</p>
+      </div>
+    </div>
+    <div class="admin-focus-grid">
+      <a href="{{ url_for('admin.matches') }}" class="admin-tile primary">
+        <div class="t-icon">📅</div>
+        <div><h3>Spiele &amp; Ergebnisse</h3><p>Spielplan ansehen und Ergebnisse bearbeiten</p></div>
+      </a>
+      <a href="{{ url_for('admin.admin_open_tips') }}" class="admin-tile primary">
+        <div class="t-icon">⏰</div>
+        <div><h3>Offene Tipps</h3><p>Fehlende Tipps sehen und Reminder senden</p></div>
+      </a>
+      <a href="{{ url_for('admin.sync') }}" class="admin-tile primary">
+        <div class="t-icon">⚡</div>
+        <div><h3>API Sync</h3><p>Spielplan, Ergebnisse und Diagnosen</p></div>
+      </a>
+      <a href="{{ url_for('admin.users') }}" class="admin-tile primary">
+        <div class="t-icon">👥</div>
+        <div><h3>Spieler</h3><p>Spieler bearbeiten, Zahlung markieren</p></div>
+      </a>
+    </div>
+  </section>
 
-<div class="admin-section">
-  <h2 class="admin-section-title">⚙ Einstellungen &amp; Wartung</h2>
-  <div class="admin-grid-3">
-    <a href="{{ url_for('admin.settings') }}" class="admin-tile">
-      <div class="t-icon">🛠</div>
-      <h3>Einstellungen</h3>
-      <p>Punkteberechnung · Pott-Einsatz · E-Mail · API-Keys · Push</p>
-    </a>
-    <a href="{{ url_for('admin.backup_page') }}" class="admin-tile">
-      <div class="t-icon">💾</div>
-      <h3>Backup &amp; Restore</h3>
-      <p>Datenbank sichern oder aus einer Backup-Datei wiederherstellen</p>
-    </a>
-    <a href="{{ url_for('admin.admin_cache') }}" class="admin-tile">
-      <div class="t-icon">⚡</div>
-      <h3>Cache-Monitoring</h3>
-      <p>Redis-Auslastung ansehen, Cache manuell leeren (Flush)</p>
-    </a>
-  </div>
-</div>
+  <section class="admin-menu-card card">
+    <div class="admin-focus-head">
+      <div>
+        <h2>Alle Verwaltungsbereiche</h2>
+        <p class="muted small">Nach Aufgaben gruppiert, ohne lange leere Spalten.</p>
+      </div>
+    </div>
+
+    <div class="admin-menu-grid">
+      <div class="admin-menu-section">
+        <h3>⚽ Spielbetrieb</h3>
+        <div class="admin-link-list compact">
+          <a href="{{ url_for('admin.matches') }}"><span>📅 Spiele &amp; Ergebnisse</span><small>Spielplan und Resultate</small></a>
+          <a href="{{ url_for('admin.admin_open_tips') }}"><span>🔔 Offene Tipps</span><small>Fehlende Tipps und Reminder</small></a>
+          <a href="{{ url_for('admin.sync') }}"><span>⚡ API Sync</span><small>Spielplan, Ergebnisse, Diagnosen</small></a>
+          <a href="{{ url_for('admin.special_questions') }}"><span>⭐ Sonderfragen</span><small>Bonusfragen verwalten und auswerten</small></a>
+          <a href="{{ url_for('admin.badges') }}"><span>🏅 Badges</span><small>Auto-Vergabe oder manuell verteilen</small></a>
+          <a href="{{ url_for('admin.admin_bots') }}"><span>🤖 KI-Tippgegner</span><small>Bots konfigurieren und Tipps anstoßen</small></a>
+        </div>
+      </div>
+
+      <div class="admin-menu-section">
+        <h3>👥 Mitspieler &amp; Pott</h3>
+        <div class="admin-link-list compact">
+          <a href="{{ url_for('admin.users') }}"><span>👥 Spieler</span><small>Bearbeiten, Rollen, Zahlung markieren</small></a>
+          <a href="{{ url_for('admin.invitations') }}"><span>✉️ Einladungen</span><small>Codes prüfen, erstellen und deaktivieren</small></a>
+          <a href="{{ url_for('admin.admin_prizes') }}"><span>🏆 Preise &amp; Pott</span><small>{{ pot.pot_total }} {{ pot.currency }} · {{ pot.paid_count }}/{{ pot.total_count }} bezahlt</small></a>
+        </div>
+      </div>
+
+      <div class="admin-menu-section">
+        <h3>⚙ Wartung</h3>
+        <div class="admin-link-list compact">
+          <a href="{{ url_for('admin.settings') }}"><span>🛠 Einstellungen</span><small>Punkte, Pott, Mail, APIs, Push</small></a>
+          <a href="{{ url_for('admin.maintenance_center') }}"><span>🧰 Wartungscenter</span><small>Logos, Punkte, Badges neu berechnen</small></a>
+          <a href="{{ url_for('admin.integrity') }}"><span>🧪 Datenintegrität</span><small>Joker, Tipps, Pott und Saison prüfen</small></a>
+          <a href="{{ url_for('admin.schema_center') }}"><span>🧬 DB-/Schema-Wartung</span><small>Migrationen und Tabellen prüfen</small></a>
+          <a href="{{ url_for('admin.backup_page') }}"><span>💾 Backup &amp; Restore</span><small>Datenbank sichern/wiederherstellen</small></a>
+          <a href="{{ url_for('admin.admin_cache') }}"><span>⚡ Cache</span><small>Monitoring und Cache leeren</small></a>
+          <a href="{{ url_for('admin.activity_log') }}"><span>📜 Activity Log</span><small>Admin-Aktionen nachvollziehen</small></a>
+        </div>
+      </div>
+
+      <div class="admin-menu-section admin-menu-section-season">
+        <h3>🏁 Saisonabschluss</h3>
+        <div class="admin-link-list compact">
+          <a href="{{ url_for('admin.season_awards') }}"><span>🎤 Siegerehrung</span><small>Podium, Preise, PDF</small></a>
+          <a href="{{ url_for('admin.new_season') }}"><span>🏁 Saisonwechsel</span><small>Archivieren und neue Saison starten</small></a>
+        </div>
+      </div>
+    </div>
+  </section>
+</section>
 
 <!-- Daten-Tools (eingeklappt, nur bei Bedarf) -->
 <details class="admin-danger-zone">

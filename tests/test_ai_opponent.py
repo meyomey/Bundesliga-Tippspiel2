@@ -1,5 +1,6 @@
 """Tests fuer KI-Tippgegner."""
 import pytest
+import random
 from datetime import datetime, timedelta, timezone
 
 from ai_opponent import AIOpponent, Difficulty, AIManager
@@ -40,6 +41,7 @@ class TestAIOpponent:
     
     def test_medium_considers_home_advantage(self, db, competition, teams):
         """Test: MEDIUM Bot bevorzugt Heimmannschaft."""
+        random.seed(42)
         bot = AIOpponent("MediumBot", Difficulty.MEDIUM)
         
         match = Match(
@@ -156,6 +158,11 @@ class TestAIManager:
             db.session.commit()
             
             manager = AIManager()
+            # Standardmaessig sind Bots in der App inaktiv. Fuer diesen Test
+            # explizit aktivieren, weil hier das Tippen selbst getestet wird.
+            from scoring import set_setting
+            for opponent in manager.opponents:
+                set_setting(f"bot_active_{opponent.name}", "1")
             results = manager.tip_all_matches(matchday=1)
             
             # 5 Bots * 3 Spiele = 15 Tipps
@@ -200,3 +207,64 @@ class TestAIManager:
             assert len(rankings) == 5
             assert all('points' in r for r in rankings)
             assert all('difficulty' in r for r in rankings)
+
+
+def test_bot_users_are_inactive_by_default(db):
+    from models import User
+    from scoring import filter_active_users, is_bot_active
+
+    human = User(username='human', email='human@example.com')
+    human.set_password('x')
+    bot = User(username='RookieBot', email='rookiebot@bot.local')
+    bot.set_password('x')
+    db.session.add_all([human, bot])
+    db.session.commit()
+
+    assert is_bot_active(bot) is False
+    assert filter_active_users([human, bot]) == [human]
+
+
+def test_admin_without_game_activity_is_hidden_but_playing_admin_stays(db, teams, competition):
+    from datetime import datetime, timedelta, timezone
+    from models import User, Match, Prediction
+    from scoring import filter_active_users
+
+    player = User(username='player', email='player@example.com')
+    player.set_password('x')
+    admin_only = User(username='adminonly', email='adminonly@example.com', is_admin=True)
+    admin_only.set_password('x')
+    playing_admin = User(username='playingadmin', email='playingadmin@example.com', is_admin=True)
+    playing_admin.set_password('x')
+    db.session.add_all([player, admin_only, playing_admin])
+    db.session.commit()
+    match = Match(
+        competition_id=competition.id, matchday=1,
+        home_team_id=teams[0].id, away_team_id=teams[1].id,
+        kickoff=datetime.now(timezone.utc) + timedelta(days=1), status='scheduled'
+    )
+    db.session.add(match)
+    db.session.commit()
+    db.session.add(Prediction(user_id=playing_admin.id, match_id=match.id, home_tip=1, away_tip=1))
+    db.session.commit()
+
+    filtered = filter_active_users([player, admin_only, playing_admin])
+    assert player in filtered
+    assert playing_admin in filtered
+    assert admin_only not in filtered
+
+
+def test_admin_only_not_counted_in_pot(db):
+    from models import User
+    from scoring import compute_pot_summary
+
+    player = User(username='player2', email='player2@example.com', has_paid=True)
+    player.set_password('x')
+    admin_only = User(username='adminpot', email='adminpot@example.com', is_admin=True, has_paid=True)
+    admin_only.set_password('x')
+    db.session.add_all([player, admin_only])
+    db.session.commit()
+
+    pot = compute_pot_summary()
+    assert pot['total_count'] == 1
+    assert pot['paid_count'] == 1
+    assert pot['missing_count'] == 0

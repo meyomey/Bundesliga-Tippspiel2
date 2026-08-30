@@ -5,8 +5,16 @@
   <div class="auth-card">
     <h2>Konto erstellen</h2>
     <p class="muted">Kostenlos und in 30 Sekunden.</p>
+    {% if invite_required %}
+      <div class="flash flash-warning">{% if registration_closed %}Registrierung ist aktuell geschlossen.{% else %}Registrierung ist nur mit gültigem Einladungslink möglich.{% endif %}</div>
+      <div class="auth-meta">Du hast schon ein Konto? <a href="{{ url_for('auth.login') }}">Anmelden</a></div>
+    {% endif %}
+    {% if request.args.get('invited_by') %}
+      <div class="invite-register-hint">✉️ Einladung von <strong>{{ request.args.get('invited_by') }}</strong></div>
+    {% endif %}
 
-    <form method="post" novalidate>
+    <form method="post" novalidate {% if invite_required or registration_closed %}style="display:none"{% endif %}>
+      <input type="hidden" name="invite" value="{{ invite_code or request.args.get('invite', '') }}">
       {{ form.hidden_tag() }}
       <label>{{ form.username.label }}
         {{ form.username(class_='input', placeholder='Dein Username') }}

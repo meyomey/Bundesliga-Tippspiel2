@@ -55,8 +55,18 @@
         </label>
         <label>{{ form.pot_currency.label }} {{ form.pot_currency(class_='input', placeholder='€') }}</label>
       </div>
-      <label>{{ form.pot_intro.label }} {{ form.pot_intro(class_='input', rows=3, placeholder='z.B. wie/wohin gezahlt werden soll') }}
-        <small class="muted">Wird auf der Gewinne-Seite und im Profil angezeigt.</small>
+      <label>{{ form.pot_intro.label }} {{ form.pot_intro(class_='input', rows=3, placeholder='z.B. allgemeine Info zum Pott') }}
+        <small class="muted">Wird auf der Gewinne-Seite angezeigt.</small>
+      </label>
+      <label>{{ form.payment_info_title.label }} {{ form.payment_info_title(class_='input', placeholder='Zahlung an den Spielleiter') }}
+        <small class="muted">Überschrift für die Zahlungsbox.</small>
+      </label>
+      <label>{{ form.payment_info_text.label }} {{ form.payment_info_text(class_='input', rows=5, placeholder='z.B. Bitte 5 € per PayPal an ... senden.
+Verwendungszweck: Tippspiel + Spielername') }}
+        <small class="muted">Wird auf „Gewinne & Pott“ sowie für unbezahlte Spieler im Dashboard/Profil angezeigt.</small>
+      </label>
+      <label>{{ form.prize_notes.label }} {{ form.prize_notes(class_='input', rows=4, placeholder='z.B. Die Preisgelder können sich je nach endgültiger Teilnehmerzahl noch ändern.') }}
+        <small class="muted">Wird nur auf „Gewinne & Pott“ angezeigt.</small>
       </label>
       <p class="muted small">
         👥 <a href="{{ url_for('admin.users') }}">Spielerverwaltung →</a> ·
@@ -76,7 +86,9 @@
           <label>{{ form.mail_port.label }} {{ form.mail_port(class_='input', inputmode='numeric', placeholder='587') }}</label>
         </div>
         <label>{{ form.mail_username.label }} {{ form.mail_username(class_='input', placeholder='mail@example.de') }}</label>
-        <label>{{ form.mail_password.label }} {{ form.mail_password(class_='input', placeholder='App-Passwort oder SMTP-Passwort') }}</label>
+        <label>{{ form.mail_password.label }} {{ form.mail_password(class_='input', placeholder='Leer lassen = gespeichertes Passwort behalten') }}
+          <small class="muted">Status: {% if mail_password_configured %}✅ Passwort gespeichert{% else %}⚠ Kein Passwort gespeichert{% endif %}</small>
+        </label>
         <label>{{ form.mail_default_sender.label }} {{ form.mail_default_sender(class_='input', placeholder='tipprunde@example.de') }}</label>
         <div class="mail-check-row">
           <label class="check">{{ form.mail_use_tls() }} <span>STARTTLS</span></label>
@@ -93,11 +105,61 @@
     </div>
   </details>
 
+
+  {# Registrierung #}
+  <details class="section-group" open>
+    <summary>👥 Registrierung</summary>
+    <div class="section-body">
+      <div class="settings-subcard">
+        <label>{{ form.registration_mode.label }}
+          {{ form.registration_mode(class_='input') }}
+          <small class="muted">{{ form.registration_mode.description }}</small>
+        </label>
+        <ul class="muted small" style="margin:8px 0 0 18px;line-height:1.6">
+          <li><strong>Offen:</strong> Jeder kann sich registrieren.</li>
+          <li><strong>Nur mit Einladungscode:</strong> Empfohlen für private Tipprunden.</li>
+          <li><strong>Geschlossen:</strong> Auch Einladungslinks funktionieren nicht.</li>
+        </ul>
+      </div>
+    </div>
+  </details>
+
+  {# Reminder / fehlende Tipps #}
+  <details class="section-group" open>
+    <summary>🔔 Tipp-Erinnerungen</summary>
+    <div class="section-body">
+      <div class="settings-subcard">
+        <label class="check">{{ form.reminders_enabled() }}
+          <span>
+            <strong>{{ form.reminders_enabled.label.text }}</strong>
+            <small class="muted" style="display:block;margin-top:3px">{{ form.reminders_enabled.description }}</small>
+          </span>
+        </label>
+        <p class="muted small">
+          Automatik läuft über <code>cron_jobs.py reminder</code> bzw. <code>cron_jobs.py all</code>.
+          Jeder Spieler steuert im Profil selbst, welche Kanäle genutzt werden und wie viele Stunden vor Anpfiff erinnert wird.
+        </p>
+        <div class="mail-check-row" style="align-items:center; gap:10px; flex-wrap:wrap;">
+          <button type="submit" class="btn-ghost" formaction="{{ url_for('admin.test_reminder') }}" formmethod="post">
+            🔔 Test-Erinnerung an mich senden
+          </button>
+          <a href="{{ url_for('admin.admin_open_tips') }}" class="btn-ghost">Offene Tipps prüfen →</a>
+        </div>
+        <small class="muted">Test nutzt deine Profil-Kanäle. Echte Erinnerungen werden dabei nicht als gesendet markiert.</small>
+      </div>
+    </div>
+  </details>
+
   {# APIs #}
   <details class="section-group" {% if api_missing %}open{% endif %}>
     <summary>🌐 APIs {% if api_missing %}<span class="missing-badge">⚠ Nicht konfiguriert</span>{% endif %}</summary>
     <div class="section-body">
-      <label>{{ form.football_data_token.label }} {{ form.football_data_token(class_='input', placeholder='Token von football-data.org') }}</label>
+      <label>{{ form.football_data_token.label }} {{ form.football_data_token(class_='input', placeholder='Leer lassen = bestehenden Token behalten') }}
+        <small class="muted">Status: {% if api_configured %}✅ Token gespeichert{% else %}⚠ Kein Token gespeichert{% endif %}</small>
+      </label>
+      <label>{{ form.public_base_url.label }} {{ form.public_base_url(class_='input', placeholder='https://deine-domain.de') }}
+        <small class="muted">{{ form.public_base_url.description }}</small>
+      </label>
     </div>
   </details>
 
@@ -105,8 +167,10 @@
   <details class="section-group" {% if vapid_missing %}open{% endif %}>
     <summary>🔔 Push Notifications (VAPID) {% if vapid_missing %}<span class="missing-badge">⚠ Nicht konfiguriert</span>{% endif %}</summary>
     <div class="section-body">
-      <label>{{ form.vapid_public.label }} {{ form.vapid_public(class_='input', placeholder='VAPID Public Key') }}</label>
-      <label>{{ form.vapid_private.label }} {{ form.vapid_private(class_='input', placeholder='VAPID Private Key') }}</label>
+      <label>{{ form.vapid_public.label }} {{ form.vapid_public(class_='input', placeholder='Leer lassen = gespeicherten Public Key behalten') }}</label>
+      <label>{{ form.vapid_private.label }} {{ form.vapid_private(class_='input', placeholder='Leer lassen = gespeicherten Private Key behalten') }}
+        <small class="muted">Status: {% if vapid_private_configured %}✅ Private Key gespeichert{% else %}⚠ Kein Private Key gespeichert{% endif %}</small>
+      </label>
       <small class="muted">Erstellen mit: <code>vapid --gen</code></small>
     </div>
   </details>
@@ -114,9 +178,14 @@
   <details class="section-group">
     <summary>🤖 Telegram Bot</summary>
     <div class="section-body">
-      <label>{{ form.telegram_bot_token.label }} {{ form.telegram_bot_token(class_='input', placeholder='123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11') }}</label>
+      <label>{{ form.telegram_bot_token.label }} {{ form.telegram_bot_token(class_='input', placeholder='Leer lassen = gespeicherten Token behalten') }}
+        <small class="muted">Status: {% if telegram_token_configured %}✅ Token gespeichert{% else %}⚠ Kein Token gespeichert{% endif %}</small>
+      </label>
       <label>{{ form.telegram_bot_username.label }} {{ form.telegram_bot_username(class_='input', placeholder='@MeinTippspielBot') }}</label>
-      <small class="muted">Bot bei <a href="https://t.me/BotFather" target="_blank">@BotFather</a> erstellen. Token dort abholen. Dann Webhook setzen: <code>https://api.telegram.org/bot&lt;TOKEN&gt;/setWebhook?url=https://DEINE-DOMAIN/telegram/webhook</code></small>
+      <label>{{ form.telegram_webhook_secret.label }} {{ form.telegram_webhook_secret(class_='input', placeholder='Leer lassen = Secret behalten') }}
+        <small class="muted">Status: {% if telegram_secret_configured %}✅ Secret gespeichert{% else %}⚠ Kein Secret gespeichert{% endif %}</small>
+      </label>
+      <small class="muted">Bot bei <a href="https://t.me/BotFather" target="_blank">@BotFather</a> erstellen. Webhook empfohlen mit Secret-URL: <code>https://api.telegram.org/bot&lt;TOKEN&gt;/setWebhook?url=https://DEINE-DOMAIN/telegram/webhook/&lt;SECRET&gt;</code></small>
     </div>
   </details>
 

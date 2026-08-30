@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Wulmstörper Tipprunde · Saison 2025/26{% endblock %}
+{% block title %}Wulmstörper Tipprunde · Saison {{ active_competition_season or 'aktuell' }}{% endblock %}
 {% block content %}
 
 <!-- ========================================== HERO ========================================== -->
@@ -11,13 +11,13 @@
   </div>
 
   <div class="lp-hero-inner">
-    <span class="badge-pill">⚽ SAISON 2025/26 · SPIELTAG {{ current_md }}</span>
+    <span class="badge-pill">⚽ SAISON {{ active_competition_season or 'aktuell' }} · SPIELTAG {{ current_md }}</span>
     <h1 class="lp-h1">
       Tipp dich an die <span class="accent">Spitze</span><br>
       der Wulmstörper Tipprunde.
     </h1>
     <p class="lp-subtitle">
-      Vollständiger Spielplan, Joker-System und Live-Tabelle —
+      Vollständige Spieleübersicht, Joker-System und Live-Tabelle —
       mach mit beim ehrgeizigsten Tippspiel deiner Freundesrunde.
     </p>
 
@@ -78,7 +78,7 @@
     <div class="lp-feature">
       <div class="lp-feature-icon" style="background: rgba(20,184,166,.15); color: var(--primary-text);">📅</div>
       <h3>34 Spieltage</h3>
-      <p>Vollständiger Bundesliga-Spielplan mit echten Vereinslogos und Anstoßzeiten — automatisch synchronisiert.</p>
+      <p>Vollständige Bundesliga-Spieleübersicht mit echten Vereinslogos und Anstoßzeiten — automatisch synchronisiert.</p>
     </div>
 
     <div class="lp-feature">
@@ -101,7 +101,7 @@
 
     <div class="lp-feature">
       <div class="lp-feature-icon" style="background: rgba(245,158,11,.15); color: var(--warning);">⭐</div>
-      <h3>Sondertipps</h3>
+      <h3>Sonderfragen</h3>
       <p>Wer wird Meister? Welche Vereine steigen ab? Eigene Bonusfragen für extra Spannung.</p>
     </div>
 

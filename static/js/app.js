@@ -23,6 +23,10 @@ document.addEventListener('DOMContentLoaded', () => {
     toggle?.classList.remove('is-open');
     toggle?.setAttribute('aria-expanded', 'false');
     document.body.classList.remove('nav-open');
+    document.querySelectorAll('.nav-more.open').forEach(el => el.classList.remove('open'));
+    document.querySelectorAll('[aria-expanded="true"]').forEach(el => {
+      if (el.id === 'navMoreBtn' || el.id === 'navToggle') el.setAttribute('aria-expanded', 'false');
+    });
   }
   function openMenu() {
     menu?.classList.add('open');
@@ -32,8 +36,24 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   if (toggle && menu) {
+    // Sicherheitsnetz gegen haengende Mobile-Menues nach PWA-Resume,
+    // Browser-Zurueck oder BFCache-Restore.
+    closeMenu();
+    window.addEventListener('pageshow', closeMenu);
+    window.addEventListener('pagehide', closeMenu);
+    window.addEventListener('popstate', closeMenu);
+    window.addEventListener('hashchange', closeMenu);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') closeMenu();
+      else closeMenu();
+    });
+    window.addEventListener('focus', closeMenu);
+
     toggle.addEventListener('click', () => {
       menu.classList.contains('open') ? closeMenu() : openMenu();
+    });
+    document.querySelectorAll('.bottom-more-btn').forEach(btn => {
+      btn.addEventListener('click', openMenu);
     });
     // Schließen beim Link-Klick
     menu.querySelectorAll('a').forEach(a => {
@@ -47,6 +67,47 @@ document.addEventListener('DOMContentLoaded', () => {
     const mq = window.matchMedia('(min-width: 1024px)');
     mq.addEventListener('change', e => { if (e.matches) closeMenu(); });
   }
+
+  // ==== PWA/Android: Hauptnavigation nicht endlos im Zurück-Verlauf stapeln ====
+  // Top-Level-Menüpunkte ersetzen den aktuellen Verlaufseintrag. So beendet ein
+  // Zurück-Klick die installierte App schneller, statt erst alle zuletzt
+  // besuchten Tabs/Menüpunkte rückwärts durchlaufen zu müssen.
+  (function compactTopLevelNavigationHistory() {
+    const selector = [
+      '.bottom-tabbar a.bt-item',
+      '.nav-menu a.nav-link',
+      '.nav-more-menu a.nav-more-item',
+      'a.live-badge',
+      'a.brand',
+      'a.user-chip'
+    ].join(',');
+
+    document.querySelectorAll(selector).forEach(link => {
+      link.addEventListener('click', (e) => {
+        if (e.defaultPrevented || e.button !== 0) return;
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        if (link.target && link.target !== '_self') return;
+        if (link.hasAttribute('download')) return;
+
+        const rawHref = link.getAttribute('href');
+        if (!rawHref || rawHref.startsWith('#')) return;
+
+        let url;
+        try {
+          url = new URL(link.href, window.location.href);
+        } catch (_) {
+          return;
+        }
+        if (url.origin !== window.location.origin) return;
+        if (url.pathname === window.location.pathname && url.search === window.location.search && url.hash) return;
+        if (url.pathname.includes('/logout')) return;
+
+        e.preventDefault();
+        closeMenu();
+        window.location.replace(url.href);
+      });
+    });
+  })();
 
   // ==== Quick-Tip Joker visuelles Feedback ====
   document.querySelectorAll('input[name="joker_match"]').forEach(radio => {
@@ -277,7 +338,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const dateEl = container.querySelector('.match-date');
       const timeEl = container.querySelector('.match-hour');
       if (dateEl) dateEl.textContent = `${dayName}, ${dd}.${mm}.`;
-      if (timeEl) timeEl.textContent = `${HH}:${MM}`;
+      if (timeEl) timeEl.textContent = `${HH}:${MM} Uhr`;
 
       // === Quick-Tip (Schnelltipp) Struktur ===
       // <div class="qt-time" data-utc="...">
@@ -486,6 +547,62 @@ document.addEventListener('DOMContentLoaded', () => {
       main.classList.remove('pt-enter');
       main.classList.add('pt-leave');
       setTimeout(showPage, 2000);
+    });
+  })();
+
+  // ====================================================================
+  // UX: Tipp-Zahlenfelder beim Bearbeiten ersetzen statt ungewollt anzuhängen
+  // ====================================================================
+  (function tipNumberInputUx() {
+    const selector = '.qt-input-num, .tip-step-input';
+
+    function isTipNumberInput(el) {
+      return el && el.matches && el.matches(selector);
+    }
+
+    function selectValue(el) {
+      if (!isTipNumberInput(el) || el.disabled || el.readOnly) return;
+      el.dataset.replaceOnNextDigit = '1';
+      // Einige Mobile-Browser setzen den Cursor nach dem Focus wieder um.
+      // Daher mehrfach/zeitversetzt versuchen und zusätzlich beforeinput nutzen.
+      [0, 40, 120].forEach(delay => {
+        setTimeout(() => {
+          try { el.select(); } catch (e) { /* type=number kann je nach Browser zicken */ }
+        }, delay);
+      });
+    }
+
+    document.addEventListener('focusin', (e) => {
+      if (isTipNumberInput(e.target)) selectValue(e.target);
+    });
+
+    document.addEventListener('pointerup', (e) => {
+      if (!isTipNumberInput(e.target)) return;
+      if (e.target.dataset.replaceOnNextDigit === '1') {
+        try { e.target.select(); } catch (err) {}
+      }
+    });
+
+    document.addEventListener('beforeinput', (e) => {
+      const el = e.target;
+      if (!isTipNumberInput(el) || el.dataset.replaceOnNextDigit !== '1') return;
+      if (e.inputType !== 'insertText' || !/^\d$/.test(e.data || '')) return;
+
+      // Beim ersten Ziffern-Tastendruck nach dem Fokussieren vorhandenen Tipp
+      // komplett ersetzen. Verhindert versehentliches 03/30 statt 3 -> 0.
+      e.preventDefault();
+      el.value = e.data;
+      delete el.dataset.replaceOnNextDigit;
+      el.classList.add('input-flash');
+      setTimeout(() => el.classList.remove('input-flash'), 220);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (isTipNumberInput(e.target) && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
+        delete e.target.dataset.replaceOnNextDigit;
+      }
     });
   })();
 

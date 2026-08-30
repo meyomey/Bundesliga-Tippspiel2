@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Tippen{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <span class="overline">TIPPFOKUS</span>
+    <h1>🎯 Tippen</h1>
+    <p class="muted small">Spieltag {{ matchday }} · hier siehst du nur Spiele, die du noch tippen kannst</p>
+  </div>
+  <div class="header-actions">
+    <select onchange="location.href='{{ url_for('main.my_open_tips') }}/'+this.value">
+      {% for md in matchdays %}<option value="{{ md }}" {{ 'selected' if md == matchday }}>Spieltag {{ md }}</option>{% endfor %}
+    </select>
+    <a href="{{ url_for('main.quick_tip', matchday=matchday) }}" class="btn-primary btn-sm quicktip-cta">⚡ Schnelltipp</a>
+    <a href="{{ url_for('main.quick_tip', matchday=matchday) }}" class="btn-ghost btn-sm">⚡ Schnelltipp</a>
+  </div>
+</div>
+
+<div class="card next-action-card tips">
+  <div class="nac-icon">{% if open_missing %}⏰{% else %}✅{% endif %}</div>
+  <div class="nac-body">
+    <h2>{% if open_missing %}{{ open_missing|length }} Tipp{{ '' if open_missing|length == 1 else 's' }} fehlen noch{% else %}Alles erledigt!{% endif %}</h2>
+    <p class="muted">{{ already_tipped|length }}/{{ matches|length }} Spielen getippt. {% if open_missing %}Tipps sind bis zum jeweiligen Anpfiff änderbar.{% else %}Du musst gerade nichts tun.{% endif %}</p>
+    {% if matches %}<div class="nac-progress"><div style="width: {{ (already_tipped|length / matches|length * 100)|round }}%"></div></div>{% endif %}
+  </div>
+</div>
+
+{% if open_missing %}
+<div class="open-tips-list">
+  {% for m in open_missing %}
+  <a href="{{ url_for('main.match_detail', match_id=m.id) }}" class="card open-tip-card">
+    <div class="ot-time">
+      <strong>{{ m.kickoff|de_local('%a, %d.%m.') }}</strong>
+      <small>{{ m.kickoff|de_local('%H:%M') }} Uhr</small>
+    </div>
+    <div class="ot-match">
+      <div class="ot-team ot-home" title="{{ m.home_team.name }}">
+        <img src="{{ m.home_team.logo }}" class="mini-logo" alt="">
+        <span class="ot-team-name">{{ m.home_team.name }}</span>
+        <small>{{ m.home_team.short_name }}</small>
+      </div>
+      <strong class="ot-sep" aria-label="gegen">–</strong>
+      <div class="ot-team ot-away" title="{{ m.away_team.name }}">
+        <img src="{{ m.away_team.logo }}" class="mini-logo" alt="">
+        <span class="ot-team-name">{{ m.away_team.name }}</span>
+        <small>{{ m.away_team.short_name }}</small>
+      </div>
+    </div>
+    <span class="ot-action">
+      <span class="status-chip status-open">Noch tippen</span>
+      <span class="btn-primary btn-sm">Tippen</span>
+    </span>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card center pad">
+  <div class="empty-state compact">
+    <strong>Alles erledigt.</strong>
+    <p class="muted">Du hast aktuell keine offenen Tipps für diesen Spieltag.</p>
+    <div class="more-chip-row center-row">
+      <a href="{{ url_for('main.tip_overview', matchday=matchday) }}">👀 Tippübersicht</a>
+      <a href="{{ url_for('main.quick_tip', matchday=matchday) }}">⚡ Schnelltipp</a>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if already_tipped %}
+<details class="card tipped-details" open>
+  <summary>
+    <span>✅ Bereits getippt</span>
+    <small>{{ already_tipped|length }} Spiel{{ '' if already_tipped|length == 1 else 'e' }}</small>
+  </summary>
+  <div class="mini-list tipped-mini-list">
+    {% for m in already_tipped %}
+      {% set p = pred_map.get(m.id) %}
+      <a href="{{ url_for('main.match_detail', match_id=m.id) }}" class="mini-list-row tipped-row">
+        <span class="mini-list-teams">
+          <img src="{{ m.home_team.logo }}" class="mini-logo" alt="">
+          <span>{{ m.home_team.name }}</span>
+          <strong>–</strong>
+          <span>{{ m.away_team.name }}</span>
+          <img src="{{ m.away_team.logo }}" class="mini-logo" alt="">
+        </span>
+        <span class="tipped-meta">
+          <span class="status-chip {{ 'status-saved' if m.is_open() else 'status-locked' }}">
+            {{ 'Getippt · änderbar' if m.is_open() else 'Nicht mehr änderbar' }}
+          </span>
+          <strong>{{ p.home_tip }}:{{ p.away_tip }}{% if p.joker %} ⚡{% endif %}</strong>
+        </span>
+      </a>
+    {% endfor %}
+  </div>
+</details>
+{% endif %}
+{% endblock %}

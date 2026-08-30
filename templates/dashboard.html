@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Dashboard{% endblock %}
 {% block content %}
+<script>document.body.classList.add('dashboard-page');</script>
 
 {% if live_count > 0 or today_matches_count > 0 %}
 <a href="{{ url_for('main.live_center') }}" class="live-banner {{ 'is-live' if live_count > 0 }}">
@@ -31,7 +32,7 @@
       <div class="label">Punkte</div>
     </div>
     <div class="stat-block">
-      <div class="num">#{{ user_rank or '—' }}</div>
+      <div class="num">{{ user_rank or '—' }}</div>
       <div class="label">Rang</div>
     </div>
     <div class="stat-block">
@@ -41,11 +42,51 @@
   </div>
 </div>
 
+{% if next_action %}
+<section class="card next-action-card {{ next_action.kind }}">
+  <div class="nac-icon">{{ next_action.icon }}</div>
+  <div class="nac-body">
+    <span class="overline">DEIN NÄCHSTER SCHRITT</span>
+    <h2>{{ next_action.title }}</h2>
+    <p class="muted">{{ next_action.text }}</p>
+    {% if tip_status and tip_status.total %}
+    <div class="nac-progress" title="{{ tip_status.tipped }}/{{ tip_status.total }} getippt">
+      <div style="width: {{ (tip_status.tipped / tip_status.total * 100)|round if tip_status.total else 0 }}%"></div>
+    </div>
+    <small class="muted">Spieltag {{ current_matchday }}: {{ tip_status.tipped }}/{{ tip_status.total }} getippt</small>
+    {% endif %}
+  </div>
+  <a href="{{ next_action.url }}" class="btn-primary btn-lg nac-btn">{{ next_action.button }}</a>
+</section>
+{% endif %}
+
+{% if not current_user.full_name %}
+<section class="card profile-complete-card">
+  <div class="prc-icon">👤</div>
+  <div class="prc-body">
+    <strong>Profil vervollständigen</strong>
+    <small>Bitte trage deinen vollen Namen ein. In unserer privaten Tipprunde sollen alle wissen, wer wer ist. Einen Lieblingsverein kannst du auswählen – oder bewusst „kein Lieblingsverein“ lassen.</small>
+  </div>
+  <a href="{{ url_for('main.profile') }}" class="btn-primary btn-sm">Profil öffnen</a>
+</section>
+{% endif %}
+
+{% if pot and (not current_user.has_paid or player_preview_mode) and pot.payment_text %}
+<section class="card payment-reminder-card">
+  <div class="prc-icon">💳</div>
+  <div class="prc-body">
+    <strong>{{ pot.payment_title or 'Zahlungsinformationen' }}</strong>
+    <small>{{ pot.payment_text|linkify }}</small>
+  </div>
+  <a href="{{ url_for('main.prizes') }}" class="btn-ghost btn-sm">Pott ansehen</a>
+</section>
+{% endif %}
+
 <div class="grid-12">
   <section class="card span-7">
     <header class="card-header">
       <h2>📅 Nächste Spiele</h2>
-      <a href="{{ url_for('main.schedule') }}" class="btn-ghost btn-sm">Alle Spiele &amp; Tipps →</a>
+      <a href="{{ url_for('main.tip_entry') }}" class="btn-ghost btn-sm">Tippen →</a>
     </header>
 
     {% if upcoming %}
@@ -89,19 +130,22 @@
       {% endfor %}
       </div>
     {% else %}
-      <p class="muted center pad">Keine kommenden Spiele.</p>
+      <div class="empty-state compact">
+        <strong>Keine kommenden Spiele gefunden.</strong>
+        <p class="muted">Sobald Spiele vorhanden sind, erscheinen hier deine nächsten Tipps.</p>
+      </div>
     {% endif %}
   </section>
 
   <aside class="card span-5">
     <header class="card-header">
-      <h2>🏆 Top 5</h2>
+      <h2>🏆 Top 10</h2>
       <a href="{{ url_for('main.leaderboard') }}" class="btn-ghost btn-sm">Rangliste →</a>
     </header>
     <ol class="leaderboard mini">
       {% for r in leaderboard %}
         <li class="{{ 'me' if r.user.id == current_user.id }}">
-          <span class="rank">#{{ r.rank }}</span>
+          <span class="rank">{{ r.rank }}</span>
           <span class="user has-tooltip" tabindex="0">
             {{ r.user.username }}
             {% if r.user.favorite_team %}
@@ -116,9 +160,8 @@
                 {% endif %}
               <span class="pt-names">
                 <strong>{{ r.user.username }}</strong>
-                {% set is_public = r.user.show_full_name in (true, none, 1) %}
-                {% if r.user.full_name and (is_public or current_user.is_admin or r.user.id == current_user.id) %}
-                  <small>{{ r.user.full_name }}{% if not is_public and current_user.is_admin %} <span class="pt-private-tag" title="Privat">🔒</span>{% endif %}</small>
+                {% if r.user.full_name %}
+                  <small>{{ r.user.full_name }}</small>
                 {% endif %}
               </span>
               </span>

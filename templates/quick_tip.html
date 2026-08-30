@@ -14,13 +14,12 @@
         <span class="form-dot form-{{ f }}">{{ f }}</span>
       {% endif %}
     {% endfor %}
-  {% else %}
-    <span class="form-dot form-none">—</span>
   {% endif %}
   </span>
 {% endmacro %}
 
 {% block content %}
+<script>document.body.classList.add('quick-tip-page');</script>
 
 <div class="qt-page">
   
@@ -36,8 +35,34 @@
         <h1>⚡ Schnelltipp</h1>
         <p class="qt-subtitle">Spieltag {{ matchday }} · <span id="qtMatchCount">{{ matches|length }} Spiele</span></p>
       </div>
+      <a href="{{ url_for('main.tip_overview', matchday=matchday) }}" class="qt-overview-link qt-overview-link-header" title="Tippübersicht für diesen Spieltag öffnen">
+        <span>👀</span><strong>Tippübersicht</strong>
+      </a>
     </div>
-    
+
+    <div class="qt-md-switcher qt-md-nav">
+      <label for="qtMatchdaySelect">Spieltag wechseln</label>
+      <div class="qt-md-nav-row">
+        {% if prev_matchday %}
+          <a href="{{ url_for('main.quick_tip', matchday=prev_matchday) }}" class="qt-md-nav-btn" aria-label="Vorheriger Spieltag">← ST {{ prev_matchday }}</a>
+        {% else %}
+          <span class="qt-md-nav-btn disabled" aria-disabled="true">←</span>
+        {% endif %}
+
+        <select id="qtMatchdaySelect" class="input" onchange="location.href='{{ url_for('main.quick_tip') }}/'+this.value" aria-label="Spieltag direkt auswählen">
+          {% for md in matchdays %}
+            <option value="{{ md }}" {{ 'selected' if md == matchday }}>Spieltag {{ md }}</option>
+          {% endfor %}
+        </select>
+
+        {% if next_matchday %}
+          <a href="{{ url_for('main.quick_tip', matchday=next_matchday) }}" class="qt-md-nav-btn primary" aria-label="Nächster Spieltag">ST {{ next_matchday }} →</a>
+        {% else %}
+          <span class="qt-md-nav-btn disabled" aria-disabled="true">→</span>
+        {% endif %}
+      </div>
+    </div>
+
     <!-- Fortschrittsbalken -->
     <div class="qt-progress-container">
       <div class="qt-progress-info">
@@ -47,14 +72,12 @@
       <div class="qt-progress-track">
         <div class="qt-progress-fill" id="qtProgressBar" style="width: 0%"></div>
       </div>
+      <div class="qt-status-bar qt-status-inline" id="qtStatusBar">
+        <span class="qt-status-icon" id="qtStatusIcon">💾</span>
+        <span class="qt-status-message" id="qtStatusMessage">Auto-Save aktiv · Joker ×2</span>
+      </div>
     </div>
   </header>
-
-  <!-- Status-Bar -->
-  <div class="qt-status-bar" id="qtStatusBar">
-    <span class="qt-status-icon" id="qtStatusIcon">💡</span>
-    <span class="qt-status-message" id="qtStatusMessage">Tipps werden automatisch gespeichert</span>
-  </div>
 
   <form method="post" id="quickTipForm" class="qt-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
@@ -72,9 +95,13 @@
         <!-- Zeit-Leiste -->
         <div class="qt-match-time" data-utc="{{ m.kickoff.strftime('%Y-%m-%dT%H:%M:%SZ') }}">
           <span class="qt-day-name">--</span>
-          <span class="qt-time-display">--:--</span>
           <span class="qt-date-display">--.--.</span>
+          <span class="qt-time-display">--:-- Uhr</span>
           <span class="qt-matchday-badge">ST {{ m.matchday }}</span>
+          <span class="qt-card-status {{ 'is-locked' if not m.is_open() else ('is-saved' if p else 'is-open') }}">
+            {% if not m.is_open() %}🔒 nicht mehr änderbar{% elif p %}✅ gespeichert{% else %}⏰ offen{% endif %}
+          </span>
+          <a href="{{ url_for('main.match_detail', match_id=m.id) }}" class="qt-details-link" title="Details, Form, Wetter und Tippverteilung anzeigen">📊 Details</a>
         </div>
 
         <!-- Teams -->
@@ -89,7 +116,7 @@
               <div class="qt-team-name">{{ m.home_team.name }}</div>
               <div class="qt-team-meta">
                 {% if hpos %}
-                  <span class="qt-pos-badge">{{ hpos.rank }}.</span>
+                  <span class="qt-pos-badge">Tab. {{ hpos.rank }}</span>
                 {% endif %}
                 {{ form_badge(form_map.get(m.home_team_id, [])) }}
               </div>
@@ -107,6 +134,7 @@
                      value="{{ p.home_tip if p else '' }}"
                      {{ 'disabled' if not m.is_open() }}
                      class="qt-input-num" 
+                     aria-label="Tore {{ m.home_team.name }}"
                      placeholder="–"
                      inputmode="numeric" 
                      pattern="[0-9]*"
@@ -121,6 +149,7 @@
                      value="{{ p.away_tip if p else '' }}"
                      {{ 'disabled' if not m.is_open() }}
                      class="qt-input-num" 
+                     aria-label="Tore {{ m.away_team.name }}"
                      placeholder="–"
                      inputmode="numeric" 
                      pattern="[0-9]*"
@@ -148,7 +177,7 @@
               <div class="qt-team-name">{{ m.away_team.name }}</div>
               <div class="qt-team-meta">
                 {% if apos %}
-                  <span class="qt-pos-badge">{{ apos.rank }}.</span>
+                  <span class="qt-pos-badge">Tab. {{ apos.rank }}</span>
                 {% endif %}
                 {{ form_badge(form_map.get(m.away_team_id, [])) }}
               </div>
@@ -170,8 +199,8 @@
                    {{ 'disabled' if not m.is_open() }} 
                    class="qt-joker-input" />
             <span class="qt-joker-icon">⚡</span>
-            <span class="qt-joker-text">Joker einsetzen</span>
-            <span class="qt-joker-hint">(×2 Punkte)</span>
+            <span class="qt-joker-text">{{ 'Joker aktiv – doppelte Punkte' if p and p.joker else 'Joker setzen' }}</span>
+            <span class="qt-joker-hint">verdoppelt Punkte</span>
           </label>
         </div>
 
@@ -185,7 +214,7 @@
         <span class="qt-legend-item"><span class="form-dot form-W">S</span> Sieg</span>
         <span class="qt-legend-item"><span class="form-dot form-D">U</span> Unentschieden</span>
         <span class="qt-legend-item"><span class="form-dot form-L">N</span> Niederlage</span>
-        <span class="qt-legend-item"><span class="qt-pos-badge">1.</span> Tabelle</span>
+        <span class="qt-legend-item"><span class="qt-pos-badge">Tab. 1</span> offizieller Tabellenplatz</span>
       </div>
       
       <div class="qt-actions">
@@ -216,11 +245,11 @@
     const d = new Date(utcStr);
     if (isNaN(d.getTime())) return;
     
-    el.querySelector('.qt-day-name').textContent = DAYS_DE[d.getDay()];
-    el.querySelector('.qt-time-display').textContent = 
-      String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    el.querySelector('.qt-day-name').textContent = DAYS_DE[d.getDay()] + ',';
     el.querySelector('.qt-date-display').textContent = 
       String(d.getDate()).padStart(2, '0') + '.' + String(d.getMonth() + 1).padStart(2, '0') + '.';
+    el.querySelector('.qt-time-display').textContent = 
+      String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ' Uhr';
   });
 
   // ============= +/- Stepper =============
@@ -242,38 +271,64 @@
   });
 
   // ============= Joker Toggle =============
+  function refreshJokerUi() {
+    document.querySelectorAll('.qt-joker-label').forEach(label => {
+      const input = label.querySelector('.qt-joker-input');
+      const active = !!(input && input.checked);
+      label.classList.toggle('is-active', active);
+      const text = label.querySelector('.qt-joker-text');
+      if (text) text.textContent = active ? 'Joker aktiv – doppelte Punkte' : 'Joker setzen';
+      const card = label.closest('.qt-match-card');
+      if (card) card.classList.toggle('has-joker', active);
+    });
+  }
   document.querySelectorAll('.qt-joker-input').forEach(radio => {
     radio.addEventListener('change', () => {
-      document.querySelectorAll('.qt-joker-label').forEach(l => l.classList.remove('is-active'));
-      if (radio.checked) {
-        radio.closest('.qt-joker-label').classList.add('is-active');
-      }
+      refreshJokerUi();
     });
   });
+  refreshJokerUi();
 
   // ============= Fortschritt & Counter =============
   function updateProgress() {
-    const total = document.querySelectorAll('.qt-match-card').length;
+    const cards = document.querySelectorAll('.qt-match-card');
+    const total = cards.length;
     let tipped = 0;
     
-    document.querySelectorAll('.qt-match-card').forEach(card => {
+    cards.forEach(card => {
       const matchId = card.dataset.matchId;
       const home = document.getElementById('home_' + matchId);
       const away = document.getElementById('away_' + matchId);
-      
+      const locked = card.classList.contains('closed');
       const filled = home && away && home.value !== '' && away.value !== '';
       if (filled) tipped++;
-      
       card.classList.toggle('has-tip', filled);
+
+      const status = card.querySelector('.qt-card-status');
+      if (status) {
+        status.classList.toggle('is-open', !locked && !filled);
+        status.classList.toggle('is-saved', !locked && filled);
+        status.classList.toggle('is-locked', locked);
+        status.textContent = locked ? '🔒 nicht mehr änderbar' : (filled ? '✅ gespeichert' : '⏰ offen');
+      }
     });
-    
-    document.getElementById('qtProgressText').textContent = tipped + ' / ' + total;
-    document.getElementById('qtProgressBar').style.width = (total > 0 ? (tipped / total * 100) : 0) + '%';
+    const missing = Math.max(0, total - tipped);
+    const progressText = document.getElementById('qtProgressText');
+    if (progressText) progressText.textContent = `${tipped} von ${total} getippt · ${missing} fehlen`;
+    const progressBar = document.getElementById('qtProgressBar');
+    if (progressBar) progressBar.style.width = (total > 0 ? (tipped / total * 100) : 0) + '%';
+  }
+
+  const saveTimers = new Map();
+  function scheduleAutoSave(matchId, delay = 650) {
+    if (!matchId) return;
+    clearTimeout(saveTimers.get(matchId));
+    saveTimers.set(matchId, setTimeout(() => autoSave(matchId), delay));
   }
 
   document.querySelectorAll('.qt-input-num').forEach(inp => {
-    inp.addEventListener('change', updateProgress);
-    inp.addEventListener('input', updateProgress);
+    inp.addEventListener('change', () => { updateProgress(); scheduleAutoSave(inp.dataset.matchId); });
+    inp.addEventListener('input', () => { updateProgress(); scheduleAutoSave(inp.dataset.matchId, 900); });
   });
   updateProgress();
 
@@ -303,7 +358,10 @@
     try {
       const res = await fetch('/api/tip/' + matchId, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''
+        },
         body: JSON.stringify({
           home_tip: parseInt(home.value) || 0,
           away_tip: parseInt(away.value) || 0,
@@ -315,7 +373,7 @@
       
       setTimeout(() => {
         card?.classList.remove('save-flash');
-        setStatus('💡', 'Tipps werden automatisch gespeichert', '');
+        setStatus('💡', 'Auto-Save aktiv · Joker ×2', '');
       }, 1000);
     } catch (e) {
       card?.classList.remove('save-flash');
@@ -329,7 +387,8 @@
 
   document.querySelectorAll('.qt-joker-input').forEach(radio => {
     radio.addEventListener('change', () => {
-      if (radio.checked) autoSave(radio.value);
+      updateProgress();
+      if (radio.checked) scheduleAutoSave(radio.value, 150);
     });
   });
 
@@ -337,15 +396,18 @@
   document.getElementById('qtRandomBtn')?.addEventListener('click', () => {
     if (!confirm('Leere Felder mit zufälligen Tipps (0–3 Tore) füllen?')) return;
     
+    const touchedMatches = new Set();
     document.querySelectorAll('.qt-input-num').forEach(inp => {
       if (inp.value === '' && !inp.disabled) {
         inp.value = Math.floor(Math.random() * 4);
+        touchedMatches.add(inp.dataset.matchId);
         inp.classList.add('input-flash');
         setTimeout(() => inp.classList.remove('input-flash'), 250);
       }
     });
     updateProgress();
-    setStatus('🎲', 'Zufällig befüllt – Speichern nicht vergessen!', 'warn');
+    touchedMatches.forEach(id => scheduleAutoSave(id, 250));
+    setStatus('🎲', 'Zufällig befüllt – Auto-Save läuft', 'warn');
   });
 
   // ============= Submit =============

@@ -1,40 +1,117 @@
 {% extends "base.html" %}
 {% block content %}
 <a href="{{ url_for('admin.dashboard') }}" class="back-link">← Admin</a>
-<h1>🏁 Neue Saison starten</h1>
 
-<style>
-  .season-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 12px; }
-  .season-check { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; cursor: pointer; }
-  .season-check input { width: 18px; height: 18px; }
-  .danger-zone { border-color: #ef4444; }
-</style>
-
-<div class="card danger-zone" style="margin-bottom:20px">
-  <p style="color:#ef4444; font-weight:bold">⚠️ Achtung: Diese Aktionen können nicht rückgängig gemacht werden!</p>
-  <p class="muted">Backup der Datenbank empfohlen vor dem Start.</p>
+<div class="page-header">
+  <div>
+    <h1>🏁 Saisonwechsel-Assistent 2.0</h1>
+    <p class="muted small">
+      Aktiver Wettbewerb: <strong>{{ comp.name if comp else '—' }}</strong> · aktuelle Saison: <strong>{{ current_season }}</strong>
+    </p>
+  </div>
+  <div class="header-actions">
+    <a href="{{ url_for('admin.backup_page') }}" class="btn-ghost btn-sm">💾 Backup</a>
+    <a href="{{ url_for('admin.sync') }}" class="btn-ghost btn-sm">🔄 Sync</a>
+  </div>
 </div>
 
-<form method="post" class="card" onsubmit="return confirm('Neue Saison wirklich starten? Alle markierten Daten werden zurückgesetzt.')">
+<style>
+  .wizard-steps { display:grid; grid-template-columns:1fr; gap:12px; margin-bottom:16px; }
+  @media (min-width: 900px) { .wizard-steps { grid-template-columns: repeat(4, 1fr); } }
+  .wizard-step { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:14px; }
+  .wizard-step.ok { border-color:rgba(34,197,94,.45); background:rgba(34,197,94,.06); }
+  .wizard-step.warn { border-color:rgba(245,158,11,.55); background:rgba(245,158,11,.06); }
+  .wizard-step.bad { border-color:rgba(239,68,68,.55); background:rgba(239,68,68,.06); }
+  .wizard-step h3 { margin:0 0 6px 0; font-size:15px; }
+  .wizard-step p { margin:0; }
+  .season-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px; margin-bottom: 12px; }
+  .season-check { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px; cursor: pointer; color:var(--text); }
+  .season-check input { width: 18px; height: 18px; margin-top:2px; flex:0 0 auto; }
+  .danger-zone { border-color: rgba(239,68,68,.55); }
+  .count-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
+  @media (min-width: 760px) { .count-grid { grid-template-columns:repeat(4,1fr); } }
+  .count-tile { background:var(--surface-2); border:1px solid var(--border); border-radius:12px; padding:12px; }
+  .count-tile strong { display:block; font-size:22px; }
+  .count-tile small { color:var(--text-muted); }
+  .confirm-box { background:rgba(239,68,68,.08); border:1px solid rgba(239,68,68,.4); border-radius:12px; padding:12px; }
+</style>
+
+<div class="wizard-steps">
+  <div class="wizard-step warn">
+    <h3>1. Backup</h3>
+    <p class="muted small">Vorher Datenbank sichern. Bei Netcup ist das deine Rückversicherung.</p>
+  </div>
+  <div class="wizard-step {{ 'ok' if checklist.all_matches_finished else 'warn' }}">
+    <h3>2. Abschluss prüfen</h3>
+    <p class="muted small">
+      {{ counts.finished_matches }}/{{ counts.total_matches }} Spiele beendet.
+      {% if counts.scheduled_matches %}{{ counts.scheduled_matches }} offen/live.{% else %}Alles beendet.{% endif %}
+    </p>
+  </div>
+  <div class="wizard-step {{ 'ok' if checklist.special_open_count == 0 else 'warn' }}">
+    <h3>3. Sondertipps</h3>
+    <p class="muted small">
+      {{ counts.special_questions_count }} Fragen · {{ checklist.special_open_count }} ohne korrekte Antwort.
+    </p>
+  </div>
+  <div class="wizard-step {{ 'ok' if checklist.archived_count else 'warn' }}">
+    <h3>4. Archiv</h3>
+    <p class="muted small">
+      {% if checklist.archived_count %}{{ checklist.archived_count }} Archiv-Einträge vorhanden.{% else %}Noch nicht archiviert.{% endif %}
+    </p>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+  <h2>📊 Aktueller Stand</h2>
+  <div class="count-grid">
+    <div class="count-tile"><strong>{{ counts.total_matches }}</strong><small>Spiele</small></div>
+    <div class="count-tile"><strong>{{ counts.predictions_count }}</strong><small>Tipps</small></div>
+    <div class="count-tile"><strong>{{ counts.comments_count }}</strong><small>Kommentare</small></div>
+    <div class="count-tile"><strong>{{ counts.paid_count }}/{{ counts.users_count }}</strong><small>Bezahlt</small></div>
+  </div>
+  {% if checklist.missing_results %}
+    <p class="err" style="margin-top:10px">⚠️ {{ checklist.missing_results }} beendete Spiele haben kein vollständiges Ergebnis.</p>
+  {% endif %}
+</div>
+
+<div class="card danger-zone" style="margin-bottom:20px">
+  <p style="color:#ef4444; font-weight:bold">⚠️ Wichtig: Archivieren immer vor dem Löschen.</p>
+  <p class="muted">Empfohlener Ablauf: Backup → Sync/Ergebnisse prüfen → Sondertipps auswerten → archivieren → neue Saison starten → neuen Spielplan laden.</p>
+</div>
+
+<form method="post" class="card" onsubmit="return confirm('Saisonwechsel wirklich starten? Alle markierten Daten werden zurückgesetzt.')">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="old_season_label" value="{{ current_season }}">
+
   <div class="season-card">
-    <h3>📦 Archivieren</h3>
+    <h3>📦 Alte Saison archivieren</h3>
     <label class="season-check">
       <input type="checkbox" name="do_archive" value="1" checked>
-      <span>Aktuelle Saison in <strong>Ewige Tabelle</strong> archivieren</span>
+      <span>
+        Aktuelle Saison <strong>{{ current_season }}</strong> in die <strong>Ewige Tabelle</strong> schreiben.
+        <small class="muted" style="display:block">Berechnet aus der aktuellen Rangliste inkl. Sonderpunkten.</small>
+      </span>
     </label>
-    <input type="text" name="new_season_label" value="2025/26" class="input" style="width:200px">
+  </div>
+
+  <div class="season-card">
+    <h3>🆕 Neue Saison</h3>
+    <label>Neue Saison-Bezeichnung
+      <input type="text" name="new_season_label" value="{{ suggested_next_season }}" class="input" placeholder="2026/27" style="max-width:240px">
+      <small class="muted">Beispiel: 2026/27 · API-Saisoncode wird aus dem ersten Jahr gebildet.</small>
+    </label>
   </div>
 
   <div class="season-card danger-zone">
-    <h3>🗑️ Zurücksetzen</h3>
+    <h3>🗑️ Zurücksetzen für neue Saison</h3>
     <label class="season-check">
       <input type="checkbox" name="do_delete_schedule" value="1" checked>
-      <span>Spielplan, Tipps, Kommentare & Spieltagsieger löschen</span>
+      <span>Spielplan, Tipps, Kommentare & Spieltagsieger des aktiven Wettbewerbs löschen</span>
     </label>
     <label class="season-check">
       <input type="checkbox" name="do_delete_specials" value="1" checked>
-      <span>Sonderfragen & Sondertipps löschen</span>
+      <span>Sonderfragen & Sondertipps des aktiven Wettbewerbs löschen</span>
     </label>
     <label class="season-check">
       <input type="checkbox" name="do_reset_bots" value="1" checked>
@@ -42,14 +119,50 @@
     </label>
     <label class="season-check">
       <input type="checkbox" name="do_reset_badges" value="1">
-      <span>Spieler-Badges zurücksetzen</span>
+      <span>Spieler-Badges zurücksetzen <small class="muted">(meist nicht empfohlen)</small></span>
     </label>
     <label class="season-check">
       <input type="checkbox" name="do_reset_paid" value="1">
-      <span>Bezahlstatus zurücksetzen (neue Pott-Runde)</span>
+      <span>Bezahlstatus zurücksetzen <small class="muted">für neue Pott-Runde</small></span>
     </label>
   </div>
 
-  <button type="submit" class="btn-primary" style="background:#ef4444; border-color:#ef4444">🏁 Saison jetzt starten</button>
+  <div class="confirm-box" style="margin-bottom:14px;">
+    <h3 style="margin-top:0">🔐 Sicherheitsbestätigungen</h3>
+    <label class="season-check">
+      <input type="checkbox" name="backup_ack" value="1">
+      <span>Ich habe unmittelbar vor dem Saisonwechsel ein aktuelles Backup erstellt.</span>
+    </label>
+    {% if counts.scheduled_matches or checklist.missing_results or checklist.special_open_count %}
+    <label class="season-check">
+      <input type="checkbox" name="risk_ack" value="1">
+      <span>
+        Ich habe offene/live Spiele, fehlende Ergebnisse und offene Sonderfragen geprüft und möchte trotzdem fortfahren.
+        <small class="muted" style="display:block">
+          Offen/live: {{ counts.scheduled_matches }} · fehlende Ergebnisse: {{ checklist.missing_results }} · offene Sonderfragen: {{ checklist.special_open_count }}
+        </small>
+      </span>
+    </label>
+    {% else %}
+      <input type="hidden" name="risk_ack" value="1">
+    {% endif %}
+    <label>Bestätigung
+      <input type="text" name="confirm_text" class="input" placeholder="SAISON STARTEN" autocomplete="off">
+      <small class="muted">Bitte exakt <strong>SAISON STARTEN</strong> eingeben.</small>
+    </label>
+  </div>
+
+  <button type="submit" class="btn-primary" style="background:#ef4444; border-color:#ef4444">🏁 Saisonwechsel ausführen</button>
+  <a href="{{ url_for('admin.dashboard') }}" class="btn-ghost">Abbrechen</a>
 </form>
+
+<div class="card" style="margin-top:16px;">
+  <h3>✅ Danach</h3>
+  <ol class="muted" style="line-height:1.8; margin-left:18px;">
+    <li>Admin → Sync öffnen und neuen Spielplan laden.</li>
+    <li>Spielplan und Tippabgabe kurz testen.</li>
+    <li>Bots prüfen und bei Bedarf tippen lassen.</li>
+    <li>Auf Netcup/Plesk die Python-App neu starten, falls Config/Code geändert wurde.</li>
+  </ol>
+</div>
 {% endblock %}

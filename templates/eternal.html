@@ -19,7 +19,7 @@
           {% if r.rank == 1 %}🥇
           {% elif r.rank == 2 %}🥈
           {% elif r.rank == 3 %}🥉
-          {% else %}<span class="rank-num">#{{ r.rank }}</span>{% endif %}
+          {% else %}<span class="rank-num">{{ r.rank }}</span>{% endif %}
         </div>
         <div class="lb-card-user">
           {% if r.user.avatar and r.user.avatar != 'default.png' %}
@@ -42,7 +42,7 @@
           <span class="lbl">Titel</span>
         </div>
         <div class="lb-stat-mini">
-          <span class="num">#{{ r.best_rank }}</span>
+          <span class="num">{{ r.best_rank }}</span>
           <span class="lbl">Beste Pos</span>
         </div>
         <div class="lb-stat-mini">
@@ -78,7 +78,7 @@
             {% if r.rank == 1 %}🥇
             {% elif r.rank == 2 %}🥈
             {% elif r.rank == 3 %}🥉
-            {% else %}<span class="rank-num">#{{ r.rank }}</span>{% endif %}
+            {% else %}<span class="rank-num">{{ r.rank }}</span>{% endif %}
           </td>
           <td>
             <div class="user-cell">
@@ -92,7 +92,7 @@
           </td>
           <td class="center">{{ r.seasons }}</td>
           <td class="center">{% if r.titles %}{{ '🏆' * r.titles }}{% else %}—{% endif %}</td>
-          <td class="center">#{{ r.best_rank }}</td>
+          <td class="center">{{ r.best_rank }}</td>
           <td class="center exact-col"><strong>{{ r.exact }}</strong></td>
           <td class="center diff-col">{{ r.diff }}</td>
           <td class="center tend-col">{{ r.tendency }}</td>

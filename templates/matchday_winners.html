@@ -10,6 +10,15 @@
   </div>
 </div>
 
+<div class="lb-switcher card flat">
+  <a href="{{ url_for('main.leaderboard') }}" class="lb-switch">
+    <span>🏆</span><strong>Rangliste</strong>
+  </a>
+  <a href="{{ url_for('main.matchday_winners') }}" class="lb-switch active">
+    <span>👑</span><strong>Spieltagsieger</strong>
+  </a>
+</div>
+
 {% if not grouped %}
   <div class="card center pad">
     <p class="muted">Noch keine Spieltage ausgewertet — bisher keine Sieger.</p>
@@ -30,7 +39,7 @@
             {% if loop.index == 1 %}🥇
             {% elif loop.index == 2 %}🥈
             {% elif loop.index == 3 %}🥉
-            {% else %}#{{ loop.index }}{% endif %}
+            {% else %}{{ loop.index }}{% endif %}
           </span>
           <div class="md-tl-user">
             {% if w.user.avatar and w.user.avatar != 'default.png' %}

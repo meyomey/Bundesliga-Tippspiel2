@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Sonderfragen verwalten{% endblock %}
 {% block content %}
+<script>document.body.classList.add('admin-subpage', 'admin-special-page');</script>
+
 
 <a href="{{ url_for('admin.dashboard') }}" class="back-link">← Admin</a>
 
@@ -31,11 +33,11 @@
       </label>
 
       <!-- Conditional Felder per JS gesteuert -->
-      <div class="cond-field" data-show-for="choice">
+      <div class="cond-field" data-show-for="choice,team,multi_team">
         <label>
           {{ form.options.label }}
           {{ form.options(class_='input', rows=5, placeholder='Option 1\nOption 2\nOption 3') }}
-          <small class="muted">Eine Option pro Zeile.</small>
+          <small class="muted">Bei Multiple-Choice: Antwortoptionen. Bei Mannschaftsfragen optional: erlaubte Teams einschränken, z.B. nur die 3 Aufsteiger.</small>
         </label>
       </div>
 
@@ -92,7 +94,7 @@
     {% endif %}
 
     {% for q in questions %}
-      {% set is_past = q.deadline < now() %}
+      {% set is_past = q.deadline < now_dt %}
       <div class="sq-item">
         <div class="sq-head">
           <strong>{{ q.text }}</strong>
@@ -115,7 +117,79 @@
             {% if is_past %}<span class="status status-finished">abgelaufen</span>
             {% else %}<span class="status status-scheduled">offen</span>{% endif %}
           </small>
+          {% set answer_count = answer_counts.get(q.id, 0) %}
+          <small class="muted">💬 {{ answer_count }} Antwort(en)</small>
         </div>
+
+        {% set can_full_edit = answer_count == 0 %}
+        <details class="sq-edit-details">
+          <summary>✏️ Frage bearbeiten</summary>
+          <form method="post" action="{{ url_for('admin.edit_special_question', qid=q.id) }}" class="sq-edit-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% if can_full_edit %}
+              <p class="muted small">Noch keine Spieler-Antworten: Du kannst die komplette Sonderfrage bearbeiten.</p>
+            {% else %}
+              <p class="muted small">Es liegen bereits Antworten vor. Deshalb sind nur <strong>Deadline</strong> und <strong>Punkte</strong> änderbar.</p>
+            {% endif %}
+
+            <label>
+              Frage
+              <input type="text" name="text" class="input" value="{{ q.text }}" maxlength="300" {{ 'disabled' if not can_full_edit }}>
+            </label>
+            <label>
+              Beschreibung
+              <input type="text" name="description" class="input" value="{{ q.description or '' }}" maxlength="500" {{ 'disabled' if not can_full_edit }}>
+            </label>
+            <label>
+              Antworttyp
+              <select name="answer_type" class="input" {{ 'disabled' if not can_full_edit }}>
+                <option value="text" {{ 'selected' if q.answer_type == 'text' }}>📝 Freitext</option>
+                <option value="choice" {{ 'selected' if q.answer_type == 'choice' }}>📋 Multiple-Choice</option>
+                <option value="team" {{ 'selected' if q.answer_type == 'team' }}>⚽ Mannschaft</option>
+                <option value="multi_team" {{ 'selected' if q.answer_type == 'multi_team' }}>⚽⚽ Mehrere Mannschaften</option>
+                <option value="yes_no" {{ 'selected' if q.answer_type == 'yes_no' }}>✓✗ Ja / Nein</option>
+                <option value="number" {{ 'selected' if q.answer_type == 'number' }}>🔢 Zahl</option>
+              </select>
+            </label>
+            <label>
+              Antwortoptionen / eingeschränkte Teams
+              <textarea name="options" class="input" rows="4" {{ 'disabled' if not can_full_edit }}>{{ question_options_text.get(q.id, '') }}</textarea>
+              <small class="muted">Bei Multiple-Choice und Mannschaftsfragen: eine Option bzw. ein Team pro Zeile.</small>
+            </label>
+            <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">
+              <label>
+                Anzahl Antworten
+                <input type="number" name="multi_count" class="input" min="1" max="18" value="{{ q.multi_count or 1 }}" {{ 'disabled' if not can_full_edit }}>
+              </label>
+              <label>
+                Min. Zahl
+                <input type="number" name="number_min" class="input" value="{{ q.number_min if q.number_min is not none else '' }}" {{ 'disabled' if not can_full_edit }}>
+              </label>
+              <label>
+                Max. Zahl
+                <input type="number" name="number_max" class="input" value="{{ q.number_max if q.number_max is not none else '' }}" {{ 'disabled' if not can_full_edit }}>
+              </label>
+            </div>
+            {% if q.answer_type != 'multi_team' %}
+            <label>
+              Korrekte Antwort
+              <input type="text" name="correct_answer" class="input" value="{{ q.correct_answer or '' }}" {{ 'disabled' if not can_full_edit }}>
+              <small class="muted">Bei bereits vorhandenen Antworten bitte unten die Auflösung nutzen.</small>
+            </label>
+            {% endif %}
+            <div style="display:grid;grid-template-columns:1fr 160px;gap:10px">
+              <label>
+                Deadline
+                <input type="datetime-local" name="deadline" class="input" value="{{ q.deadline.strftime('%Y-%m-%dT%H:%M') }}">
+              </label>
+              <label>
+                Punkte
+                <input type="number" name="points_value" class="input" min="1" max="100" value="{{ q.points_value }}">
+              </label>
+            </div>
+            <button type="submit" class="btn-primary btn-sm">💾 Änderungen speichern</button>
+          </form>
+        </details>
 
         <!-- Auflösungs-Form je nach Typ -->
         <form method="post" action="{{ url_for('admin.set_special_answer', qid=q.id) }}" class="answer-form">
@@ -128,7 +202,7 @@
             <details class="multi-team-details" {% if is_past %}open{% endif %}>
               <summary>{{ q.multi_count }} Mannschaft(en) als korrekt markieren {% if current_correct %}<span class="muted small">({{ current_correct|length }} gesetzt)</span>{% endif %}</summary>
               <div class="team-checkbox-grid">
-              {% for t in all_teams %}
+              {% for t in (question_team_options.get(q.id) or all_teams) %}
                 <label class="team-pick {{ 'selected' if t.name in current_correct }}" title="{{ t.name }}">
                   <input type="checkbox" name="correct_answer" value="{{ t.name }}" {{ 'checked' if t.name in current_correct }} />
                   <img src="{{ t.logo }}" alt="" />
@@ -142,7 +216,7 @@
           {% elif q.answer_type == 'team' %}
             <select name="correct_answer" class="input">
               <option value="">— Mannschaft auswählen —</option>
-              {% for t in all_teams %}
+              {% for t in (question_team_options.get(q.id) or all_teams) %}
                 <option value="{{ t.name }}" {{ 'selected' if q.correct_answer == t.name }}>{{ t.name }}</option>
               {% endfor %}
             </select>
@@ -207,7 +281,7 @@
       const showFor = el.dataset.showFor;
       const hideFor = el.dataset.hideFor;
       let visible = true;
-      if (showFor) visible = (showFor === type);
+      if (showFor) visible = showFor.split(',').map(v => v.trim()).includes(type);
       if (hideFor) visible = (hideFor !== type);
       el.style.display = visible ? '' : 'none';
     });

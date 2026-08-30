@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Admin · Activity Log{% endblock %}
+{% block content %}
+<a href="{{ url_for('admin.dashboard') }}" class="back-link">← Admin</a>
+
+<div class="page-header">
+  <div>
+    <span class="overline">AUDIT</span>
+    <h1>📜 Activity Log</h1>
+    <p class="muted small">Wichtige Admin-Aktionen mit Zeitpunkt, Admin, IP und Details.</p>
+  </div>
+</div>
+
+<form method="get" class="card" style="margin-bottom:16px;">
+  <div class="grid-3" style="grid-template-columns: 1fr 2fr auto; align-items:end;">
+    <label>Aktion
+      <select name="action" class="input">
+        <option value="">Alle Aktionen</option>
+        {% for a in actions %}
+          <option value="{{ a }}" {{ 'selected' if a == current_action }}>{{ a }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Suche
+      <input name="q" value="{{ q or '' }}" class="input" placeholder="Nachricht, Objekt, ID...">
+    </label>
+    <button class="btn-primary" type="submit">Filtern</button>
+  </div>
+</form>
+
+<div class="card" style="overflow:auto;">
+  {% if not logs %}
+    <p class="muted">Noch keine Log-Einträge.</p>
+  {% else %}
+  <table class="table compact extended">
+    <thead>
+      <tr>
+        <th>Zeit</th>
+        <th>Admin</th>
+        <th>Aktion</th>
+        <th>Objekt</th>
+        <th>Nachricht</th>
+        <th>IP</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in logs %}
+      <tr>
+        <td>{{ l.created_at|de('%d.%m.%Y %H:%M') }}</td>
+        <td>{{ l.admin.username if l.admin else 'System' }}</td>
+        <td><code>{{ l.action }}</code></td>
+        <td>{% if l.entity_type %}{{ l.entity_type }}{% if l.entity_id %} · {{ l.entity_id }}{% endif %}{% else %}—{% endif %}</td>
+        <td>{{ l.message or '—' }}</td>
+        <td class="muted small">{{ l.ip_address or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+
+{% if pagination.pages > 1 %}
+<div class="pagination" style="margin-top:16px; display:flex; gap:8px; justify-content:center;">
+  {% if pagination.has_prev %}<a class="btn-ghost btn-sm" href="{{ url_for('admin.activity_log', page=pagination.prev_num, action=current_action, q=q) }}">← Zurück</a>{% endif %}
+  <span class="muted small" style="align-self:center">Seite {{ pagination.page }} / {{ pagination.pages }}</span>
+  {% if pagination.has_next %}<a class="btn-ghost btn-sm" href="{{ url_for('admin.activity_log', page=pagination.next_num, action=current_action, q=q) }}">Weiter →</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

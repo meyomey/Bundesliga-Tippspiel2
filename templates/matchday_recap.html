@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Spieltags-Recap{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <span class="overline">RÜCKBLICK</span>
+    <h1>📊 Spieltags-Recap</h1>
+    <p class="muted small">Spieltag {{ matchday }} · {{ active_competition_name }} {{ active_competition_season }} · {{ recap.finished_count }}/{{ recap.total_matches }} Spiele beendet</p>
+  </div>
+  <div class="header-actions">
+    <select onchange="location.href='{{ url_for('main.matchday_recap') }}/'+this.value">
+      {% for md in matchdays %}<option value="{{ md }}" {{ 'selected' if md == matchday }}>Spieltag {{ md }}</option>{% endfor %}
+    </select>
+    <a class="btn-ghost btn-sm" href="{{ url_for('main.matchday_preview', matchday=matchday) }}">🔮 Preview</a>
+    <a class="btn-ghost btn-sm" href="{{ url_for('main.tip_overview', matchday=matchday, sort='matchday') }}">👀 Tipps</a>
+  </div>
+</div>
+
+<div class="stats-grid" style="margin-bottom:16px;">
+  <div class="card stat-kpi"><div class="kpi-num">{% if recap.winner %}{{ recap.winner.user.username }}{% else %}—{% endif %}</div><div class="kpi-lbl">Spieltagsieger</div></div>
+  <div class="card stat-kpi"><div class="kpi-num">{% if recap.winner %}{{ recap.winner.points }}{% else %}0{% endif %}</div><div class="kpi-lbl">Siegerpunkte</div></div>
+  <div class="card stat-kpi"><div class="kpi-num">{% if recap.best_single %}{{ recap.best_single.points }}{% else %}0{% endif %}</div><div class="kpi-lbl">Bester Einzeltipp</div></div>
+  <div class="card stat-kpi"><div class="kpi-num">{% if recap.best_joker %}{{ recap.best_joker.points }}{% else %}0{% endif %}</div><div class="kpi-lbl">Bester Joker</div></div>
+</div>
+
+<div class="grid-12">
+  <section class="card span-6">
+    <h2>🏅 Highlights</h2>
+    {% if recap.best_single %}
+      <p>🎯 Bester Einzeltipp: <strong>{{ recap.best_single.user.username }}</strong> mit {{ recap.best_single.points }} Punkten bei {{ recap.best_single.prediction.match.home_team.short_name }} – {{ recap.best_single.prediction.match.away_team.short_name }}.</p>
+    {% endif %}
+    {% if recap.best_joker %}
+      <p>⚡ Bester Joker: <strong>{{ recap.best_joker.user.username }}</strong> mit {{ recap.best_joker.points }} Punkten.</p>
+    {% endif %}
+    {% if not recap.best_single and not recap.best_joker %}<p class="muted">Noch keine Highlights für diesen Spieltag.</p>{% endif %}
+  </section>
+
+  <section class="card span-6">
+    <h2>⚽ Ergebnisse</h2>
+    <table class="mini-table">
+      {% for m in recap.matches %}
+      <tr>
+        <td>{{ m.home_team.short_name }} – {{ m.away_team.short_name }}</td>
+        <td class="right"><strong>{% if m.home_score is not none %}{{ m.home_score }}:{{ m.away_score }}{% else %}—{% endif %}</strong></td>
+      </tr>
+      {% endfor %}
+    </table>
+  </section>
+</div>
+
+<div class="card" style="overflow:auto;">
+  <h2>🏆 Spieltagswertung</h2>
+  <table class="table compact extended">
+    <thead><tr><th>Rang</th><th>Spieler</th><th class="right">Pkt</th><th class="center">Exakt</th><th class="center">Diff</th><th class="center">Tendenz</th><th class="center">Joker-Pkt</th></tr></thead>
+    <tbody>
+      {% for r in recap.rows %}
+      <tr class="{{ 'me' if r.user.id == current_user.id }}">
+        <td>{{ r.rank }}</td>
+        <td>{{ r.user.username }}</td>
+        <td class="right pts-num">{{ r.points }}</td>
+        <td class="center">{{ r.exact }}</td>
+        <td class="center">{{ r.diff }}</td>
+        <td class="center">{{ r.tendency }}</td>
+        <td class="center">{{ r.joker_points }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

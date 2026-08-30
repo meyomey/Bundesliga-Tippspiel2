@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}Hilfe & Regeln{% endblock %}
+{% block content %}
+
+<section class="help-hero card">
+  <div>
+    <p class="eyebrow">Hilfe</p>
+    <h1>Hilfe &amp; Regeln</h1>
+    <p class="muted">Kurz erklärt: Tippen, Punkte, Joker, Live-Center, Profil, Pott und App-Bedienung.</p>
+  </div>
+  <a href="{{ url_for('main.more') }}" class="btn-ghost">← Zur Mehr-Seite</a>
+</section>
+
+<div class="rules-grid">
+  <section class="card rule-card" id="schnellstart">
+    <h2>🎯 Schnellstart: Tippen</h2>
+    <p>Der Menüpunkt <strong>Tippen</strong> führt dich direkt zum Schnelltipp des nächsten relevanten Spieltags.</p>
+    <p class="muted small">Wenn du den aktuellen Spieltag schon komplett getippt hast, springt die App automatisch zum nächsten Spieltag mit offenen Tipps.</p>
+    <a href="{{ url_for('main.tip_entry') }}" class="btn-primary btn-sm">Jetzt tippen</a>
+  </section>
+
+  <section class="card rule-card" id="schnelltipp-details">
+    <h2>📊 Schnelltipp &amp; Details</h2>
+    <p>Im Schnelltipp kannst du alle Spiele eines Spieltags schnell erfassen. Über <strong>Details</strong> bei einer Spielpaarung kommst du zur ausführlichen Analyse.</p>
+    <p class="muted small">Dort findest du Countdown, Wetter, Formkurve, direkten Vergleich und die Tippverteilung.</p>
+  </section>
+
+  <section class="card rule-card rule-points" id="punkte">
+    <h2>🏅 Punkte</h2>
+    <div class="points-list">
+      <div><strong>{{ points.exact }}</strong><span>Exaktes Ergebnis</span><small>Dein Tipp stimmt komplett, z. B. 2:1.</small></div>
+      <div><strong>{{ points.diff }}</strong><span>Richtige Tordifferenz</span><small>Sieger und Differenz stimmen, z. B. Tipp 2:0, Ergebnis 3:1.</small></div>
+      <div><strong>{{ points.tendency }}</strong><span>Richtige Tendenz</span><small>Sieger oder Unentschieden stimmt, Ergebnis aber nicht exakt.</small></div>
+    </div>
+  </section>
+
+  <section class="card rule-card" id="joker">
+    <h2>🃏 Joker</h2>
+    <p>Der Joker verdoppelt die Punkte für das ausgewählte Spiel. Pro Spieltag kannst du einen Joker setzen.</p>
+    <p class="muted small">Wenn ein Spiel falsch getippt ist, bringt auch der Joker keine Punkte. Ein bereits gestartetes Joker-Spiel kann nicht mehr verschoben werden.</p>
+  </section>
+
+  <section class="card rule-card" id="tippabgabe">
+    <h2>⏰ Tippabgabe bis Anpfiff</h2>
+    <p>Tipps können bis zum jeweiligen Anpfiff des Spiels abgegeben oder geändert werden. Danach ist dieses Spiel geschlossen.</p>
+    <a href="{{ url_for('main.tip_entry') }}" class="btn-primary btn-sm">Zur Tippseite</a>
+  </section>
+
+  <section class="card rule-card" id="tippsichtbarkeit">
+    <h2>👀 Tippübersicht</h2>
+    <p>Deine eigenen Tipps siehst du sofort. Die Tipps der anderen Spieler werden pro Spiel erst ab Anpfiff sichtbar.</p>
+    <p class="muted small">So bleibt die Tippabgabe fair. Im Smartphone-Querformat siehst du mehr Spiele gleichzeitig.</p>
+    <a href="{{ url_for('main.tip_overview', matchday=current_matchday) }}" class="btn-ghost btn-sm">Zur Tippübersicht</a>
+  </section>
+
+  <section class="card rule-card" id="live-center">
+    <h2>🔴 Live-Center</h2>
+    <p>Der <strong>LIVE</strong>-Button führt ins Live-Center. Dort siehst du laufende oder nächste Spiele und die Live-Rangliste.</p>
+    <p class="muted small">Während laufender Spiele können sich Punkte und Plätze verändern. Wenn gerade kein Spiel läuft, zeigt das Live-Center die nächsten Spiele.</p>
+    <a href="{{ url_for('main.live_center') }}" class="btn-ghost btn-sm">Live-Center öffnen</a>
+  </section>
+
+  <section class="card rule-card" id="sonderfragen">
+    <h2>⭐ Sonderfragen</h2>
+    <p>Sonderfragen sind Saison-Tipps, zum Beispiel Meister, Aufsteiger oder andere Bonusfragen. Sie bringen zusätzliche Punkte.</p>
+    <p class="muted small">Antworten sind nur bis zur jeweiligen Deadline möglich.</p>
+    <a href="{{ url_for('main.special_tips') }}" class="btn-ghost btn-sm">Sonderfragen öffnen</a>
+  </section>
+
+  <section class="card rule-card" id="pott-zahlung">
+    <h2>🏆 Gewinne &amp; Pott</h2>
+    <p>Unter Gewinne &amp; Pott findest du Einsatz, aktuellen Saisonpott, Preise und Zahlungsinformationen.</p>
+    <p class="muted small">Wenn deine Zahlung noch offen ist, erscheint zusätzlich ein Hinweis im Dashboard und Profil.</p>
+    <a href="{{ url_for('main.prizes') }}" class="btn-ghost btn-sm">Gewinne &amp; Pott öffnen</a>
+  </section>
+
+  <section class="card rule-card" id="profil">
+    <h2>👤 Profil</h2>
+    <p>Im Profil kannst du Spielername, vollen Namen, Avatar und Lieblingsverein einstellen.</p>
+    <p class="muted small">Da dies eine private Tipprunde ist, sollte jeder seinen vollen Namen eintragen. Einen Lieblingsverein kannst du auswählen – oder bewusst „kein Lieblingsverein“ stehen lassen.</p>
+    <a href="{{ url_for('main.profile') }}" class="btn-ghost btn-sm">Profil öffnen</a>
+  </section>
+
+  <section class="card rule-card" id="benachrichtigungen">
+    <h2>🔔 Benachrichtigungen</h2>
+    <p>Im Profil kannst du Erinnerungen aktivieren, damit du offene Tipps vor Anpfiff nicht vergisst.</p>
+    <p class="muted small">Je nach Einrichtung sind Push, E-Mail, Telegram und WhatsApp möglich.</p>
+    <a href="{{ url_for('main.profile') }}#benachrichtigungen" class="btn-ghost btn-sm">Benachrichtigungen einstellen</a>
+  </section>
+
+  <section class="card rule-card" id="theme">
+    <h2>🌙 Hell-/Dunkelmodus</h2>
+    <p>Über das Mond-/Theme-Symbol in der Navigation kannst du zwischen Hell- und Dunkelmodus wechseln.</p>
+    <p class="muted small">Die Einstellung wird in deinem Browser gespeichert. Nach Updates hilft bei Darstellungsproblemen manchmal ein hartes Neuladen oder das Leeren des PWA-/Website-Caches.</p>
+  </section>
+
+  <section class="card rule-card" id="app-installation">
+    <h2>📱 Nutzung als App</h2>
+    <p>Du kannst die Tipprunde auf dem Smartphone wie eine App verwenden, indem du sie im Browser zum Startbildschirm hinzufügst.</p>
+    <p class="muted small">Falls nach einem Update alte Symbole oder alte Darstellung erscheinen: PWA schließen, neu öffnen oder Website-Daten löschen.</p>
+  </section>
+
+  <section class="card rule-card" id="saison-spieltag">
+    <h2>📅 Saison &amp; Spieltag</h2>
+    <p>Die App zeigt immer die aktive Saison oben in der Navigation. Spielpläne, Ranglisten und Auswertungen beziehen sich auf diese Saison.</p>
+    <p>Der aktuelle Spieltag wird automatisch anhand der vorhandenen Spiele ermittelt.</p>
+  </section>
+
+  <section class="card rule-card" id="rangliste">
+    <h2>🏆 Rangliste</h2>
+    <p>In der Rangliste zählen alle gewerteten Tipps der aktiven Saison. Die Spieltagsieger zeigen zusätzlich, wer an einzelnen Spieltagen vorne lag.</p>
+    <p class="muted small">Tipp: Wenn du mit der Maus über Spielernamen oder Avatar gehst, öffnet sich eine Spieler-Info mit vollem Namen und Lieblingsverein. Auf dem Smartphone kannst du den Spieler kurz antippen.</p>
+    <a href="{{ url_for('main.leaderboard') }}" class="btn-ghost btn-sm">Rangliste öffnen</a>
+  </section>
+
+  {% if current_user.is_authenticated and current_user.is_admin %}
+  <section class="card rule-card" id="spieleransicht">
+    <h2>👤 Spieleransicht für Admins</h2>
+    <p>Admins können über <strong>Spieleransicht</strong> prüfen, wie die App für normale Spieler aussieht.</p>
+    <p class="muted small">Während die Spieleransicht aktiv ist, werden Admin-Menüs ausgeblendet. Über den Hinweisbanner kannst du zur Admin-Ansicht zurückwechseln.</p>
+  </section>
+  {% endif %}
+</div>
+
+<section class="card help-footer-card">
+  <h2>Noch unsicher?</h2>
+  <p class="muted">Starte am besten über „Tippen“ in der Navigation. Dort kommst du direkt zum Schnelltipp des nächsten relevanten Spieltags.</p>
+  <div class="more-chip-row">
+    <a href="{{ url_for('main.tip_entry') }}">🎯 Jetzt tippen</a>
+    <a href="{{ url_for('main.more') }}">☰ Mehr Übersicht</a>
+  </div>
+</section>
+
+{% endblock %}

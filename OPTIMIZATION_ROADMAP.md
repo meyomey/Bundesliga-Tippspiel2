@@ -1,90 +1,182 @@
 # 🔧 Optimierungs- & Feature-Roadmap
 
-> Stand: Mai 2026 – Analyse der gesamten Codebase
+Stand: 2026-07-05
+
+## ✅ Erledigt
+
+### Sicherheit & Stabilitaet
+
+- XSS-Kommentare mit `bleach` entschärft
+- `datetime.utcnow()`/naive Defaults bereinigt
+- SQLAlchemy `Query.get()` Legacy entfernt
+- CSRF fuer Tipp-Autosave ergaenzt
+- Rate-Limiting auf kritischen Endpunkten
+- Production-Sicherheitsgate fuer `SECRET_KEY` und Default-Admin-Passwort
+- Telegram Webhook Secret
+- sensible Admin-Settings werden nicht im Formular vorausgefüllt
+- NotificationLog gegen doppelte Reminder
+
+### Performance
+
+- `get_leaderboard()` auf Bulk-Queries optimiert
+- `get_live_leaderboard()` auf Bulk-Queries optimiert
+- Tippübersicht-Livepunkte per JSON statt Full Reload
+- Cache-Invalidierung via Redis `SCAN` statt `KEYS`
+- Versionierte Cache-Keys
+- Bot-Admin Bulk-Queries
+- Paginierung fuer Admin-User und Kommentare
+
+### Multi-Wettbewerb/Saison
+
+- Competition-Helper eingefuehrt
+- wichtige Queries auf aktive Competition gefiltert
+- `competition_id` fuer saisonbezogene Modelle ergaenzt
+- Saisonwechsel-Assistent 2.0
+- SchemaMigration fuer Hosting ohne SSH
+- DB-/Schema-Wartung im Adminbereich
+
+### Netcup/Betrieb
+
+- `build_vendor.bat` fuer Linux-Wheels/Ziel-Python robuster gemacht
+- `vendor_manifest.txt`
+- Wartungscenter
+- lokale Vereinslogos
+- Backup/Restore und Komplett-ZIP
+- Sync-Diagnose
+- Admin Activity Log
+
+### Features
+
+- Tippübersicht/Tippmatrix
+- Live-Punkte in Tippübersicht
+- Sortierung nach Gesamt live/Spieltag live/Name
+- Bottom-Tabbar mobile
+- Benachrichtigungszentrale
+- Telegram Bot erweitert
+- Stats 2.0
+- Spieltags-Preview
+- Spieltags-Recap 2.0
+- Mehr-Seite und Hilfe/Regeln
+- User-Usability-Feinschliff ohne neue Features
+
+### Tests
+
+Aktuell lokal:
+
+```txt
+134/134 Tests bestanden
+Coverage ca. 65%
+1 Warning (reportlab DeprecationWarning, harmlos)
+```
 
 ---
 
-## 🔴 Kritisch (Sicherheit & Stabilität)
+## 🔴 Hohe Prioritaet
 
-### 1. XSS-Lücke in Kommentaren
-✅ **GEFIXT** – `bleach` in `routes_main.py` wird bereits genutzt. Zusätzlich escaped Jinja2 standardmäßig.
+### 1. Sync/API noch robuster testen
 
-### 2. AI Opponent: Module-Level DB-Query
-✅ **GEFIXT** – Lazy-Init Pattern via `_ai_manager = None` + `get_ai_manager()` implementiert.
-`ai_manager` ist ein Proxy-Objekt (`_AIManagerProxy`), das erst bei erstem Zugriff die DB-Query macht.
+`sync.py` ist fachlich kritisch und weiterhin komplex.
 
-### 3. Flask-Limiter nutzt `memory://` statt Redis
-✅ **BEREITS GEFIXT** – In `extensions.py` wird bereits `os.environ.get("REDIS_URL", "memory://")` verwendet.
-In Produktion mit Redis einfach `REDIS_URL` setzen.
+Naechste Schritte:
 
-### 4. `datetime.utcnow()` deprecated (Python 3.12+)
-✅ **GEFIXT** (v3.1.0) – Alle Stellen in Tests auf `datetime.now(timezone.utc)` umgestellt.
-Keine DeprecationWarnings mehr.
+- football-data.org Responses mocken
+- OpenLigaDB Responses mocken
+- Team-Mapping-Fehler testen
+- Ergebnis-Updates testen
+- Rate-Limit/Timeout/Token-fehlt testen
+- Sync-Diff/Preview weiter ausbauen
 
----
+### 2. Export/PDF verbessern
 
-## 🟠 Wichtig (Performance)
+`export.py` hat noch niedrige Coverage.
 
-### 5. Fehlende DB-Indizes
-✅ **BEREITS VORHANDEN** – Alle relevanten Spalten haben bereits `index=True`:
-- `Match.status`, `Match.kickoff`, `Match.matchday`, `Match.competition_id`
-- `Prediction.user_id`, `Prediction.match_id`
-- `Comment.match_id`, `Comment.user_id`
-- `UserBadge.user_id`, `UserBadge.badge_id`
+Naechste Schritte:
 
-### 6. admin_bots_routes: N+1 Queries (5 Bots = 15+ Queries)
-✅ **GEFIXT** (Fix-Ordner übernommen) – Bulk-Query mit GROUP BY + CASE.
-1 Query statt 15+ für Bot-Statistiken.
+- PDF-Generierung auf Bytes testen
+- Umlaute/Sonderzeichen testen
+- Admin-Export fuer komplette Saison
+- Tippmatrix-Export im UI verlinken
+- Export ZIP optional erweitern
 
-### 7. `Match.query.all()` lädt ALLE Spiele für matchdays-Liste
-✅ **GEFIXT** (Fix-Ordner übernommen) – Nutzt `db.session.query(Match.matchday).distinct().all()`
-statt 306 Entitäten zu laden.
+### 3. Routen weiter modularisieren
 
-### 8. Keine Paginierung
-✅ **GEFIXT** (v3.1.0) – Paginierung für:
-- Admin-User-Liste: 25 User/Seite
-- Kommentare pro Spiel: 10 Kommentare/Seite
-- Nächstes Ziel: Rangliste paginieren
+`routes_main.py` und `routes_admin.py` sind sehr groß.
 
----
+Zielstruktur:
 
-## 🟡 Mittel (Code-Qualität)
-
-### 9. Hardcoded "2025/26" / "BL1" überall
-✅ **GEFIXT** (v3.1.0) – Saison wird zentral aus Config/Settings aufgelöst:
-- `app.py`: Dynamisch aus `app.config["SEASON"]`
-- `export.py`: Über `get_setting("current_season")`
-- `BL1`-Hardcoding bleibt als Fallback erhalten, ist aber über Config steuerbar
-
-### 10. `session["competition_code"]` ohne Validierung
-✅ **GEFIXT** (v3.1.0) – Helper validiert Session-Wert gegen DB.
-Fallback auf ersten aktiven Wettbewerb bei ungültigem Code.
-`scoring.py` hat ebenfalls Fallback.
-
-### 11. Tests haben falsche URLs
-✅ **BEREITS KORREKT** – Tests nutzen bereits die deutschen URLs:
-`/spielplan`, `/tabelle`, `/admin/`, `/api/tip/<id>`.
-
-### 12. Kein `.github/workflows/tests.yml`
-✅ **GEFIXT** (v3.1.0) – Workflow angelegt mit:
-- Python 3.10, 3.11, 3.12, 3.13
-- flake8-Linting
-- pytest + Coverage
+```txt
+routes/profile.py
+routes/tips.py
+routes/stats.py
+routes/admin_season.py
+routes/admin_maintenance.py
+routes/admin_users.py
+```
 
 ---
 
-## 🟢 Nice-to-Have (Features)
+## 🟠 Mittlere Prioritaet
 
-### 13. htmx statt Vanilla JS für dynamische Updates
-**Status:** 🔄 Offen
-**Problem:** 10 Templates mit inline JavaScript (~150 Zeilen), manuelle DOM-Manipulation
-**Idee:** htmx einbinden (nur ein `<script>` Tag) + serverseitige Partial-Templates
+### 4. Notification Center Bulk-Optimierung
 
-### 14. Alembic/Flask-Migrate für Schema-Migrationen
-**Status:** 🔄 Offen
-**Problem:** `auto_migrate_schema()` ist pragmatisch, aber riskant für PostgreSQL
-**Idee:** Flask-Migrate für saubere Migrationen
+Aktuell noch viele User/Match-Schleifen.
 
-### 15. Rangliste-Paginierung
-**Status:** 🔄 Offen
-**Problem:** Bei 50+ Usern wird die Rangliste unübersichtlich
+Verbessern:
+
+- Predictions fuer Reminder gesammelt laden
+- NotificationLogs gesammelt laden
+- weniger Queries pro Reminder-Lauf
+
+### 5. Inline JS/CSS reduzieren
+
+Viele Templates enthalten noch Inline-CSS/JS.
+
+Schrittweise auslagern:
+
+```txt
+static/js/live.js
+static/js/tip_overview.js
+static/css/tip_overview.css
+static/css/admin.css
+```
+
+### 6. Lokale Logos finalisieren
+
+- Standardlogos optional direkt ins Repo legen
+- Wartungscenter zeigt konkrete Teams mit externen/fehlenden Logos
+- Fallback-Logo optisch verbessern
+
+---
+
+## 🟢 Optional
+
+### 7. Alembic/Flask-Migrate
+
+Die interne `SchemaMigration` ist gut fuer Netcup ohne SSH. Alembic waere trotzdem fuer lokale/Docker/PostgreSQL-Setups langfristig sauberer.
+
+### 8. Offene Tipps + Reminder-Button
+
+Sehr praktisches Alltagsfeature:
+
+- Spieltag-Auswahl
+- offene Tipps pro User
+- Reminder an offene Tipper senden
+
+### 9. Admin Activity Log erweitern
+
+Noch mehr Details loggen:
+
+- before/after bei Ergebnissen
+- Settings-Diffs
+- Badge-/Prize-Aenderungen
+- Backup-Download
+
+### 10. Tests Richtung 60%+
+
+Gute Kandidaten:
+
+- Sync-Mocks
+- Export/PDF
+- Admin-Routen
+- Notification Center Edge Cases
+- Cache Monitor Edge Cases

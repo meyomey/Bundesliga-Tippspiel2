@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Spielerverwaltung{% endblock %}
 {% block content %}
+<script>document.body.classList.add('admin-subpage', 'admin-users-page');</script>
+
 
 <a href="{{ url_for('admin.dashboard') }}" class="back-link">← Admin</a>
 
@@ -8,11 +10,35 @@
   <div>
     <span class="overline">SPIELER &amp; POTT</span>
     <h1>👥 Spielerverwaltung</h1>
-    <p class="muted small">{{ users|length }} Spieler · {{ pot.paid_count }} bezahlt · Pott: {{ pot.pot_total }} {{ pot.currency }}</p>
+    <p class="muted small">{{ total_users|default(users|length) }} Konten · {{ pot.paid_count }} bezahlt · Pott: {{ pot.pot_total }} {{ pot.currency }}</p>
   </div>
   <div class="header-actions">
     <a href="{{ url_for('admin.admin_prizes') }}" class="btn-ghost btn-sm">🏆 Preise</a>
   </div>
+</div>
+
+<div class="account-summary-card">
+  <a href="{{ url_for('admin.users', filter='all') }}" class="psc-stat account-filter-tile {{ 'active' if user_filter|default('all') == 'all' }}">
+    <div class="num">{{ user_summary.accounts if user_summary else total_users|default(users|length) }}</div>
+    <div class="lbl">Konten gesamt</div>
+  </a>
+  <a href="{{ url_for('admin.users', filter='players') }}" class="psc-stat account-filter-tile {{ 'active' if user_filter|default('all') == 'players' }}">
+    <div class="num text-ok">{{ user_summary.players if user_summary else pot.total_count }}</div>
+    <div class="lbl">Spieler / Pott</div>
+  </a>
+  <a href="{{ url_for('admin.users', filter='bots') }}" class="psc-stat account-filter-tile {{ 'active' if user_filter|default('all') == 'bots' }}">
+    <div class="num">{{ user_summary.bots if user_summary else 0 }}</div>
+    <div class="lbl">KI-Bots</div>
+  </a>
+  <a href="{{ url_for('admin.users', filter='admin') }}" class="psc-stat account-filter-tile {{ 'active' if user_filter|default('all') == 'admin' }}">
+    <div class="num">{{ user_summary.admin_only if user_summary else 0 }}</div>
+    <div class="lbl">Verwaltung</div>
+  </a>
+</div>
+
+<div class="account-filter-note muted small">
+  Angezeigt: <strong>{{ filtered_count|default(users|length) }}</strong>
+  {% if user_filter|default('all') == 'players' %}Spieler{% elif user_filter|default('all') == 'bots' %}KI-Bots{% elif user_filter|default('all') == 'admin' %}Verwaltungskonten{% else %}Konten{% endif %}
 </div>
 
 <!-- Pott-Summary -->
@@ -52,6 +78,7 @@
           </div>
           {% if u.full_name %}<small class="muted">{{ u.full_name }}</small>{% endif %}
         </div>
+        {% if is_pot_participant(u) %}
         <form method="post" action="{{ url_for('admin.toggle_paid', user_id=u.id) }}" class="uc-pay-form">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="paid-toggle-btn {{ 'paid' if u.has_paid }}"
@@ -59,6 +86,9 @@
             {{ '✅' if u.has_paid else '⏳' }}
           </button>
         </form>
+        {% else %}
+          <span class="uc-badge admin" title="Reines Admin-Konto zählt nicht zum Pott">Verwaltung</span>
+        {% endif %}
       </div>
 
       <div class="uc-stats">
@@ -153,6 +183,7 @@
         <td class="center pts-num">{{ u.total_points() }}</td>
         <td class="center">{% if u.is_admin %}👑{% else %}—{% endif %}</td>
         <td class="center">
+          {% if is_pot_participant(u) %}
           <form method="post" action="{{ url_for('admin.toggle_paid', user_id=u.id) }}" style="display:inline">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="paid-toggle-btn {{ 'paid' if u.has_paid }}"
@@ -160,6 +191,9 @@
               {{ '✅' if u.has_paid else '⏳' }}
             </button>
           </form>
+          {% else %}
+            <span class="muted" title="Reines Admin-Konto zählt nicht zum Pott">Verwaltung</span>
+          {% endif %}
         </td>
         <td>
           <a href="{{ url_for('admin.user_edit', user_id=u.id) }}" class="btn-ghost btn-xs">✏️ Bearbeiten</a>

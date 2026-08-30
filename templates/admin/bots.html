@@ -17,7 +17,47 @@
   .btn-xs:hover { background: var(--primary, #3b82f6); color: white; border-color: var(--primary); }
   .bot-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
   .bot-table th { text-align: left; padding: 8px; background: var(--surface-2, #0f172a); color: var(--text); }
-  .bot-table td { padding: 8px; border-bottom: 1px solid var(--border); }
+  .bot-table td { padding: 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .bot-explain-grid { display:grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap:8px; margin-top:12px; }
+  .bot-explain-card { border:1px solid var(--border); border-radius:10px; padding:10px; background:var(--surface-2); }
+  .bot-explain-card strong { display:block; margin-bottom:3px; }
+  .bot-explain-card small { color:var(--text-muted); line-height:1.35; display:block; }
+  .bot-behavior { max-width:260px; }
+  .bot-behavior strong { display:block; font-size:13px; margin-bottom:2px; }
+  .bot-behavior small { color:var(--text-muted); line-height:1.3; }
+  .bot-factor-row { display:flex; flex-wrap:wrap; gap:4px; margin-top:5px; }
+  .bot-factor { display:inline-flex; padding:2px 6px; border-radius:999px; border:1px solid var(--border); background:var(--surface-2); color:var(--text-muted); font-size:10px; font-weight:800; }
+  @media (max-width: 980px) { .bot-explain-grid { grid-template-columns: 1fr; } .bot-table { min-width: 860px; } }
+
+  .bot-mobile-list { display:none; }
+  .bot-action-row { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:5px; }
+  @media (max-width: 720px) {
+    .bot-card { padding: 12px; border-radius: 14px; }
+    .bot-card > div[style*="justify-content:space-between"] { display:grid!important; grid-template-columns:1fr!important; align-items:stretch!important; }
+    .bot-card > div[style*="justify-content:space-between"] > div[style*="display:flex"] { display:grid!important; grid-template-columns:1fr!important; width:100%; }
+    .bot-card form[style*="display:inline"] { display:block!important; margin:0!important; }
+    .bot-card .btn-primary,
+    .bot-card .btn-xs { width:100%; min-height:38px; }
+    .bot-card label.check { width:100%; margin:4px 0!important; }
+    .bot-explain-grid { grid-template-columns: 1fr !important; }
+    .bot-table { display:none; }
+    .bot-mobile-list { display:grid; gap:10px; margin-top:12px; }
+    .bot-mobile-card { border:1px solid var(--border); border-radius:14px; background:var(--surface-2); padding:12px; display:grid; gap:10px; }
+    .bot-mobile-head { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+    .bot-mobile-title strong { display:block; font-size:16px; }
+    .bot-mobile-title small { color:var(--text-muted); font-weight:800; }
+    .bot-mobile-status { white-space:nowrap; font-size:12px; font-weight:900; }
+    .bot-mobile-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
+    .bot-mobile-stat { border:1px solid var(--border); border-radius:10px; padding:7px; background:var(--surface); text-align:center; }
+    .bot-mobile-stat strong { display:block; font-size:15px; }
+    .bot-mobile-stat small { color:var(--text-muted); font-size:10px; font-weight:800; text-transform:uppercase; }
+    .bot-behavior { max-width:none; }
+    .bot-action-row { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+    .bot-action-row form { display:block!important; margin:0!important; }
+    .bot-action-row form:first-child { grid-column:1 / -1; }
+    .bot-action-row .btn-xs { width:100%; min-height:36px; }
+  }
+
 </style>
 
 <!-- ========== Fehlende / neu hinzuzufügende Bots ========== -->
@@ -50,12 +90,37 @@
 </div>
 {% endif %}
 
+<details class="bot-card">
+  <summary style="cursor:pointer;font-weight:900;display:flex;justify-content:space-between;gap:10px;align-items:center;">
+    <span>ℹ️ Wie wird die Bot-Stärke definiert?</span>
+    <small class="muted">bei Bedarf öffnen</small>
+  </summary>
+  <p class="muted small" style="margin:10px 0 0">
+    Die Bots sind keine externe Wettquoten-KI, sondern regelbasierte Tippgegner mit Statistik und Zufallsanteil.
+    Je stärker der Bot, desto mehr Gewicht bekommen Form, Heim-/Auswärtsstärke, Tordurchschnitt und direkte Duelle.
+  </p>
+  <div class="bot-explain-grid">
+    {% for name in bot_names %}
+      {% set p = bot_profiles.get(name, {}) %}
+      <div class="bot-explain-card">
+        <strong>{{ "⭐" * loop.index }} {{ name }}</strong>
+        <small><b>{{ p.short }}</b></small>
+        <small>{{ p.details }}</small>
+      </div>
+    {% endfor %}
+  </div>
+</details>
+
 <div class="bot-card">
   <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
     <div>
       <strong>{{ bots|length }} Bots</strong> · <span class="muted">{{ active_count }} aktiv</span> ·
       <span class="muted">{{ total_tips }} Tipps gesamt</span> ·
       <span class="muted">{{ open_matches }} offene Spiele</span>
+      <p class="muted small" style="margin:5px 0 0">
+        „Aktive Bots tippen lassen“ berücksichtigt nur aktivierte Bots. Inaktive Bots werden übersprungen.
+        Auto-Tipp läuft nur, wenn Plesk-Cron <code>cron_jobs.py all</code> oder <code>cron_jobs.py bots</code> ausführt.
+      </p>
     </div>
     <div style="display:flex; gap:8px; align-items:center;">
       <form method="post" action="{{ url_for('admin.admin_bots_seed') }}" style="display:inline"
@@ -63,13 +128,69 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn-xs">↻ Bots prüfen</button>
       </form>
+      <form method="post" action="{{ url_for('admin.admin_bots_toggle_auto') }}" style="display:inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-xs" title="Automatisch per Cron: cron_jobs.py all oder bots">
+          {% if auto_tip_active %}🟢 Auto-Tipp aktiv{% else %}⚪ Auto-Tipp aus{% endif %}
+        </button>
+      </form>
       <form method="post" action="{{ url_for('admin.admin_bots_tip_all') }}" style="display:inline">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="matchday" value="{{ current_matchday }}">
         <label class="check" style="margin-right:10px"><input type="checkbox" name="overwrite" value="1"> Überschreiben</label>
-        <button type="submit" class="btn-primary">Alle Bots tippen lassen</button>
+        <button type="submit" class="btn-primary">Aktive Bots tippen lassen</button>
       </form>
     </div>
+  </div>
+
+  <div class="bot-mobile-list">
+    {% for bot in bots %}
+    <article class="bot-mobile-card">
+      <div class="bot-mobile-head">
+        <div class="bot-mobile-title">
+          <strong>{{ bot.name }}</strong>
+          <small>{{ "⭐" * bot.level }} · ID {{ bot.user.id }}</small>
+        </div>
+        <div class="bot-mobile-status">
+          {% if bot.active %}<span class="status-active">✅ Aktiv</span>{% else %}<span class="status-inactive">🔴 Inaktiv</span>{% endif %}
+        </div>
+      </div>
+
+      <div class="bot-behavior">
+        <strong>{{ bot.profile.short or '—' }}</strong>
+        <span class="bot-factor-row">
+          <span class="bot-factor">Zufall: {{ bot.profile.randomness or '—' }}</span>
+          <span class="bot-factor">Daten: {{ bot.profile.data or '—' }}</span>
+        </span>
+      </div>
+
+      <div class="bot-mobile-stats">
+        <div class="bot-mobile-stat"><strong>{{ bot.tips }}</strong><small>Tipps</small></div>
+        <div class="bot-mobile-stat"><strong>{{ bot.exact }}</strong><small>Exakt</small></div>
+        <div class="bot-mobile-stat"><strong>{{ bot.points }}</strong><small>Punkte</small></div>
+      </div>
+
+      <div class="bot-action-row">
+        <form method="post" action="{{ url_for('admin.admin_bots_toggle') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="bot_name" value="{{ bot.name }}">
+          <button type="submit" class="btn-xs">{% if bot.active %}Deaktivieren{% else %}Aktivieren{% endif %}</button>
+        </form>
+        <form method="post" action="{{ url_for('admin.admin_bots_tip_single') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="bot_id" value="{{ bot.user.id }}">
+          <input type="hidden" name="matchday" value="{{ current_matchday }}">
+          <button type="submit" class="btn-xs" {% if not bot.active %}disabled style="opacity:0.5"{% endif %}>Tippen</button>
+        </form>
+        <form method="post" action="{{ url_for('admin.admin_bots_reset') }}" onsubmit="return confirm('Tipps von {{ bot.name }} für Spieltag {{ current_matchday }} wirklich löschen?')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="bot_id" value="{{ bot.user.id }}">
+          <input type="hidden" name="matchday" value="{{ current_matchday }}">
+          <button type="submit" class="btn-xs" style="color:#ef4444">Reset</button>
+        </form>
+      </div>
+    </article>
+    {% endfor %}
   </div>
 
   <table class="bot-table">
@@ -77,6 +198,7 @@
       <tr>
         <th>Bot</th>
         <th>Stärke</th>
+        <th>Kurzprofil</th>
         <th>Tipps</th>
         <th>Exakt</th>
         <th>Punkte</th>
@@ -92,6 +214,13 @@
           <div class="bot-meta">ID: {{ bot.user.id }}</div>
         </td>
         <td>{{ "⭐" * bot.level }}</td>
+        <td class="bot-behavior">
+          <strong>{{ bot.profile.short or '—' }}</strong>
+          <span class="bot-factor-row">
+            <span class="bot-factor">Zufall: {{ bot.profile.randomness or '—' }}</span>
+            <span class="bot-factor">Daten: {{ bot.profile.data or '—' }}</span>
+          </span>
+        </td>
         <td>{{ bot.tips }}</td>
         <td>{{ bot.exact }}</td>
         <td>{{ bot.points }}</td>

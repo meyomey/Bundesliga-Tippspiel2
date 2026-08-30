@@ -58,6 +58,7 @@
       </label>
 
       <h3 style="margin-top:20px">💰 Bezahl-Status</h3>
+      {% if is_pot_participant(user) %}
       <label class="check pay-edit-check {{ 'on' if form.has_paid.data }}">
         {{ form.has_paid() }}
         <span><strong>Spieler hat den Einsatz bezahlt</strong></span>
@@ -65,6 +66,13 @@
       <label>{{ form.paid_note.label }} {{ form.paid_note(class_='input', placeholder='z.B. "PayPal 12.08.", "Bar bei Treffen", "Überweisung"') }}
         <small class="muted">Nur intern für dich als Erinnerung.</small>
       </label>
+      {% else %}
+        <div class="ux-hint card flat">
+          <strong>Verwaltungskonto:</strong>
+          <span>Dieses Admin-Konto spielt nicht mit und zählt deshalb nicht zum Pott.</span>
+        </div>
+        <input type="hidden" name="has_paid" value="">
+      {% endif %}
 
       <h3 style="margin-top:20px">🛠 Rechte</h3>
       <label class="check">

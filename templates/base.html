@@ -14,10 +14,10 @@
   <title>{% block title %}Wulmstörper Tipprunde{% endblock %}</title>
 
   <!-- PWA: Manifest + Icons (Routes liefern dynamisch generiert) -->
-  <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}" />
-  <link rel="apple-touch-icon" sizes="192x192" href="/icon-192.png" />
-  <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
-  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+  <link rel="manifest" href="{{ url_for('main.manifest') }}" />
+  <link rel="apple-touch-icon" sizes="192x192" href="/static/uploads/logo_v2_192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="/static/uploads/logo_v2_512.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/static/uploads/logo_v2_192.png" />
   <link rel="shortcut icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E⚽%3C/text%3E%3C/svg%3E" />
 
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v=asset_version) }}" />
@@ -45,10 +45,22 @@
         <strong>WULMSTÖRPER</strong>
         <small>TIPPRUNDE</small>
       </div>
+      {% if current_user.is_authenticated %}
+      <span class="season-pill" title="{{ active_competition_name }} · Saison {{ active_competition_season }}">
+        {{ active_competition_season or 'Saison' }}
+      </span>
+      {% endif %}
     </a>
 
     {% if current_user.is_authenticated %}
-      <!-- Mobile Hamburger -->
+      <!-- Mobile Profil-Link + Hamburger -->
+      <a href="{{ url_for('main.profile') }}" class="mobile-header-profile {{ 'active' if request.endpoint == 'main.profile' }}" title="Zum Profil" aria-label="Zum Profil">
+        {% if current_user.avatar and current_user.avatar != 'default.png' %}
+          <img src="{{ url_for('static', filename='uploads/' + current_user.avatar) }}" alt="" />
+        {% else %}
+          <span class="avatar-fallback small">{{ current_user.username[0]|upper }}</span>
+        {% endif %}
+      </a>
       <button class="nav-toggle" id="navToggle" aria-label="Menü öffnen">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <line x1="3" y1="6" x2="21" y2="6"></line>
@@ -63,8 +75,8 @@
           <a href="{{ url_for('main.dashboard') }}" class="nav-link {{ 'active' if request.endpoint == 'main.dashboard' }}">
             <span class="nav-icon">📊</span><span class="nav-label">Dashboard</span>
           </a>
-          <a href="{{ url_for('main.schedule') }}" class="nav-link {{ 'active' if 'schedule' in request.endpoint or 'match' in request.endpoint or 'quick' in request.endpoint }}">
-            <span class="nav-icon">📅</span><span class="nav-label">Spiele/Tipps</span>
+          <a href="{{ url_for('main.tip_entry') }}" class="nav-link {{ 'active' if 'schedule' in request.endpoint or 'match' in request.endpoint or 'quick' in request.endpoint or request.endpoint == 'main.tip_entry' }}">
+            <span class="nav-icon">🎯</span><span class="nav-label">Tippen</span>
           </a>
           <a href="{{ url_for('main.leaderboard') }}" class="nav-link {{ 'active' if request.endpoint == 'main.leaderboard' }}">
             <span class="nav-icon">🏆</span><span class="nav-label">Rangliste</span>
@@ -75,28 +87,40 @@
 
           <!-- "Mehr"-Dropdown nur Desktop -->
           <div class="nav-more hidden-mobile">
-            <button type="button" class="nav-link nav-more-btn {{ 'active' if request.endpoint in ['main.special_tips','main.eternal_table','main.prizes'] }}" id="navMoreBtn" aria-expanded="false">
+            <button type="button" class="nav-link nav-more-btn {{ 'active' if request.endpoint in ['main.more','main.help_rules','main.special_tips','main.eternal_table','main.prizes','main.stats_dashboard','main.season_recap','main.matchday_preview','main.matchday_recap'] }}" id="navMoreBtn" aria-expanded="false">
               <span class="nav-label">Mehr</span>
               <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
                 <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
             </button>
             <div class="nav-more-menu" id="navMoreMenu" role="menu">
+              <a href="{{ url_for('main.more') }}" class="nav-more-item {{ 'active' if request.endpoint == 'main.more' }}">
+                <span class="nmi-icon">☰</span>
+                <div><strong>Mehr Übersicht</strong><small>Alle Bereiche auf einen Blick</small></div>
+              </a>
               <a href="{{ url_for('main.special_tips') }}" class="nav-more-item {{ 'active' if request.endpoint == 'main.special_tips' }}">
                 <span class="nmi-icon">⭐</span>
-                <div><strong>Sondertipps</strong><small>Meister · Torschützenkönig</small></div>
+                <div><strong>Sonderfragen</strong><small>Meister · Torschützenkönig</small></div>
               </a>
-              <a href="{{ url_for('main.eternal_table') }}" class="nav-more-item {{ 'active' if request.endpoint == 'main.eternal_table' }}">
-                <span class="nmi-icon">🏛</span>
-                <div><strong>Ewige Tabelle</strong><small>Aggregat aller Saisons</small></div>
+              <a href="{{ url_for('main.prizes') }}" class="nav-more-item {{ 'active' if request.endpoint == 'main.prizes' }}">
+                <span class="nmi-icon">🏆</span>
+                <div><strong>Gewinne &amp; Pott</strong><small>Saison-Preise · Zahlung</small></div>
               </a>
               <a href="{{ url_for('main.stats_dashboard') }}" class="nav-more-item {{ 'active' if request.endpoint == 'main.stats_dashboard' }}">
                 <span class="nmi-icon">📊</span>
                 <div><strong>Statistiken</strong><small>Diagramme & Auswertung</small></div>
               </a>
-              <a href="{{ url_for('main.prizes') }}" class="nav-more-item {{ 'active' if request.endpoint == 'main.prizes' }}">
-                <span class="nmi-icon">🏆</span>
-                <div><strong>Gewinne &amp; Pott</strong><small>Saison-Preise</small></div>
+              <a href="{{ url_for('main.matchday_preview') }}" class="nav-more-item {{ 'active' if request.endpoint in ['main.matchday_preview','main.matchday_recap'] }}">
+                <span class="nmi-icon">🔮</span>
+                <div><strong>Preview &amp; Recap</strong><small>Spieltagstrends & Rückblick</small></div>
+              </a>
+              <a href="{{ url_for('main.eternal_table') }}" class="nav-more-item {{ 'active' if request.endpoint == 'main.eternal_table' }}">
+                <span class="nmi-icon">🏛</span>
+                <div><strong>Ewige Tabelle</strong><small>Aggregat aller Saisons</small></div>
+              </a>
+              <a href="{{ url_for('main.help_rules') }}" class="nav-more-item {{ 'active' if request.endpoint == 'main.help_rules' }}">
+                <span class="nmi-icon">📖</span>
+                <div><strong>Hilfe &amp; Regeln</strong><small>Punkte · Joker · Sichtbarkeit</small></div>
               </a>
             </div>
           </div>
@@ -105,43 +129,40 @@
           <a href="{{ url_for('main.live_center') }}" class="nav-link nav-live-mobile hidden-desktop {{ 'active' if request.endpoint == 'main.live_center' }}">
             <span class="live-dot"></span><span class="nav-label">LIVE</span>
           </a>
-          <a href="{{ url_for('main.special_tips') }}" class="nav-link hidden-desktop {{ 'active' if request.endpoint == 'main.special_tips' }}">
-            <span class="nav-icon">⭐</span><span class="nav-label">Sondertipps</span>
+          <a href="{{ url_for('main.tip_overview') }}" class="nav-link hidden-desktop {{ 'active' if request.endpoint == 'main.tip_overview' }}">
+            <span class="nav-icon">👀</span><span class="nav-label">Tippübersicht</span>
           </a>
-          <a href="{{ url_for('main.eternal_table') }}" class="nav-link hidden-desktop {{ 'active' if request.endpoint == 'main.eternal_table' }}">
-            <span class="nav-icon">🏛</span><span class="nav-label">Ewige Tabelle</span>
-          </a>
-          <a href="{{ url_for('main.prizes') }}" class="nav-link hidden-desktop {{ 'active' if request.endpoint == 'main.prizes' }}">
-            <span class="nav-icon">🏆</span><span class="nav-label">Gewinne &amp; Pott</span>
-          </a>
-          <a href="{{ url_for('main.stats_dashboard') }}" class="nav-link hidden-desktop {{ 'active' if request.endpoint == 'main.stats_dashboard' }}">
-            <span class="nav-icon">📊</span><span class="nav-label">Statistiken</span>
-          </a>
-          <a href="{{ url_for('main.profile') }}" class="nav-link hidden-desktop {{ 'active' if request.endpoint == 'main.profile' }}">
-            <span class="nav-icon">👤</span><span class="nav-label">Profil</span>
+          <a href="{{ url_for('main.more') }}" class="nav-link hidden-desktop {{ 'active' if request.endpoint in ['main.more','main.help_rules','main.special_tips','main.eternal_table','main.prizes','main.stats_dashboard','main.season_recap','main.matchday_preview','main.matchday_recap','main.profile'] }}">
+            <span class="nav-icon">☰</span><span class="nav-label">Mehr</span>
           </a>
         </div>
 
-        {% if current_user.is_admin %}
+        {% if current_user.is_admin and not player_preview_mode %}
         <div class="nav-divider hidden-desktop"></div>
         <div class="nav-section nav-section-admin hidden-desktop">
           <a href="{{ url_for('admin.dashboard') }}" class="nav-link admin-link {{ 'active' if 'admin.' in request.endpoint }}">
             <span class="nav-icon">⚙</span><span class="nav-label">Admin</span>
+          </a>
+          <a href="{{ url_for('admin.player_preview_start') }}" class="nav-link">
+            <span class="nav-icon">👤</span><span class="nav-label">Spieleransicht</span>
           </a>
         </div>
         {% endif %}
 
         <!-- Mobile-only User Card -->
         <div class="user-area-mobile">
-          {% if current_user.avatar and current_user.avatar != 'default.png' %}
-            <img src="{{ url_for('static', filename='uploads/' + current_user.avatar) }}" alt="" class="mobile-user-avatar" />
-          {% else %}
-            <div class="mobile-user-avatar avatar-fallback">{{ current_user.username[0]|upper }}</div>
-          {% endif %}
-          <div class="user-info">
-            <strong>{{ current_user.username }}</strong>
-            <small>{{ current_user.email }}</small>
-          </div>
+          <a href="{{ url_for('main.profile') }}" class="mobile-user-profile" title="Zum Profil">
+            {% if current_user.avatar and current_user.avatar != 'default.png' %}
+              <img src="{{ url_for('static', filename='uploads/' + current_user.avatar) }}" alt="" class="mobile-user-avatar" />
+            {% else %}
+              <div class="mobile-user-avatar avatar-fallback">{{ current_user.username[0]|upper }}</div>
+            {% endif %}
+            <div class="user-info">
+              <strong>{{ current_user.username }}</strong>
+              <small>{{ current_user.email }}</small>
+              <small class="mobile-season">{{ active_competition_name }} · {{ active_competition_season }}</small>
+            </div>
+          </a>
           <button class="btn-icon" onclick="toggleTheme()" title="Theme wechseln">🌙</button>
           <a href="{{ url_for('auth.logout') }}" class="btn-icon" title="Abmelden">⏻</a>
         </div>
@@ -154,9 +175,12 @@
           <span class="live-dot"></span><span>LIVE</span>
         </a>
 
-        {% if current_user.is_admin %}
+        {% if current_user.is_admin and not player_preview_mode %}
         <a href="{{ url_for('admin.dashboard') }}" class="admin-pill {{ 'active' if 'admin.' in request.endpoint }}" title="Admin-Bereich">
           <span class="admin-pill-icon">⚙</span><span class="admin-pill-label">Admin</span>
+        </a>
+        <a href="{{ url_for('admin.player_preview_start') }}" class="admin-pill player-preview-pill" title="App wie ein normaler Spieler ansehen">
+          <span class="admin-pill-icon">👤</span><span class="admin-pill-label">Ansicht</span>
         </a>
         {% endif %}
 
@@ -165,7 +189,7 @@
           <select onchange="window.location.href='/set-competition/' + this.value" style="padding: 6px 10px; border-radius: 6px; background: var(--bg-app, #1a1f2c); border: 1px solid var(--border, #2d3748); color: var(--text, #e2e8f0); font-size: 12px; font-weight: bold; cursor: pointer; outline: none;">
             {% for comp in all_competitions %}
               <option value="{{ comp.code }}" {% if comp.code == active_competition %}selected{% endif %}>
-                🏆 {{ comp.name }}
+                🏆 {{ comp.name }} · {{ comp.season }}
               </option>
             {% endfor %}
           </select>
@@ -204,6 +228,14 @@
     {% endif %}
   </div>
 </header>
+
+{% if current_user.is_authenticated and player_preview_mode %}
+<div class="player-preview-banner">
+  <span>👤 Spieleransicht aktiv</span>
+  <small>Admin-Menüs sind ausgeblendet.</small>
+  <a href="{{ url_for('admin.player_preview_end') }}">Admin-Ansicht wieder aktivieren</a>
+</div>
+{% endif %}
 
 {% if current_user.is_authenticated and open_match_count and next_open_match %}
 <!-- Countdown-Banner für ungetippte Spiele (Feature B) -->
@@ -247,6 +279,28 @@
   <p>⚽ Wulmstörper Tipprunde · Made with Flask · {{ now().year }}</p>
   <p class="meta">Datenquelle: football-data.org / OpenLigaDB</p>
 </footer>
+
+{% if current_user.is_authenticated %}
+{% if global_tip_status %}
+<div class="bottom-tipstatus" aria-label="Tippstatus">
+  <span>{{ global_tip_status.text }}</span>
+</div>
+{% endif %}
+<nav class="bottom-tabbar" aria-label="Schnellnavigation">
+  <a href="{{ url_for('main.tip_entry') }}" class="bt-item {{ 'active' if request.endpoint in ['main.tip_entry','main.my_open_tips','main.schedule','main.match_detail','main.quick_tip'] }}">
+    <span class="bt-icon">🎯</span><span class="bt-label">Tippen</span>
+  </a>
+  <a href="{{ url_for('main.leaderboard') }}" class="bt-item {{ 'active' if request.endpoint == 'main.leaderboard' }}">
+    <span class="bt-icon">🏆</span><span class="bt-label">Rangliste</span>
+  </a>
+  <a href="{{ url_for('main.live_center') }}" class="bt-item bt-live {{ 'active' if request.endpoint == 'main.live_center' }}">
+    <span class="bt-icon"><span class="bt-live-dot"></span>LIVE</span><span class="bt-label">Live</span>
+  </a>
+  <a href="{{ url_for('main.more') }}" class="bt-item {{ 'active' if request.endpoint in ['main.more','main.help_rules','main.special_tips','main.eternal_table','main.prizes','main.stats_dashboard','main.season_recap','main.profile','main.matchday_preview','main.matchday_recap'] }}">
+    <span class="bt-icon">☰</span><span class="bt-label">Mehr</span>
+  </a>
+</nav>
+{% endif %}
 
 <script src="{{ url_for('static', filename='js/app.js', v=asset_version) }}"></script>
 {% block scripts %}{% endblock %}

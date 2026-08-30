@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Admin · Schema-Wartung{% endblock %}
+{% block content %}
+<a href="{{ url_for('admin.dashboard') }}" class="back-link">← Admin</a>
+
+<div class="page-header">
+  <div>
+    <span class="overline">DATENBANK</span>
+    <h1>🧬 DB-/Schema-Wartung</h1>
+    <p class="muted small">Versionierte Migrationen und Konsistenzchecks für Hosting ohne SSH.</p>
+  </div>
+  <div class="header-actions">
+    <form method="post" action="{{ url_for('admin.schema_run') }}" onsubmit="return confirm('Offene Migrationen jetzt ausführen?')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn-primary btn-sm" type="submit">▶ Migrationen ausführen</button>
+    </form>
+  </div>
+</div>
+
+<div class="admin-stats">
+  <div class="admin-stat {{ 'highlight' if status.ok }}"><div class="as-icon">{{ '✅' if status.ok else '⚠️' }}</div><div><div class="as-num">{{ 'OK' if status.ok else 'Check' }}</div><div class="as-lbl">Schema</div></div></div>
+  <div class="admin-stat"><div class="as-icon">📦</div><div><div class="as-num">{{ status.tables_total }}</div><div class="as-lbl">Tabellen</div></div></div>
+  <div class="admin-stat"><div class="as-icon">⏳</div><div><div class="as-num">{{ status.pending_count }}</div><div class="as-lbl">offene Migrationen</div></div></div>
+  <div class="admin-stat"><div class="as-icon">🧹</div><div><div class="as-num">{{ status.orphan_predictions + status.orphan_comments }}</div><div class="as-lbl">Orphans</div></div></div>
+</div>
+
+<div class="grid-12">
+  <section class="card span-6">
+    <h2>Offene Migrationen</h2>
+    {% if status.pending %}
+      <ul class="muted" style="line-height:1.8">
+        {% for version, desc, func in status.pending %}<li><code>{{ version }}</code> — {{ desc }}</li>{% endfor %}
+      </ul>
+    {% else %}
+      <p class="muted">Keine offenen Migrationen.</p>
+    {% endif %}
+  </section>
+  <section class="card span-6">
+    <h2>Konsistenz</h2>
+    <table class="mini-table">
+      <tr><td>Orphan Predictions</td><td class="right">{{ status.orphan_predictions }}</td></tr>
+      <tr><td>Orphan Comments</td><td class="right">{{ status.orphan_comments }}</td></tr>
+      <tr><td>Matches ohne Competition</td><td class="right">{{ status.matches_without_competition }}</td></tr>
+    </table>
+  </section>
+</div>
+
+<div class="grid-12">
+  <section class="card span-6">
+    <h2>Fehlende Tabellen</h2>
+    {% if status.missing_tables %}
+      {% for t in status.missing_tables %}<span class="chip">{{ t }}</span>{% endfor %}
+    {% else %}<p class="muted">Keine fehlenden Tabellen erkannt.</p>{% endif %}
+  </section>
+  <section class="card span-6">
+    <h2>Fehlende Spalten</h2>
+    {% if status.missing_columns %}
+      {% for tbl, cols in status.missing_columns.items() %}
+        <p><strong>{{ tbl }}</strong>: {{ cols|join(', ') }}</p>
+      {% endfor %}
+    {% else %}<p class="muted">Keine fehlenden Spalten erkannt.</p>{% endif %}
+  </section>
+</div>
+
+<div class="card" style="overflow:auto;">
+  <h2>Ausgeführte Migrationen</h2>
+  {% if status.applied %}
+  <table class="table compact extended">
+    <thead><tr><th>Zeit</th><th>Version</th><th>Status</th><th>Beschreibung</th><th>Meldung</th></tr></thead>
+    <tbody>
+    {% for m in status.applied %}
+      <tr><td>{{ m.applied_at|de('%d.%m.%Y %H:%M') }}</td><td><code>{{ m.version }}</code></td><td>{{ '✅' if m.success else '❌' }}</td><td>{{ m.description }}</td><td class="muted small">{{ m.message }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="muted">Noch keine Migrationen protokolliert.</p>
+  {% endif %}
+</div>
+{% endblock %}

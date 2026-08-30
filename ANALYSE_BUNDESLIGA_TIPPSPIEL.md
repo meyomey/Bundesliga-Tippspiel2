@@ -1,171 +1,221 @@
 # Analyse: Bundesliga-Tippspiel2 / Wulmstörper Tipprunde
 
-Stand: 2026-05-18 (aktualisiert)
+Stand: 2026-07-05
 
 ## Kurzfazit
 
-Das Projekt ist eine umfangreiche Flask-Anwendung für ein Bundesliga-Tippspiel mit Authentifizierung, Tippabgabe, Admin-Bereich, automatischem Ergebnis-Sync, Gamification, PWA-/Push-Ansätzen,/Push-Ansätzen, KI-Bots, Live-Scoring und saisonübergreifenden Features.
+Das Projekt ist inzwischen eine umfangreiche Flask-Anwendung fuer ein Bundesliga-Tippspiel mit Authentifizierung, Tipps, Adminbereich, API-Sync, Bots, Live-Funktionen, Tippmatrix, Benachrichtigungen, Saisonarchiv, Activity Log, Wartungscenter, Schema-Migrationen, User-Orientierung mit Mehr-/Hilfe-Seite und Netcup-/Shared-Hosting-Unterstuetzung.
 
-Die Codebase.
+Aktueller lokaler Teststand:
 
-**Aktueller Status:** Die Stabilitäts- und Sicherheitsprobleme aus der Erstanalyse wurden in v3.1.0 behoben. **39/39 Tests bestehen**, alle DeprecationWarnings beseitigt.
+```txt
+134/134 Tests bestanden
+Coverage ca. 65%
+1 Warning (reportlab DeprecationWarning, harmlos)
+```
+
+---
 
 ## Tech-Stack
 
 - Backend: Flask 3.0.3
-- ORM: Flask-SQLAlchemy 3.1.1
+- ORM: Flask-SQLAlchemy / SQLAlchemy 2
 - Auth: Flask-Login
 - Forms/CSRF: Flask-WTF / WTForms
 - Mail: Flask-Mail
 - Rate Limiting: Flask-Limiter
-- Cache: eigener Redis-Cache-Wrapper mit Fallback
-- Datenbank: SQLite lokal, PostgreSQL im Docker-Compose vorgesehen
+- Cache: eigener Redis-Wrapper mit Fallback
+- Datenbank: SQLite lokal/Netcup, PostgreSQL optional via Docker
 - Tests: pytest, pytest-flask, pytest-cov
 - Export: reportlab, CSV
 - Bilder: Pillow
-- Frontend: Jinja2 Templates, eigene CSS/CSS/JS, PWA Manifest, Service Worker
+- Frontend: Jinja2, eigene CSS/JS, PWA Manifest, Service Worker
+
+---
 
 ## Architektur
 
-### Zentrale Dateien
+### Einstieg
 
-- `app.py`: App Factory, Extension-Setup, Blueprint-Registrierung, DB-Seeding, CLI-Kommandos
-- `config.py`: ENV-basierte Konfiguration
-- `extensions.py`: Singletons für DB, Login, Mail, Cache, CSRF, Limiter
-- `models.py`: SQLAlchemy-Modelle (14 Tabellen)
-- `forms.py`: WTForms (12 Form-Klassen)
+- `app.py`: App-Factory, Extension-Setup, Blueprint-Registrierung, Bootstrap, CLI
+- `config.py`: ENV/default-basierte Konfiguration mit Production-Sicherheitsgate
+- `extensions.py`: DB, Login, Mail, Cache, CSRF, Limiter
+- `models.py`: SQLAlchemy-Modelle, aktuell 18 Modelle
+- `forms.py`: WTForms, aktuell 15 Form-/Validator-Klassen
 
 ### Routen
 
-- `routes_main.py` (747 Z.): Dashboard, Spielplan, Tippabgabe, Profil, Rangliste, Sondertipps, Export, H2H, Preise, Live-Center
-- `routes_auth.py` (82 Z.): Registrierung, Login, Logout, Passwort-Reset
-- `routes_admin.py` (846 Z.): Admin-Dashboard, Sync, Matches, User, Badges, Preise, Settings, Sonderfragen, Saisonwechsel, Backup
-- `routes_api.py` (307 Z.): JSON API, Tipp speichern, Live-Center, Rangliste, PushSubscribe
-- `live_scoring.py`: Live-SSE und Admin-Live-Updates
+- `routes_main.py`: Dashboard, Spielplan, Tipps, Tippübersicht, Profil, Stats, Preview/Recap, Telegram Webhook, Export
+- `routes_auth.py`: Login, Register, Logout, Passwort-Reset
+- `routes_admin.py`: Admin-Dashboard, Sync, Ergebnisse, User, Badges, Preise, Wartung, Schema, Saisonwechsel, Backup
+- `routes_api.py`: JSON-APIs fuer Tipps, Live, Tippübersicht, Leaderboard
+- `live_scoring.py`: Live-Scoring/SSE
 - `push_routes.py`: Web Push
-- `pwa_routes.py`: Offline/Ping/Service Worker
+- `pwa_routes.py`: PWA/Offline
 
 ### Fachlogik
 
-- `scoring.py`: Punkteberechnung, Leaderboard, Live-Leaderboard, Pot, Spieltagsieger
-- `stats.py`: Trends, Insights, Tippverteilung, Wetter, Tabellenberechnung, H2H, Ewige Tabelle, Sondertipps
-- `sync.py`: football-data.org, OpenLigaDB, Seeding, SQLite-Auto-Migration
-- `badges.py`: Badge-Seeding und automatische Vergabe
-- `ai_opponent.py`: KI-Bots (5 Schwierigkeitsgrade)
-- `cache.py`: Redis-Fallback-Cache
+- `scoring.py`: Punkte, Leaderboard, Live-Leaderboard, Pott, Spieltagsieger
+- `stats.py`: Trends, Insights, Liga-Tabelle, H2H, Preview, Recap, Stats 2.0
+- `sync.py`: football-data.org, OpenLigaDB, Seeding, Auto-Migration, Sync-Diagnose
+- `cache.py`: Redis-Fallback, versionierte Keys, SCAN-Invalidierung
+- `notification_center.py`: E-Mail/Push/Telegram/WhatsApp Reminder
+- `schema_migrations.py`: interne Migration-Versionierung fuer Hosting ohne SSH
+- `maintenance.py`: Wartungscenter, lokale Logos, Health Checks
+- `audit_log.py`: Admin Activity Log
+- `ai_opponent.py`: KI-Bots
+- `badges.py`: Badge-System
+- `export.py`: PDF-Export
 - `avatars.py`: Avatar-Upload
-- `export.py`: PDF/CSV
-- `mail_helpers.py`: Reset-Token und Mailversand
-- `whatsapp.py`: CallMeBot-Integration
+- `mail_helpers.py`: Mail, Token, VAPID
+- `telegram_bot.py`: Telegram Bot
+- `whatsapp.py`: CallMeBot WhatsApp
+
+---
 
 ## Datenmodell
 
-Wichtige Tabellen (14 Stück):
+Wichtige Modelle:
 
-- `users`: User, Admin-Flag, Profil, Avatar, Lieblingsverein, Lieblingsverein, Payment, WhatsApp, Push Subscription
-- `teams`: Teams mit Logo, Farbe, External ID
-- `competitions`: Wettbewerbe wie Bundesliga, CL etc.
-- `competition_teams`: Zuordnung Team/Wettbewerb mit Tabellenwerten
-- `matches`: Spiele, Kickoff, Ergebnis, Status, Live-Felder
-- `predictions`: Tipps inkl. Joker und Punkten
-- `settings`: Key-Value-Konfiguration
-- `comments`: Spielkommentare
-- `badges`, `user_badges`: Gamification
-- `special_questions`, `special_predictions`: Sondertipps
-- `prizes`: Preise/Pott
-- `matchday_winners`: Spieltagsieger
-- `season_archive`: Ewige Tabelle
+- User, Team, Competition, CompetitionTeam
+- Match, Prediction
+- Setting
+- Comment
+- Badge, UserBadge
+- SpecialQuestion, SpecialPrediction
+- Prize
+- MatchdayWinner
+- SeasonArchive
+- NotificationLog
+- AdminActivityLog
+- SchemaMigration
 
-## Bereits vorhandene Features
+---
+
+## Implementierte Kernfeatures
 
 - Registrierung/Login/Logout
-- Passwort-Reset per E-Mail
-- Profil inkl. Avatar-Upload
-- Lieblingsverein
-- Spielplan und Matchdetails
+- Passwort-Reset
+- Profil, Avatar, Lieblingsverein
+- Spielplan, Matchdetails, Kommentare
 - Tippabgabe bis Anpfiff
 - Joker pro Spieltag
-- Schnelltipps pro Spieltag
-- Punkteberechnung mit Admin-konfigurierbaren Werten
-- Gesamt- und Spieltagsrangliste
-- Live-Leaderboard
-- Kommentarfunktion je Spiel
-- Sondertipps mit verschiedenen Antworttypen
+- Schnelltipp
+- Gesamt-/Spieltagsrangliste
+- Tippmatrix mit Sichtbarkeit ab Spielstart
+- Live-Punkte in der Tippmatrix
+- Sonderfragen
 - Badges
-- Preise und Pott
+- Preise/Pott
 - Spieltagsieger
-- Ewige Tabelle / Saisonarchiv
-- Saisonwechsel-Assistent
-- Admin-Userverwaltung
-- Admin-Ergebnispflege
-- Automatischer Sync über football-data.org + OpenLigaDB Fallback
-- Live-Tabelle lokal und via API
-- Wetterdaten via Open-Meteo
-- H2H Uservergleich
-- PDF-/CSV-Export
-- KI-Tippgegner
-- Redis-Caching optional
-- PWA/Service Worker
-- Web Push vorbereitet
-- WhatsApp-Testintegration
-- Docker-Dateien vorhanden
-- Netcup/Plesk-Dokumentation vorhanden
-- GitHub Actions CI/CD
-- Paginierung für Admin-User und Kommentare
+- Ewige Tabelle
+- CSV/PDF-Export
+- KI-Bots
+- Live-Scoring
+- Liga-Tabelle
+- Statistik-Dashboard/Stats 2.0
+- Spieltags-Preview und Recap 2.0
+- Benachrichtigungszentrale
+- Telegram Bot
+- WhatsApp/Push-Grundlagen
+- PWA
 
-## Testlauf (aktuell)
+---
 
-Ausgeführt:
+## Admin- und Betriebsfeatures
 
-```bash
-pip install -r requirements.txt
-python -m pytest -v
+- Sync-Diagnose und letzter Sync-Status
+- football-data.org + OpenLigaDB-Fallback
+- Admin Activity Log
+- Wartungscenter
+- lokale Vereinslogos
+- DB-/Schema-Wartung mit internen Migrationen
+- Backup/Restore
+- Komplett-Backup als ZIP
+- Saisonwechsel-Assistent 2.0
+- Cache-Monitoring
+- Bot-Verwaltung
+- Netcup/vendor-Unterstuetzung
+
+---
+
+## Sicherheit
+
+Erledigt:
+
+- CSRF global aktiv
+- Login/API Rate-Limiting
+- Kommentar-Sanitizing mit Bleach
+- Query.get Legacy entfernt
+- Production-Sicherheitsgate fuer SECRET_KEY/Admin-Passwort
+- Telegram Webhook Secret
+- sensible Admin-Settings werden nicht vorausgefüllt
+- Pott-Berechnung ohne Bots
+
+Noch sinnvoll:
+
+- Langfristig sensible Settings verschlüsseln oder konsequent in ENV halten
+- Noch mehr JS-HTML-Injection-Stellen auf `textContent`/Escaping umbauen
+
+---
+
+## Performance
+
+Erledigt:
+
+- `get_leaderboard()` Bulk-Query
+- `get_live_leaderboard()` Bulk-Query
+- Tippübersicht-Livepunkte per JSON statt Full Reload
+- Redis `SCAN` statt `KEYS`
+- versionierte Cache-Keys
+
+Noch sinnvoll:
+
+- Notification Center weiter bulk-optimieren
+- Sync-Mapping/API mit gezielten Mocks weiter absichern
+- Sehr große Adminlisten ggf. weiter paginieren
+
+---
+
+## Tests
+
+Aktuell:
+
+```txt
+134 Tests
+134 bestanden
+1 Warning (reportlab DeprecationWarning, harmlos)
+Coverage ca. 65%
 ```
 
-**cq**
-```
+Neuere Testbereiche:
 
-Ergebnis:
+- Tippübersicht
+- Telegram Bot
+- Notifications
+- Security
+- Saisonwechsel
+- Admin Activity Log
+- Wartungscenter
+- Schema-Migrationen
+- Sync/Backup/Export
+- Preview/Recap
+- Stats/Scoring
+- Avatar/Live/Push
+- Mail/WhatsApp/PWA
 
-- **39 Tests gesammelt**
-- **39 bestanden** ✅ (vorher 28/39)
-- **0 fehlgeschlagen** (vorher 11)
-- **Warnings:** 2 (nur requests/urllib3 – irrelevant)
-- **Coverage:** ca. 41%
+---
 
-### Gefixte Test-Probleme (v3.1.0)
+## Wichtigste verbleibende technische Schulden
 
-1. **`Match.is_open()` Bug** ✅ – War bereits im Fix-Ordner behoben (kein `datetime.now(timezone.utc)()` mehr)
-2. **Tests nutzen falsche URLs** ✅ – `/spielplan`, `/tabelle`, `/admin/` sind bereits korrekt
-3. **KI-Bot-Tests flaky** ✅ – Durch Poisson-Begrenzung (`min/max`) und stabilere Logik gefixt
-4. **`datetime.utcnow()` deprecated** ✅ – Auf `datetime.now(timezone.utc)` umgestellt
-5. **SQLAlchemy `Query.get()` Legacy** ✅ – Auf `db.session.get(Model, id)` migriert
+1. `routes_main.py` und `routes_admin.py` sind sehr groß und sollten langfristig weiter aufgeteilt werden.
+2. `sync.py` ist komplex und sollte noch mehr API-Mock-Tests bekommen.
+3. `export.py` hat weiterhin niedrige Coverage.
+4. Auto-Migration + interne SchemaMigration ist Netcup-tauglich, ersetzt Alembic aber nicht vollstaendig.
+5. Inline-JS/CSS in Templates koennte schrittweise ausgelagert werden.
 
-## Erledigte Bugfixes (v3.1.0)
+---
 
-| Bereich | Fix | Status |
-|---------|-----|--------|
-| Tests | `datetime.utcnow()` → `datetime.now(timezone.utc)` | ✅ |
-| SQLAlchemy 2.0 | 13× `Query.get()` → `db.session.get(Model, id)` | ✅ |
-| Paginierung | Admin-User (25/Seite) + Kommentare (10/Seite) | ✅ |
-| Session-Validierung | `competition_code` gegen DB geprüft | ✅ |
-| Hardcoded Saison | Zentral über Config/Settings aufgelöst | ✅ |
-| GitHub Actions | `.github/workflows/tests.yml` (Python 3.10-3.13) | ✅ |
-| Markdown-Doku | CHANGELOG, README, OPTIMIZATION_ROADMAP, etc. | ✅ |
+## Empfehlung
 
-## Noch offene Optimierungen
-
-### Docker-Setup unvollständig
-`gunicorn` und `psycopg2-binary` sind jetzt in `requirements.txt` enthalten, aber der Docker-Start muss ggf. getestet werden.
-
-### Default-Admin / Default-Secret
-`config.py` enthält noch Fallback-Werte. Für Production sollte ein hartes Abbrechen ohne gesetzten `SECRET_KEY` erwogen werden.
-
-### Cache-Invalidierung
-`cache.delete("stats:*")` löscht nur den exakten Key, nicht das Pattern. Sollte `delete_pattern()` nutzen.
-
-### Multi-Wettbewerb
-Viele Queries filtern nicht konsequent nach aktivem Wettbewerb. Ein zentral. Ein zentraler Helper wäre ideal.
-
-### Auto-Migration
-`auto_migrate_schema()` ist pragmatisch, Flask-Migrate/Alembic für PostgreSQL besser.
+Die App ist jetzt feature-reich und betriebsnah. Weitere Arbeit sollte sich vor allem auf Stabilitaet, Sync-Robustheit, Export-Qualitaet und Code-Aufteilung konzentrieren statt auf immer neue Features.

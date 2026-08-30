@@ -1,154 +1,239 @@
 # ⚽ Wulmstörper Tipprunde (Flask)
 
 [![Tests](https://github.com/meyomey/Bundesliga-Tippspiel2/actions/workflows/tests.yml/badge.svg)](https://github.com/meyomey/Bundesliga-Tippspiel2/actions/workflows/tests.yml)
-![Python](https://img.shields.io/badge/Python-3.10%20|%203.11%20|%203.12%20|%203.13-blue)
-![Tests](https://img.shields.io/badge/Tests-39%2F39-green)
-![Coverage](https://img.shields.io/badge/Coverage-41%25-yellow)
+![Python](https://img.shields.io/badge/Python-3.9%20|%203.10%20|%203.11%20|%203.12%20|%203.13-blue)
+![Tests](https://img.shields.io/badge/Tests-134%2F134-green)
+![Coverage](https://img.shields.io/badge/Coverage-65%25-yellowgreen)
 
-Ein vollständiges, produktionsreifes Bundesliga-Tippspiel mit Flask.
-
-## ✨ Features
-
-### Must-Have ✅
-- ✅ Benutzerregistrierung & Login (mit Passwort-Reset per E-Mail)
-- ✅ Profil mit Avatar-Upload (mit PIL-Resize)
-- ✅ Vollständiger Spielplan (34 Spieltage) inkl. Vereins-Logos
-- ✅ Automatische Ergebnisabfrage (football-data.org + OpenLigaDB Fallback)
-- ✅ Manuelle Spiel-Eingabe als Notfall-Lösung
-- ✅ Tippabgabe bis exakt zum Anstoß
-- ✅ Joker-System (1× pro Spieltag, verdoppelt Punkte)
-- ✅ Konfigurierbare Punkteberechnung (Exakt/Diff/Tendenz)
-- ✅ Tages- & Gesamtwertung mit Gleichstandsregelung
-- ✅ Admin-Bereich (Sync, Ergebnisse, Benutzer, Einstellungen)
--Admin-Bereich (Sync, Ergebnisse, Benutzer, Einstellungen)
-- ✅ Rate-Limiting auf Login/API (Brute-Force-Schutz via Flask-Limiter)
-
-### Nice-to-Have 🎁
-- 🔔 Push-Benachrichtigungen (WebPushAPI · Service Worker bereit)
-- ⚡ Schnelltipps (alle Spiele eines Spieltags auf einer Seite)
-- 💬 Chat/Kommentare pro Spiel
-- ⭐ Sondertipps (Datenmodell vorbereitet)
-- 🏅 Badges & Gamification (auto-vergeben)
-- 📊 Head-to-Head Vergleich
-- 📈 Persönliche Statistik mit Formkurve (Chart.js)
-- 📄 CSV- & PDF-Export
-- 🌙 Dark Mode (toggle in Navbar)
-- ⏰ Tipp-Deadline Countdown
-- 📧 Automatische E-Mail-Reminder (1h vor Anpfiff via APScheduler)
-
-### v2.0.0 🚀
-- 🤖 KI-Tippgegner (5 Bots, Easy → Expert)
-- ⚡ Live-Scoring (Server-Sent Events)
-- 🏆 Multi-Wettbewerb (BL, CL, DFB-Pokal)
-- 💨 Redis Caching (optional, gracefulfallback)
-- 🐳 Docker Support
-- 📱 PWA + WhatsApp-Integration
-- 🏆 Preise & Pott-System, Ewige Tabelle, Spieltagsieger
-
-### v3.0.0 🏗️ Architektur-Refactoring
-- 📦 **app.py aufgeteilt** in 4 Blueprint-Module (routes_main, routes_auth, routes_admin, routes_api)
-- 📦 **utils.py aufgeteilt** in 7 spezialisierte Module (scoring, badages, stats, sync, mail_helpers, avatars, export)
-- 🔒 **Flask-Limiter** integriert (Login, Register, API geschützt)
-- ⚡ **N+1 Queries** in get_leaderboard() optimiert (Bulk-Query + Eager Loading)
-
-### v3.1.0 🐛 Bugfixes (2026-05-18)
-- 🐛 **`datetime.utcnow()` deprecated** – auf `datetime.now(timezone.utc)` umgestellt
-- 🐛 **SQLAlchemy `Query.get()` Legacy** – auf `db.session.get(Model, id)` migriert (13 Stellen)
-- 📄 **Paginierung** – Admin-User-Liste (25/Seite) + Kommentare (10/Seite)
-- 🔒 **Session-Validierung** – `competition_code` wird gegen DB geprüft
-- 🎯 **Hardcoded Saison** – zentralisiert (leichter Saisonwechsel)
-- 🤖 **GitHub Actions CI** – Tests auf 4 Python-Versionen
+Ein umfangreiches, produktionsnahes Bundesliga-Tippspiel mit Flask, Admin-Bereich, Live-Features, KI-Bots, PWA, Benachrichtigungen, Saisonarchiv und Netcup-/Shared-Hosting-Unterstützung.
 
 ---
 
-## 🚀 Schnellstart
+## ✨ Aktueller Funktionsumfang
+
+### Kernfunktionen
+- ✅ Registrierung, Login, Logout
+- ✅ Passwort-Reset per E-Mail
+- ✅ Profil mit Avatar-Upload
+- ✅ Lieblingsverein
+- ✅ Spielplan und Matchdetails
+- ✅ Tippabgabe bis exakt zum Anpfiff
+- ✅ Joker-System pro Spieltag
+- ✅ Schnelltipps pro Spieltag
+- ✅ Konfigurierbare Punkteberechnung
+- ✅ Gesamt- und Spieltagsrangliste
+- ✅ Tippübersicht/Tippmatrix mit Sichtbarkeit ab Spielstart
+- ✅ Live-Gesamtpunkte und Live-Spieltagespunkte in der Tippübersicht
+- ✅ Sonderfragen
+- ✅ Kommentare pro Spiel
+- ✅ Badges/Gamification
+- ✅ Preise & Pott-System
+- ✅ Spieltagsieger
+- ✅ Ewige Tabelle / Saisonarchiv
+- ✅ PDF- und CSV-Export
+- ✅ Zentrale Mehr-Seite (`/mehr`)
+- ✅ Hilfe-/Regelseite (`/hilfe`, Alias `/regeln`)
+- ✅ Vereinfachte mobile User-Navigation
+
+### Live, Statistik & Gamification
+- ⚡ Live-Scoring und Live-Leaderboard
+- 📊 Statistik-Dashboard inkl. Stats 2.0 Fun-Facts
+- 🔮 Spieltags-Preview mit Community-Trends
+- 📊 Spieltags-Recap 2.0
+- 👀 Tippmatrix mit Sortierung nach Gesamt live, Spieltag live oder Name
+- 🤖 KI-Tippgegner/Bots
+- 📈 Head-to-Head Vergleich
+- ⚽ Lokale und externe Liga-Tabelle
+
+### Benachrichtigungen & Integrationen
+- 🔔 Benachrichtigungszentrale pro User
+- 📧 E-Mail-Reminder
+- 🔔 Web Push vorbereitet
+- 🤖 Telegram Bot mit Tippabgabe, Joker, offenen Tipps und Statistik
+- 💬 WhatsApp via CallMeBot
+- 📱 PWA/Offline-Grundlagen
+
+### Admin & Betrieb
+- ⚙ Admin-Dashboard
+- 🔄 API-Sync mit football-data.org + OpenLigaDB-Fallback
+- 🧪 Sync-Diagnose mit letztem Sync-Ergebnis
+- 🧰 Wartungscenter für Netcup/Shared Hosting
+- 🧬 DB-/Schema-Wartung mit interner Migration-Versionierung
+- 📜 Admin Activity Log
+- 💾 SQLite Backup/Restore
+- 📦 Komplett-Backup als ZIP inkl. Uploads/Logos
+- 🏁 Saisonwechsel-Assistent 2.0
+- 🖼 Lokale Vereinslogos über Wartungscenter
+- 💨 Redis-Cache optional mit Fallback
+- 🐳 Docker-Dateien vorhanden
+
+---
+
+## 🚀 Schnellstart lokal
 
 ```bash
-# 1. Virtuelle Umgebung
 python -m venv venv
 source venv/bin/activate         # Windows: venv\\Scripts\\activate
-
-# 2. Abhängigkeiten installieren
 pip install -r requirements.txt
-
-# 3. (Optional) .env anlegen
-cp .env.example .env
-
-# 4. Starten
 python app.py
 ```
 
-App läuft unter: **[http://localhost:5000](http://localhost:5000/)**
+App läuft unter:
 
-**Standard-Admin:** `admin@tippspiel.de` / `admin123` → **sofort ändern!**
+```txt
+http://localhost:5000
+```
 
-Beim ersten Start werden automatisch:
-- 18 Bundesliga-Teams (mit Logos) angelegt
-- 34 Spieltage mit Demo-Spielen erzeugt
-- Default-Badges geseedet
-- Admin-User erstellt
+Beim ersten Start werden automatisch angelegt:
+
+- Teams
+- Demo-Spielplan
+- Default-Badges
+- Default-Preise
+- Admin-User
+
+> Standard-Admin nur für Entwicklung: `admin@tippspiel.de` / `admin123` – in Produktion unbedingt ändern.
 
 ---
 
-## ⚙️ Konfiguration
+## 🔐 Sicherheit / Production
 
-### football-data.org API Key (empfohlen)
-1. Kostenlos registrieren: [https://www.football-data.org/client/register]()
-2. Token in **Admin → Einstellungen** eintragen, **oder** als ENV: `FOOTBALL_DATA_TOKEN=...`
-3. 10 Calls/Minute im Free Tier
+Für produktive Nutzung setzen:
 
-### E-Mail (für Passwort-Reset & Reminder)
-In `.env` setzen:
+```bash
+SECRET_KEY=<langer-zufallswert>
+ADMIN_PASSWORD=<sicheres-admin-passwort>
+PUBLIC_BASE_URL=https://deine-domain.de
+TELEGRAM_WEBHOOK_SECRET=<zufallswert>
 ```
-MAIL_SERVER=smtp.gmail.com
+
+Optionales Sicherheitsgate:
+
+```bash
+REQUIRE_SECURE_CONFIG=1
+```
+
+Dann startet die App nicht mehr mit Default-`SECRET_KEY` oder `admin123`.
+
+---
+
+## 🌐 Netcup / Plesk ohne SSH
+
+Für Netcup mit Python 3.9.2:
+
+```bat
+build_vendor.bat
+```
+
+Dann Auswahl:
+
+```txt
+1 = Python 3.9.x
+```
+
+Das Skript baut `vendor/` mit Linux/manylinux-Wheels und schreibt zusätzlich:
+
+```txt
+vendor/vendor_manifest.txt
+```
+
+Hochladen per FTP:
+
+```txt
+*.py
+templates/
+static/
+vendor/
+requirements.txt
+requirements_py39.txt
+```
+
+Danach in Plesk:
+
+```txt
+Python-App neu starten
+```
+
+Nicht versehentlich hochladen, wenn Serverdaten erhalten bleiben sollen:
+
+```txt
+tippspiel.db
+```
+
+---
+
+## ⚙️ Wichtige Konfiguration
+
+### football-data.org API-Key
+
+1. Kostenlos registrieren: https://www.football-data.org/client/register
+2. Token in **Admin → Einstellungen** oder als ENV setzen:
+
+```bash
+FOOTBALL_DATA_TOKEN=...
+```
+
+### Mail
+
+```bash
+MAIL_SERVER=smtp.example.de
 MAIL_PORT=587
-MAIL_USERNAME=deine@gmail.com
-MAIL_PASSWORD=dein-app-password
-MAIL_DEFAULT_SENDER=deine@gmail.com
+MAIL_USERNAME=...
+MAIL_PASSWORD=...
+MAIL_DEFAULT_SENDER=...
 ```
 
-### VAPID Keys für Push-Benachrichtigungen
-```bash
-pip install pywebpush
-vapid --gen
-# Keys in Admin → Einstellungen eintragen
-```
+### Telegram
 
-### Sicherheit
-```bash
-export SECRET_KEY="ein-sehr-langer-zufaelliger-string-min-32-zeichen"
+Admin → Einstellungen:
+
+- Telegram Bot Token
+- Telegram Bot Username
+- Telegram Webhook Secret
+
+Webhook-Beispiel:
+
+```txt
+https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://DEINE-DOMAIN/telegram/webhook/<SECRET>
 ```
 
 ---
 
 ## 📁 Projektstruktur
 
-```
-├── app.py                  # App-Factory + CLI Commands
-├── config.py               # Konfiguration aus ENV/Defaults
-├── extensions.py           # Flask-Extensions (DB, Login, Mail, Cache, CSRF, Limiter)
-├── models.py               # SQLAlchemy-Modelle (14 Tabellen)
-├── forms.py                # WTForms (12 Form-Klassen)
-│
-├── routes_main.py          # Hauptroutes (Dashboard, Spielplan, Profil, Export, …)
-├── routes_auth.py          # Login, Register, Passwort-Reset
-├── routes_admin.py         # Kompletter Admin-Bereich
-├── routes_api.py           # JSON API-Endpunkte
-│
-├── scoring.py              # Punkteberechnung, Ranglisten, Pot, Spieltagsieger
-├── badges.py               # Badge-System (Vergabe, Prüfung, Seeding)
-├── stats.py                # Statistiken, Trend, Insights, Form, H2H, Wetter, Tabelle
-├── sync.py                 # API-Sync (football-data.org + OpenLigaDB), Seeding, Schema-Migration
-├── ai_opponent.py          # KI-Tippgegner (5 Bots)
-├── cache.py                # Redis-Cache-Wrapper mit Fallback
-├── export.py               # PDF/CSV-Export
-├── avatars.py              # Avatar-Upload (PIL)
-├── mail_helpers.py         # E-Mail, Token
-├── live_scoring.py         # Live-Scoring (SSE)
-├── push_routes.py          # Web Push
-├── pwa_routes.py           # PWA-Routes
-├── admin_bots_routes.py    # Bot-Verwaltung
-└── whatsapp.py             # WhatsApp-Integration (CallMeBot)
+```txt
+app.py                    App-Factory, Bootstrap, CLI
+config.py                 ENV/default-basierte Konfiguration
+extensions.py             DB, Login, Mail, Cache, CSRF, Limiter
+models.py                 SQLAlchemy-Modelle (18 Modelle)
+forms.py                  WTForms (15 Form-/Validator-Klassen)
+
+routes_main.py            Hauptseiten, Profil, Tipps, Stats, Telegram-Webhook
+routes_auth.py            Login, Register, Passwort-Reset
+routes_admin.py           Adminbereich, Saisonwechsel, Wartung, Schema, Backup
+routes_api.py             JSON-APIs
+main_*_routes.py          ausgelagerte User-Routen (Tipps, Profil, Stats, Export, PWA, Telegram)
+admin_*_routes.py         ausgelagerte Admin-Routen (User, Preise, Schema, Wartung, Export, Bots usw.)
+
+scoring.py                Punkte, Ranglisten, Live-Ranglisten, Pott
+stats.py                  Statistiken, Tabelle, H2H, Preview/Recap
+sync.py                   API-Sync, OpenLigaDB, Seeding, Auto-Migration
+cache.py                  Redis-Cache-Wrapper + Key-/Invalidierungslogik
+ai_opponent.py            KI-Bots
+notification_center.py    E-Mail/Push/Telegram/WhatsApp Reminder-Zentrale
+schema_migrations.py      interne Migration-Versionierung
+maintenance.py            Wartungscenter-Funktionen, lokale Logos
+cache_monitor_routes.py   Cache-Monitoring
+admin_bots_routes.py      Bot-Adminlogik
+audit_log.py              Admin Activity Log Helper
+export.py                 PDF-Export
+avatars.py                Avatar-Verarbeitung
+mail_helpers.py           Mail, Tokens, VAPID-Settings
+live_scoring.py           Live-Scoring/SSE
+push_routes.py            Web Push
+pwa_routes.py             PWA/Offline
+telegram_bot.py           Telegram Bot
+whatsapp.py               CallMeBot WhatsApp
 ```
 
 ---
@@ -156,13 +241,37 @@ export SECRET_KEY="ein-sehr-langer-zufaelliger-string-min-32-zeichen"
 ## 🧪 Tests
 
 ```bash
-pytest                                    # Alle Tests (39)
-pytest -v --tb=short                      # Ausführlich
-pytest --cov=. --cov-report=html          # Mit Coverage
-pytest tests/test_models.py -v            # Nur Model-Tests
+pytest
+pytest -q
+pytest --cov=. --cov-report=html
 ```
 
-**Aktuell:** 39/39 Tests ✅ | Coverage: 41% | 2 Warnings (nur requests-Lib)
+Aktueller Stand lokal:
+
+```txt
+134/134 Tests bestanden
+Coverage: ca. 65%
+1 Warning (reportlab DeprecationWarning, harmlos)
+```
+
+Testbereiche:
+
+- Models
+- Routes
+- Cache
+- KI-Bots
+- Tippübersicht
+- Telegram Bot
+- Notifications
+- Security
+- Saisonwechsel-Assistent
+- Admin Activity Log
+- Wartungscenter
+- Schema-Migrationen
+- Sync/Backup/Export
+- Stats/Scoring
+- Avatar/Live/Push
+- Mail/WhatsApp/PWA
 
 ---
 
@@ -172,22 +281,10 @@ pytest tests/test_models.py -v            # Nur Model-Tests
 docker-compose up -d
 ```
 
-Startet Flask-App + PostgreSQL + Redis + Scheduler.
-
----
-
-## 🔧 Fix-Ordner
-
-Der Ordner `Bundesliga-Tippspiel2-fix/` enthält eine bereinigte Version mit:
-- Lazy-Init für AI Manager
-- Bulk-Queries für Bot-Admin (N+1 gefixt)
-- Optimierte Matchday-Queries
-- Weitere Stabilitäts-Fixes
-
-Diese Fixes sind in den main-Branch eingeflossen.
+Startet Flask-App, PostgreSQL, Redis und optional Scheduler.
 
 ---
 
 ## 📄 Lizenz
 
-MIT – machen damit, was ihr wollt.
+MIT

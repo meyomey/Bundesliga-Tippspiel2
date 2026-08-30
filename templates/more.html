@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Mehr{% endblock %}
+{% block content %}
+
+<section class="more-hero card">
+  <div>
+    <p class="eyebrow">Navigation</p>
+    <h1>Mehr</h1>
+    <p class="muted">Alles Wichtige an einem Ort: Profil, Sonderfragen, Auswertungen, Preise und Hilfe.</p>
+  </div>
+  <a href="{{ url_for('main.help_rules') }}" class="btn-primary more-hero-btn">📖 Hilfe &amp; Regeln</a>
+</section>
+
+<div class="more-grid" aria-label="Weitere Bereiche">
+  <a class="more-card" href="{{ url_for('main.profile') }}">
+    <span class="more-icon">👤</span>
+    <strong>Profil</strong>
+    <small>Name, Lieblingsverein, Avatar, Telegram &amp; WhatsApp.</small>
+  </a>
+  <a class="more-card" href="{{ url_for('main.invite_users') }}">
+    <span class="more-icon">✉️</span>
+    <strong>Mitspieler einladen</strong>
+    <small>Einladungslink teilen oder Freunde per E-Mail einladen.</small>
+  </a>
+  <a class="more-card" href="{{ url_for('main.profile') }}#benachrichtigungen">
+    <span class="more-icon">🔔</span>
+    <strong>Benachrichtigungen</strong>
+    <small>Erinnerungen vor Anpfiff per Push, E-Mail, Telegram oder WhatsApp.</small>
+  </a>
+  <a class="more-card" href="{{ url_for('main.special_tips') }}">
+    <span class="more-icon">⭐</span>
+    <strong>Sonderfragen</strong>
+    <small>Meister, Torschützenkönig und weitere Saisonfragen tippen.</small>
+  </a>
+  <a class="more-card" href="{{ url_for('main.stats_dashboard') }}">
+    <span class="more-icon">📊</span>
+    <strong>Statistiken</strong>
+    <small>Formkurve, Volltreffer, Joker und persönliche Auswertung.</small>
+  </a>
+  <a class="more-card" href="{{ url_for('main.prizes') }}">
+    <span class="more-icon">🏆</span>
+    <strong>Preise &amp; Pott</strong>
+    <small>Einzahlungen, Pott-Aufteilung und Saisonpreise.</small>
+  </a>
+  <a class="more-card" href="{{ url_for('main.eternal_table') }}">
+    <span class="more-icon">🏛</span>
+    <strong>Ewige Tabelle</strong>
+    <small>Gesamtwertung über archivierte Saisons hinweg.</small>
+  </a>
+  <a class="more-card" href="{{ url_for('main.season_recap') }}">
+    <span class="more-icon">🎬</span>
+    <strong>Saisonbericht</strong>
+    <small>Dein Rückblick mit Highlights, Trends und PDF-Export.</small>
+  </a>
+  <a class="more-card more-card-accent" href="{{ url_for('main.help_rules') }}">
+    <span class="more-icon">📖</span>
+    <strong>Hilfe &amp; Regeln</strong>
+    <small>Punkte, Joker, Tippabgabe, Sichtbarkeit und Spieltag erklärt.</small>
+  </a>
+</div>
+
+<section class="card more-shortcuts">
+  <h2>Schnellzugriff</h2>
+  <div class="more-chip-row">
+    <a href="{{ url_for('main.tip_overview') }}">👀 Tippübersicht</a>
+    <a href="{{ url_for('main.matchday_preview') }}">🔮 Spieltag-Preview</a>
+    <a href="{{ url_for('main.matchday_recap') }}">🧾 Spieltag-Recap</a>
+    <a href="{{ url_for('main.bl_standings') }}">⚽ Liga-Tabelle</a>
+  </div>
+</section>
+
+{% endblock %}

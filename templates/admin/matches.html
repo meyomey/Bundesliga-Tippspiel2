@@ -34,8 +34,8 @@
     {% for m in matches %}
       <tr class="{{ 'is-live' if m.status == 'live' }}">
         <td>
-          <small class="muted">{{ m.kickoff|de('%a, %d.%m.') }}</small><br>
-          <strong>{{ m.kickoff|de('%H:%M') }}</strong>
+          <small class="muted">{{ m.kickoff|de_local('%a, %d.%m.') }}</small><br>
+          <strong>{{ m.kickoff|de_local('%H:%M') }}</strong>
         </td>
         <td>
           <div class="amt-teams">

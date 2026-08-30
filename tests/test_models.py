@@ -2,7 +2,7 @@
 import pytest
 from datetime import datetime, timedelta, timezone
 
-from models import User, Team, Match, Prediction, Badge, UserBadge, Competition
+from models import AdminActivityLog, User, Team, Match, Prediction, Badge, UserBadge, Competition
 
 
 class TestUserModel:
@@ -178,3 +178,17 @@ class TestCompetitionModel:
         assert comp.code == 'CL'
         assert comp.matchdays == 13
         assert comp.is_active is True
+
+
+def test_admin_activity_log_model(db, admin_user):
+    log = AdminActivityLog(
+        admin_user_id=admin_user.id,
+        action='unit_test',
+        entity_type='unit',
+        entity_id='1',
+        message='Test log entry',
+    )
+    db.session.add(log)
+    db.session.commit()
+    assert log.id is not None
+    assert log.admin.username == admin_user.username

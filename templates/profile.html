@@ -3,9 +3,15 @@
 {% block content %}
 
 <div class="grid-12">
-  <section class="card span-5">
-    <h1>Profil</h1>
-    <div class="profile-avatar-area">
+  <section class="card span-5 profile-panel">
+    <div class="profile-headline">
+      <div>
+        <span class="overline">KONTO</span>
+        <h1>Profil</h1>
+        <p class="muted small">Deine Daten, Benachrichtigungen und Chat-Verknüpfungen.</p>
+      </div>
+    </div>
+    <div class="profile-avatar-area compact">
       {% if current_user.avatar and current_user.avatar != 'default.png' %}
         <img src="{{ url_for('static', filename='uploads/' + current_user.avatar) }}" alt="Avatar" class="profile-avatar" />
       {% else %}
@@ -13,47 +19,77 @@
       {% endif %}
     </div>
 
-    <form method="post" enctype="multipart/form-data">
+    <form method="post" enctype="multipart/form-data" class="profile-main-form">
       {{ form.hidden_tag() }}
+      <h2 class="profile-section-heading">Basisdaten</h2>
       <label>{{ form.username.label }} {{ form.username(class_='input', placeholder='So wirst du auf der Tabelle angezeigt') }}</label>
       <label>{{ form.full_name.label }} {{ form.full_name(class_='input', placeholder='Vorname Nachname') }}
-      </label>
-      <label class="check pay-edit-check {{ 'on' if current_user.show_full_name }}" style="margin-bottom:14px">
-        {{ form.show_full_name() }}
-        <span>
-          <strong>Vollen Namen öffentlich anzeigen</strong>
-          <small class="muted" style="display:block;margin-top:2px">
-            {% if current_user.show_full_name %}
-              ✅ Andere sehen deinen vollen Namen im Tooltip auf der Tabelle.
-            {% else %}
-              🔒 Dein voller Name ist nur für den Admin sichtbar.
-            {% endif %}
-          </small>
-        </span>
+        <small class="muted">Bitte trage deinen echten Namen ein, damit dich die anderen in der privaten Tipprunde zuordnen können.</small>
       </label>
       <label>{{ form.phone.label }} {{ form.phone(class_='input', placeholder='+49 170 1234567', type='tel', inputmode='tel') }}
         <small class="muted">Für WhatsApp-Gruppe / Erinnerungen. Wird nur dem Admin angezeigt.</small>
       </label>
       <label>{{ form.favorite_team_id.label }} {{ form.favorite_team_id(class_='input') }}
-        <small class="muted">Erscheint mit Logo neben deinem Namen.</small>
+        <small class="muted">Erscheint mit Logo neben deinem Namen. Wenn du keinen Lieblingsverein hast, lasse „kein Lieblingsverein“ ausgewählt.</small>
       </label>
       <label>{{ form.avatar.label }} {{ form.avatar(class_='input') }}</label>
       {{ form.submit(class_='btn-primary btn-block') }}
     </form>
 
+
+    <!-- ====== Benachrichtigungszentrale ====== -->
+    <details class="settings-section profile-details" id="benachrichtigungen">
+      <summary class="settings-summary">
+        <span>🔔 Benachrichtigungen</span>
+        <small class="profile-summary-state">{{ 'aktiv' if current_user.notify_enabled else 'aus' }}</small>
+      </summary>
+      <div class="settings-body">
+        <form method="post" enctype="multipart/form-data">
+          {{ form.hidden_tag() }}
+          <input type="hidden" name="notification_form" value="1">
+          <input type="hidden" name="username" value="{{ current_user.username }}">
+          <input type="hidden" name="full_name" value="{{ current_user.full_name or '' }}">
+          {% if current_user.show_full_name %}<input type="hidden" name="show_full_name" value="y">{% endif %}
+          <input type="hidden" name="phone" value="{{ current_user.phone or '' }}">
+          <input type="hidden" name="whatsapp_phone" value="{{ current_user.whatsapp_phone or '' }}">
+          <input type="hidden" name="whatsapp_apikey" value="{{ current_user.whatsapp_apikey or '' }}">
+          <input type="hidden" name="favorite_team_id" value="{{ current_user.favorite_team_id or '' }}">
+          <input type="hidden" name="default_tip_view" value="{{ current_user.default_tip_view or 'normal' }}">
+
+          <label class="check">{{ form.notify_enabled() }} <span><strong>{{ form.notify_enabled.label.text }}</strong></span></label>
+          <div class="notify-channel-grid">
+            <label class="check">{{ form.notify_email() }} <span>📧 {{ form.notify_email.label.text }}</span></label>
+            <label class="check">{{ form.notify_push() }} <span>🔔 {{ form.notify_push.label.text }}</span></label>
+            <label class="check">{{ form.notify_telegram() }} <span>🤖 {{ form.notify_telegram.label.text }}</span></label>
+            <label class="check">{{ form.notify_whatsapp() }} <span>💬 {{ form.notify_whatsapp.label.text }}</span></label>
+          </div>
+          <label>{{ form.notify_hours_before.label }}
+            {{ form.notify_hours_before(class_='input', min='0', max='24') }}
+            <small class="muted">0 = nur kurz vor Anpfiff, 1 = Standard</small>
+          </label>
+          <label class="check">{{ form.notify_only_favorite() }} <span>{{ form.notify_only_favorite.label.text }}</span></label>
+          <button type="submit" class="btn-primary btn-sm">💾 Benachrichtigungen speichern</button>
+        </form>
+        <form method="post" action="{{ url_for('main.test_user_notification') }}" class="profile-test-notification-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn-ghost btn-sm">🧪 Test-Benachrichtigung senden</button>
+          <small class="muted">Sendet eine Test-Erinnerung über deine aktivierten und eingerichteten Kanäle.</small>
+        </form>
+      </div>
+    </details>
+
     <!-- ====== WhatsApp-Benachrichtigungen ====== -->
-    <details class="wa-section" style="margin-top:20px; border-top:1px solid var(--border, #2d3748); padding-top:16px;"
-             {% if current_user.whatsapp_phone %}open{% endif %}>
-      <summary style="cursor:pointer; font-weight:bold; margin-bottom:12px;">
-        💬 WhatsApp-Benachrichtigungen
+    <details class="wa-section profile-details">
+      <summary class="settings-summary">
+        <span>💬 WhatsApp</span>
         {% if current_user.whatsapp_phone and current_user.whatsapp_apikey %}
-          <span style="color:#22c55e; font-size:13px; font-weight:normal;">· aktiviert ✅</span>
+          <small class="profile-summary-state ok">aktiv</small>
         {% else %}
-          <span class="muted" style="font-size:13px; font-weight:normal;">· nicht eingerichtet</span>
+          <small class="profile-summary-state">nicht eingerichtet</small>
         {% endif %}
       </summary>
 
-      <div style="background: var(--bg-subtle, rgba(0,0,0,0.15)); padding:12px; border-radius:8px; margin-bottom:12px;">
+      <div class="profile-help-box">
         <p class="muted small" style="margin:0 0 8px 0">
           <strong>Kostenlos via CallMeBot</strong> – kein WhatsApp Business nötig!
           Einmaliges Setup (5 Min):
@@ -77,6 +113,14 @@
         {% if current_user.show_full_name %}<input type="hidden" name="show_full_name" value="y">{% endif %}
         <input type="hidden" name="phone" value="{{ current_user.phone or '' }}">
         <input type="hidden" name="favorite_team_id" value="{{ current_user.favorite_team_id or '' }}">
+        <input type="hidden" name="default_tip_view" value="{{ current_user.default_tip_view or 'normal' }}">
+        {% if current_user.notify_enabled %}<input type="hidden" name="notify_enabled" value="y">{% endif %}
+        {% if current_user.notify_email %}<input type="hidden" name="notify_email" value="y">{% endif %}
+        {% if current_user.notify_push %}<input type="hidden" name="notify_push" value="y">{% endif %}
+        {% if current_user.notify_telegram %}<input type="hidden" name="notify_telegram" value="y">{% endif %}
+        {% if current_user.notify_whatsapp %}<input type="hidden" name="notify_whatsapp" value="y">{% endif %}
+        <input type="hidden" name="notify_hours_before" value="{{ current_user.notify_hours_before or 1 }}">
+        {% if current_user.notify_only_favorite %}<input type="hidden" name="notify_only_favorite" value="y">{% endif %}
 
         <label>{{ form.whatsapp_phone.label }}
           {{ form.whatsapp_phone(class_='input', placeholder='+4917612345678', type='tel', inputmode='tel') }}
@@ -102,10 +146,13 @@
     </details>
 
     <!-- Telegram Bot -->
-    <details class="settings-section" {% if current_user.phone and current_user.phone.startswith('tg:') %}open{% endif %}>
-      <summary class="settings-summary">🤖 Telegram Bot
+    <details class="settings-section profile-details">
+      <summary class="settings-summary">
+        <span>🤖 Telegram Bot</span>
         {% if current_user.phone and current_user.phone.startswith('tg:') %}
-          <span class="badge badge-ok">✅ Verknüpft</span>
+          <small class="profile-summary-state ok">verknüpft</small>
+        {% else %}
+          <small class="profile-summary-state">optional</small>
         {% endif %}
       </summary>
       <div class="settings-body">
@@ -158,7 +205,7 @@
           <strong>Noch nicht bezahlt</strong>
           <small>
             Bitte überweise <strong>{{ pot.amount_per }} {{ pot.currency }}</strong> in den Saison-Pott.
-            Frag den Admin nach den Zahlungsdetails.
+            {% if pot.payment_text %}<span class="payment-inline">{{ pot.payment_text|linkify }}</span>{% else %}Frag den Admin nach den Zahlungsdetails.{% endif %}
           </small>
         {% endif %}
       </div>

@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Preise verwalten{% endblock %}
 {% block content %}
+<script>document.body.classList.add('admin-subpage', 'admin-prizes-page');</script>
+
 
 <a href="{{ url_for('admin.dashboard') }}" class="back-link">← Admin</a>
 

@@ -1,8 +1,8 @@
 'use strict';
 
-const CACHE_NAME = 'tippspiel-v1';
+const CACHE_NAME = 'tippspiel-v3';
 const OFFLINE_URL = '/offline';
-const PRECACHE_URLS = ['/offline', '/static/css/style.css', '/static/js/app.js', '/static/manifest.json'];
+const PRECACHE_URLS = ['/offline', '/static/css/style.css', '/static/js/app.js', '/manifest.json'];
 
 self.addEventListener('install', event => {
   event.waitUntil(
@@ -45,7 +45,7 @@ self.addEventListener('fetch', event => {
 });
 
 self.addEventListener('push', event => {
-  let data = { title: '⚽ Tippspiel', body: 'Du hast noch nicht getippt!', icon: '/static/uploads/logo_192.png', badge: '/static/uploads/badge_72.png', url: '/schedule', tag: 'tipp-reminder' };
+  let data = { title: '⚽ Tippspiel', body: 'Du hast noch nicht getippt!', icon: '/static/uploads/logo_v2_192.png', badge: '/static/uploads/badge_v2_72.png', url: '/spielplan', tag: 'tipp-reminder' };
   if (event.data) {
     try { data = { ...data, ...event.data.json() }; } catch (_) { data.body = event.data.text(); }
   }
@@ -60,7 +60,7 @@ self.addEventListener('push', event => {
 self.addEventListener('notificationclick', event => {
   event.notification.close();
   if (event.action === 'dismiss') return;
-  const targetUrl = event.notification.data?.url || '/schedule';
+  const targetUrl = event.notification.data?.url || '/spielplan';
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
       for (const client of clientList) { if (client.url.includes(targetUrl) && 'focus' in client) return client.focus(); }

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Datenintegrität{% endblock %}
+{% block content %}
+<a href="{{ url_for('admin.dashboard') }}" class="back-link">← Admin</a>
+
+<div class="page-header">
+  <div>
+    <span class="overline">WARTUNG</span>
+    <h1>🧪 Datenintegrität</h1>
+    <p class="muted small">Prüft typische Datenprobleme und bietet sichere Reparaturen an.</p>
+  </div>
+  <div class="header-actions">
+    <form method="post" onsubmit="return confirm('Sichere Reparaturen jetzt ausführen?')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn-primary btn-sm" {% if not summary.repairable %}disabled{% endif %}>🛠 Sichere Reparaturen</button>
+    </form>
+  </div>
+</div>
+
+<div class="admin-stats admin-stats-compact">
+  <div class="admin-stat"><div class="as-icon">❌</div><div><div class="as-num">{{ summary.errors }}</div><div class="as-lbl">Fehler</div></div></div>
+  <div class="admin-stat"><div class="as-icon">⚠️</div><div><div class="as-num">{{ summary.warnings }}</div><div class="as-lbl">Warnungen</div></div></div>
+  <div class="admin-stat"><div class="as-icon">✅</div><div><div class="as-num">{{ summary.ok }}</div><div class="as-lbl">OK</div></div></div>
+  <div class="admin-stat"><div class="as-icon">🛠</div><div><div class="as-num">{{ summary.repairable }}</div><div class="as-lbl">reparierbar</div></div></div>
+</div>
+
+<section class="card">
+  <div class="integrity-list">
+    {% for c in checks %}
+    <div class="integrity-row {{ c.level }}">
+      <div class="ir-icon">{% if c.level == 'ok' %}✅{% elif c.level == 'warn' %}⚠️{% else %}❌{% endif %}</div>
+      <div>
+        <strong>{{ c.title }}</strong>
+        <p class="muted small">{{ c.message }}</p>
+      </div>
+      {% if c.repairable %}<span class="badge badge-sm">reparierbar</span>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<style>
+.integrity-list{display:grid;gap:8px}.integrity-row{display:grid;grid-template-columns:34px 1fr auto;gap:10px;align-items:center;padding:10px;border:1px solid var(--border);border-radius:12px;background:var(--surface-2)}.integrity-row.ok{border-color:rgba(34,197,94,.25)}.integrity-row.warn{border-color:rgba(245,158,11,.35)}.integrity-row.error{border-color:rgba(239,68,68,.38)}.ir-icon{font-size:20px}.integrity-row p{margin:3px 0 0}@media(max-width:640px){.integrity-row{grid-template-columns:28px 1fr}.integrity-row .badge{grid-column:2}}
+</style>
+{% endblock %}

@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block title %}{{ 'Preis bearbeiten' if prize else 'Neuer Preis' }}{% endblock %}
 {% block content %}
+<script>document.body.classList.add('admin-subpage', 'admin-prize-form-page');</script>
+
 
 <a href="{{ url_for('admin.admin_prizes') }}" class="back-link">← Preise</a>
 <h1>{{ '✏️ Preis bearbeiten' if prize else '➕ Neuer Preis' }}</h1>
@@ -20,11 +22,23 @@
       <label>{{ form.description.label }} {{ form.description(class_='input', placeholder='kurze Beschreibung der Kategorie') }}</label>
 
       <div class="grid-3" style="grid-template-columns: 1fr 1fr 1fr;">
-        <label>{{ form.icon.label }} {{ form.icon(class_='input icon-input', placeholder='🏆', maxlength=4) }}</label>
+        <label>{{ form.icon.label }} {{ form.icon(class_='input icon-input', placeholder='🏆', maxlength=4) }}
+          <small class="muted">Emoji direkt eintippen oder unten auswählen.</small>
+        </label>
         <label>{{ form.color.label }} {{ form.color(class_='input', type='color') }}</label>
         <label>{{ form.sort_order.label }} {{ form.sort_order(class_='input', inputmode='numeric') }}
           <small class="muted">kleiner = weiter oben</small>
         </label>
+      </div>
+
+
+      <div class="emoji-picker-card" aria-label="Emoji-Auswahl für Preis-Icon">
+        <small class="muted">Schnellauswahl:</small>
+        <div class="emoji-grid">
+          {% for emoji in ['🏆','🥇','🥈','🥉','🎖️','🏅','⭐','🔥','⚽','🎯','💰','💸','🍺','🍻','🍕','🎁','🎟️','👑','🦆','😅','💪','🚀','🥳','🍀'] %}
+            <button type="button" class="emoji-pick" data-emoji="{{ emoji }}" title="{{ emoji }}">{{ emoji }}</button>
+          {% endfor %}
+        </div>
       </div>
 
       <label>{{ form.amount.label }} {{ form.amount(class_='input', placeholder='z.B. "60 €", "Pokal", "Kasten Bier"') }}
@@ -99,6 +113,14 @@
       preview.amount.style.color = c;
     }
   }
+  document.querySelectorAll('.emoji-pick').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (!fields.icon) return;
+      fields.icon.value = btn.dataset.emoji || btn.textContent.trim();
+      fields.icon.dispatchEvent(new Event('input', { bubbles: true }));
+      fields.icon.focus();
+    });
+  });
   Object.values(fields).forEach(el => { if (el) el.addEventListener('input', update); });
   update();
 })();

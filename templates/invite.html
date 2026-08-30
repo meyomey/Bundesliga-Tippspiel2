@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Mitspieler einladen{% endblock %}
+{% block content %}
+
+<a href="{{ url_for('main.more') }}" class="back-link">← Mehr</a>
+
+<section class="card invite-hero">
+  <div>
+    <p class="eyebrow">Einladen</p>
+    <h1>Mitspieler einladen</h1>
+    <p class="muted">Lade Freunde, Familie oder Kollegen direkt per E-Mail zur Tipprunde ein.</p>
+  </div>
+  <span class="invite-icon">✉️</span>
+</section>
+
+<div class="grid-12 invite-layout">
+  <section class="card span-7">
+    <h2>Einladung per E-Mail senden</h2>
+    <form method="post" class="invite-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label>E-Mail-Adresse(n)
+        <textarea name="emails" class="input" rows="4" placeholder="max@example.de&#10;anna@example.de">{{ raw_emails }}</textarea>
+        <small class="muted">Mehrere Adressen einfach mit Komma, Leerzeichen oder Zeilenumbruch trennen.</small>
+      </label>
+      <label>Persönliche Nachricht optional
+        <textarea name="message" class="input" rows="3" maxlength="500" placeholder="z.B. Komm in unsere Tipprunde, wird lustig!">{{ message }}</textarea>
+      </label>
+      <button type="submit" class="btn-primary btn-block">✉️ Einladung senden</button>
+    </form>
+  </section>
+
+  <aside class="card span-5">
+    <h2>Einladungslink</h2>
+    <p class="muted small">Du kannst den Link auch selbst per WhatsApp, Telegram oder anders teilen.</p>
+    <div class="invite-link-box">
+      <input class="input" id="inviteLink" value="{{ invite_url }}" readonly>
+      <button type="button" class="btn-ghost btn-sm" id="copyInviteBtn">Kopieren</button>
+    </div>
+    <div class="more-chip-row invite-share-row">
+      <a href="https://wa.me/?text={{ share_text|urlencode }}" target="_blank" rel="noopener">💬 WhatsApp</a>
+      <a href="mailto:?subject={{ 'Einladung zur Wulmstörper Tipprunde'|urlencode }}&body={{ share_text|urlencode }}">📧 Mail-App</a>
+    </div>
+    <div class="ux-hint" style="margin-top:14px">
+      <strong>Hinweis:</strong>
+      <span>Neue Mitspieler registrieren sich selbst. Admins können Spieler später in der Spielerverwaltung bearbeiten.</span>
+    </div>
+  </aside>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('copyInviteBtn')?.addEventListener('click', async () => {
+  const input = document.getElementById('inviteLink');
+  if (!input) return;
+  try {
+    await navigator.clipboard.writeText(input.value);
+    window.showToast ? showToast('Einladungslink kopiert', 'success') : alert('Einladungslink kopiert');
+  } catch (e) {
+    input.select();
+    document.execCommand('copy');
+  }
+});
+</script>
+{% endblock %}
