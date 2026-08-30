@@ -5,6 +5,7 @@ from flask import Blueprint, request, jsonify, abort, current_app
 from flask_login import login_required, current_user
 from extensions import db
 from models import User, Match, Prediction
+from competition_helpers import filter_matches_for_active_competition
 
 push_bp = Blueprint("push", __name__, url_prefix="/push")
 
@@ -68,7 +69,7 @@ def push_send_reminder():
     match_id = data.get("match_id")
     if match_id:
         from models import Match
-        match = Match.query.get_or_404(match_id)
+        match = db.get_or_404(Match, match_id)
         sent, failed = _remind_for_match(match)
     else:
         sent, failed = _remind_upcoming()
@@ -139,11 +140,12 @@ def _remind_for_match(match) -> tuple[int, int]:
 
 def _remind_upcoming() -> tuple[int, int]:
     now = datetime.now(timezone.utc)
-    upcoming = Match.query.filter(
+    upcoming_q = Match.query.filter(
         Match.kickoff > now,
         Match.kickoff <= now + timedelta(hours=1, minutes=5),
         Match.status == "scheduled",
-    ).all()
+    )
+    upcoming = filter_matches_for_active_competition(upcoming_q).all()
     total_sent = 0
     total_failed = 0
     for match in upcoming:

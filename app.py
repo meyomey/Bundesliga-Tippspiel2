@@ -17,6 +17,7 @@ Utility-Module:
 """
 import os
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from flask import Flask, session
 from flask_login import current_user
@@ -25,6 +26,7 @@ from config import Config
 from extensions import db, login_manager, mail, cache, csrf, limiter
 
 from models import Competition
+from competition_helpers import get_active_competition
 
 # Blueprint-Module
 from routes_main import main_bp
@@ -33,11 +35,11 @@ from routes_admin import admin_bp
 from routes_api import api_bp
 
 # Utility-Imports für Startup-Seeding
-from sync import seed_teams_if_empty, seed_demo_matches, auto_migrate_schema
+from sync import seed_teams_if_empty, seed_demo_matches, auto_migrate_schema, update_known_team_logos
 from badges import seed_badges, seed_prizes
 from scoring import get_setting, set_setting
 from mail_helpers import apply_mail_settings
-from stats import get_open_matches_for_user
+from stats import get_open_matches_for_user, get_current_matchday
 
 import json as _json
 
@@ -46,6 +48,13 @@ import json as _json
 def create_app(config_object=Config):
     app = Flask(__name__)
     app.config.from_object(config_object)
+
+    # Sicherheits-Gate fuer Production: Aktiviert mit REQUIRE_SECURE_CONFIG=1
+    # oder APP_ENV/FLASK_ENV=production. Verhindert bekannte Defaults.
+    secure_required = app.config.get("REQUIRE_SECURE_CONFIG") or app.config.get("APP_ENV") == "production"
+    if secure_required and not app.config.get("TESTING"):
+        if app.config.get("SECRET_KEY") == app.config.get("DEFAULT_SECRET_KEY"):
+            raise RuntimeError("SECRET_KEY muss in Production gesetzt sein.")
 
     # Extensions initialisieren
     db.init_app(app)
@@ -82,20 +91,20 @@ def create_app(config_object=Config):
 
     @app.context_processor
     def inject_globals():
-        ctx = {"now": lambda: datetime.now(timezone.utc), "asset_version": _asset_version}
+        ctx = {"now": lambda: datetime.now(timezone.utc), "asset_version": _asset_version, "player_preview_mode": bool(session.get("player_preview_mode"))}
 
         try:
-            # Validierung: Nur existierende Wettbewerbe aus Session erlauben
-            comp_code = session.get("competition_code")
-            if comp_code:
-                comp = Competition.query.filter_by(code=comp_code, is_active=True).first()
-                ctx["active_competition"] = comp.code if comp else "BL1"
-            else:
-                first = Competition.query.filter_by(is_active=True).first()
-                ctx["active_competition"] = first.code if first else "BL1"
+            comp = get_active_competition()
+            ctx["active_competition_obj"] = comp
+            ctx["active_competition"] = comp.code if comp else "BL1"
+            ctx["active_competition_name"] = comp.name if comp else "Bundesliga"
+            ctx["active_competition_season"] = comp.season if comp else get_setting("current_season", "")
             ctx["all_competitions"] = Competition.query.filter_by(is_active=True).all()
         except Exception:
+            ctx["active_competition_obj"] = None
             ctx["active_competition"] = "BL1"
+            ctx["active_competition_name"] = "Bundesliga"
+            ctx["active_competition_season"] = get_setting("current_season", "")
             ctx["all_competitions"] = []
 
         if current_user.is_authenticated:
@@ -106,6 +115,30 @@ def create_app(config_object=Config):
             except Exception:
                 ctx["open_match_count"] = 0
                 ctx["next_open_match"] = None
+            try:
+                from models import Match, Prediction
+                current_md = get_current_matchday()
+                q = Match.query.filter_by(matchday=current_md)
+                comp = ctx.get("active_competition_obj")
+                if comp:
+                    q = q.filter(Match.competition_id == comp.id)
+                matches = q.all()
+                match_ids = [m.id for m in matches]
+                tipped = 0
+                if match_ids:
+                    tipped = Prediction.query.filter(
+                        Prediction.user_id == current_user.id,
+                        Prediction.match_id.in_(match_ids),
+                    ).count()
+                ctx["global_tip_status"] = {
+                    "matchday": current_md,
+                    "tipped": tipped,
+                    "total": len(matches),
+                    "open": max(len(matches) - tipped, 0),
+                    "text": f"Spieltag {current_md}: {tipped}/{len(matches)} getippt" if matches else f"Spieltag {current_md}: —",
+                }
+            except Exception:
+                ctx["global_tip_status"] = None
         return ctx
 
     @app.context_processor
@@ -146,6 +179,22 @@ def create_app(config_object=Config):
     def fmt_de(value, fmt="%a, %d.%m. %H:%M"):
         return _german_strftime(value, fmt)
 
+    def _as_berlin_time(value):
+        """Convert stored UTC datetimes to Europe/Berlin for display.
+
+        Match kickoffs are stored from API UTC timestamps. SQLite may return
+        them without tzinfo, so naive values are treated as UTC here.
+        """
+        if not value:
+            return value
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.astimezone(ZoneInfo("Europe/Berlin"))
+
+    @app.template_filter("de_local")
+    def fmt_de_local(value, fmt="%a, %d.%m. %H:%M"):
+        return _german_strftime(_as_berlin_time(value), fmt)
+
     @app.template_filter("fromjson")
     def fromjson(value):
         if not value:
@@ -155,6 +204,34 @@ def create_app(config_object=Config):
             return parsed if isinstance(parsed, list) else [parsed]
         except (ValueError, TypeError):
             return []
+
+    @app.template_filter("linkify")
+    def linkify_filter(value):
+        """Macht Zahlungs-/Hinweis-URLs anklickbar, ohne HTML ungefiltert zu erlauben."""
+        if not value:
+            return ""
+        import re
+        from markupsafe import Markup, escape
+
+        text = str(value)
+        pattern = re.compile(r"(https?://[^\s<]+|www\.[^\s<]+|paypal\.me/[^\s<]+)", re.IGNORECASE)
+        result = []
+        last = 0
+        for match in pattern.finditer(text):
+            result.append(escape(text[last:match.start()]))
+            label = match.group(0).rstrip(".,;)")
+            trailing = match.group(0)[len(label):]
+            href = label
+            if href.lower().startswith("www.") or href.lower().startswith("paypal.me/"):
+                href = "https://" + href
+            result.append(Markup(
+                '<a href="{href}" target="_blank" rel="noopener noreferrer">{label}</a>'
+            ).format(href=escape(href), label=escape(label)))
+            if trailing:
+                result.append(escape(trailing))
+            last = match.end()
+        result.append(escape(text[last:]))
+        return Markup("").join(result)
 
     # ── Bootstrap DB + Demo ──
     with app.app_context():
@@ -187,7 +264,15 @@ def create_app(config_object=Config):
             db.session.rollback()
             app.logger.warning(f"Competition seed failed: {e}")
 
+        # Nach dem Competition-Seeding erneut ausfuehren, damit neue
+        # competition_id-Spalten in Bestandsdaten sauber befuellt werden koennen.
+        try:
+            auto_migrate_schema()
+        except Exception as e:
+            app.logger.warning(f"Auto-Migration nach Competition-Seed übersprungen: {e}")
+
         seed_teams_if_empty()
+        update_known_team_logos()
         seed_demo_matches()
         seed_badges()
         seed_prizes()
@@ -203,9 +288,13 @@ def create_app(config_object=Config):
             admin = User.query.filter_by(email=admin_email).first()
             if not admin:
                 admin = User.query.filter_by(username=admin_username).first()
+            any_admin_exists = User.query.filter_by(is_admin=True).first() is not None
 
             if not admin:
-                if not User.query.filter(
+                # Keinen zusaetzlichen Default-Admin mehr erzeugen, wenn bereits
+                # ein anderes Admin-Konto existiert. Sonst taucht nach Deploys
+                # immer wieder ein ungewollter "admin"-User in der DB auf.
+                if not any_admin_exists and not User.query.filter(
                     (User.email == admin_email) | (User.username == admin_username)
                 ).first():
                     admin = User(username=admin_username, email=admin_email, is_admin=True)
@@ -224,12 +313,26 @@ def create_app(config_object=Config):
                 admin.is_admin = True
                 db.session.commit()
                 app.logger.warning(f"⚠️ Admin RESET: {admin.email}")
-            elif not admin.is_admin:
+            elif not admin.is_admin and not any_admin_exists:
+                # Nur hochstufen, wenn sonst kein Admin existiert.
                 admin.is_admin = True
                 db.session.commit()
         except Exception as e:
             db.session.rollback()
             app.logger.error(f"Admin-Bootstrap fehlgeschlagen: {e}")
+
+        # Production-Sicherheitscheck nach dem Admin-Bootstrap:
+        # Entscheidend ist nicht der Config-Fallback, sondern ob ein reales
+        # Admin-Konto noch mit admin123 einloggen kann.
+        if secure_required and not app.config.get("TESTING"):
+            try:
+                insecure_admin = User.query.filter_by(is_admin=True).all()
+                if any(a.check_password("admin123") for a in insecure_admin):
+                    raise RuntimeError("Mindestens ein Admin-Konto nutzt noch das Passwort admin123.")
+            except RuntimeError:
+                raise
+            except Exception as e:
+                app.logger.warning(f"Admin-Passwort-Sicherheitscheck übersprungen: {e}")
 
         # Default-Settings
         if get_setting("points_exact") is None:
@@ -298,4 +401,5 @@ def test_whatsapp():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(debug=True, port=port, host="0.0.0.0")
+    debug = os.environ.get("FLASK_DEBUG", "").lower() in ("1", "true", "yes", "on")
+    app.run(debug=debug, port=port, host="0.0.0.0")

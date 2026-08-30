@@ -1,6 +1,7 @@
 """Cache-Monitoring Routes für den Admin-Bereich."""
 from flask import render_template, redirect, url_for, flash, request, abort, current_app
 from flask_login import login_required, current_user
+from audit_log import log_admin_action
 
 
 def _get_redis():
@@ -41,7 +42,14 @@ def _admin_cache_view():
                 "total_keys": r.dbsize(),
                 "uptime_days": uptime_days,
             }
-            keys_raw = r.keys("*")[:500]
+            keys_raw = []
+            try:
+                for k in r.scan_iter(match="*", count=200):
+                    keys_raw.append(k)
+                    if len(keys_raw) >= 500:
+                        break
+            except Exception:
+                keys_raw = r.keys("*")[:500]
             for k in sorted(keys_raw):
                 ttl = r.ttl(k)
                 all_keys.append({"name": k, "ttl": ttl})
@@ -59,6 +67,7 @@ def _admin_cache_flush_all():
     if r:
         try:
             r.flushdb()
+            log_admin_action("cache_flush_all", "cache", None, "Cache vollständig geleert")
             flash("💣 Cache vollständig geleert.", "success")
         except Exception as e:
             flash(f"❌ Fehler: {e}", "error")
@@ -75,10 +84,17 @@ def _admin_cache_flush_pattern():
     r, error = _get_redis()
     if r:
         try:
-            keys = r.keys(pattern)
+            keys = []
+            try:
+                keys = list(r.scan_iter(match=pattern, count=500))
+            except Exception:
+                keys = r.keys(pattern)
             if keys:
-                r.delete(*keys)
-                flash(f"🗑️ {len(keys)} Keys mit Muster '{pattern}' gelöscht.", "success")
+                deleted = 0
+                for i in range(0, len(keys), 500):
+                    deleted += r.delete(*keys[i:i+500])
+                log_admin_action("cache_flush_pattern", "cache", pattern, f"{deleted} Keys geloescht", {"pattern": pattern, "deleted": deleted})
+                flash(f"🗑️ {deleted} Keys mit Muster '{pattern}' gelöscht.", "success")
             else:
                 flash(f"ℹ️ Keine Keys mit Muster '{pattern}' gefunden.", "info")
         except Exception as e:
@@ -98,6 +114,7 @@ def _admin_cache_delete_key():
         try:
             deleted = r.delete(key)
             if deleted:
+                log_admin_action("cache_delete_key", "cache", key, f"Key '{key}' geloescht")
                 flash(f"🗑️ Key '{key}' gelöscht.", "success")
             else:
                 flash(f"ℹ️ Key '{key}' nicht gefunden.", "info")

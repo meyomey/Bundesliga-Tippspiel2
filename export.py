@@ -21,16 +21,28 @@ def generate_season_pdf(user):
 
     from stats import get_user_insights
     from scoring import get_setting, get_leaderboard
-    from models import MatchdayWinner, UserBadge
+    from models import MatchdayWinner, UserBadge, Match, Prediction
+    from competition_helpers import get_active_competition, filter_competition_scoped
+
+    comp = get_active_competition()
+    pred_q = Prediction.query.filter_by(user_id=user.id).join(Match)
+    if comp:
+        pred_q = pred_q.filter(Match.competition_id == comp.id)
+    user_preds = pred_q.all()
 
     insights = get_user_insights(user)
-    stats_total_pts = sum(p.points or 0 for p in user.predictions)
-    md_wins = MatchdayWinner.query.filter_by(user_id=user.id).all()
+    stats_total_pts = sum(p.points or 0 for p in user_preds)
+    md_wins = filter_competition_scoped(MatchdayWinner.query.filter_by(user_id=user.id), MatchdayWinner).all()
     badges = UserBadge.query.filter_by(user_id=user.id).all()
-    total_tips = user.predictions.count()
-    finished_preds = [p for p in user.predictions if p.match.status == "finished"]
+    total_tips = len(user_preds)
+    finished_preds = [p for p in user_preds if p.match.status == "finished"]
     n_exact = sum(1 for p in finished_preds
                   if p.points and p.points >= get_setting("points_exact", 4))
+    leaderboard_top = get_leaderboard()[:5]
+    md_points = {}
+    for p in finished_preds:
+        md_points[p.match.matchday] = md_points.get(p.match.matchday, 0) + (p.points or 0)
+    md_points_rows = sorted(md_points.items())
 
     buf = BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4,
@@ -65,7 +77,8 @@ def generate_season_pdf(user):
 
     story = []
     story.append(Paragraph("⚽ Wulmstörper Tipprunde", h1))
-    story.append(Paragraph(f"Saison-Report: <b>{user.username}</b>", sub))
+    story.append(Paragraph(f"Saisonabschlussbericht: <b>{user.username}</b>", sub))
+    story.append(Paragraph("Deine persoenliche Bilanz mit Punkten, Rang, Highlights, Spieltagsiegen und Badges.", body))
     if user.full_name:
         story.append(Paragraph(f"<i>{user.full_name}</i>", sub))
     story.append(Spacer(1, 6))
@@ -91,12 +104,14 @@ def generate_season_pdf(user):
         from stats import _compute_rank_through
         from extensions import db
         from models import Match
-        finished_mds = sorted({m for (m,) in db.session.query(Match.matchday)
-                                .filter_by(status="finished").distinct().all()})
+        from competition_helpers import filter_matches_for_active_competition
+        md_q = db.session.query(Match.matchday).filter(Match.status == "finished").distinct()
+        md_q = filter_matches_for_active_competition(md_q)
+        finished_mds = sorted({m for (m,) in md_q.all()})
         if finished_mds:
             r = _compute_rank_through(user.id, finished_mds[-1])
             if r:
-                final_rank = f"#{r}"
+                final_rank = f"{r}"
     except Exception:
         pass
 
@@ -160,6 +175,45 @@ def generate_season_pdf(user):
             ("INNERGRID", (0,0), (-1,-1), 0.3, HexColor("#cbd5e1")),
             ("TOPPADDING", (0,0), (-1,-1), 8),
             ("BOTTOMPADDING", (0,0), (-1,-1), 8),
+        ]))
+        story.append(t)
+
+
+    if leaderboard_top:
+        story.append(Paragraph("🏆 Top 5 Gesamtwertung", h2))
+        rows = [["Rang", "Spieler", "Punkte", "Exakt"]]
+        for r in leaderboard_top:
+            rows.append([str(r["rank"]), r["user"].username, str(r["points"]), str(r["exact"])])
+        t = Table(rows, colWidths=[2*cm, 6*cm, 3*cm, 3*cm])
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (0,0), (-1,0), teal),
+            ("TEXTCOLOR", (0,0), (-1,0), white),
+            ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
+            ("ALIGN", (0,0), (-1,-1), "CENTER"),
+            ("ROWBACKGROUNDS", (0,1), (-1,-1), [white, bg_card]),
+            ("BOX", (0,0), (-1,-1), 0.5, HexColor("#cbd5e1")),
+            ("INNERGRID", (0,0), (-1,-1), 0.3, HexColor("#cbd5e1")),
+            ("TOPPADDING", (0,0), (-1,-1), 7),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 7),
+        ]))
+        story.append(t)
+
+    if md_points_rows:
+        story.append(Paragraph("📈 Punkte je Spieltag", h2))
+        rows = [["Spieltag", "Punkte"]]
+        for md, pts in md_points_rows:
+            rows.append([f"ST {md}", str(pts)])
+        t = Table(rows, colWidths=[4*cm, 4*cm])
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (0,0), (-1,0), teal),
+            ("TEXTCOLOR", (0,0), (-1,0), white),
+            ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
+            ("ALIGN", (0,0), (-1,-1), "CENTER"),
+            ("ROWBACKGROUNDS", (0,1), (-1,-1), [white, bg_card]),
+            ("BOX", (0,0), (-1,-1), 0.5, HexColor("#cbd5e1")),
+            ("INNERGRID", (0,0), (-1,-1), 0.3, HexColor("#cbd5e1")),
+            ("TOPPADDING", (0,0), (-1,-1), 6),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 6),
         ]))
         story.append(t)
 

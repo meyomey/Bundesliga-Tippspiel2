@@ -3,6 +3,7 @@ import logging
 from datetime import datetime, timezone
 from extensions import db
 from models import User, Match, Prediction, Team
+from competition_helpers import active_match_query, filter_matches_for_active_competition
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,7 @@ def cmd_tip(telegram_user_id, args):
         return "Format: /tipp FCB-BVB 2:1"
     match_part = args[0].strip().upper()
     score_part = args[1].strip()
+    wants_joker = any(a.strip().lower() in ("joker", "j", "⚡") for a in args[2:])
     if "-" not in match_part or ":" not in score_part:
         return "Format: /tipp FCB-BVB 2:1"
     home_short, away_short = match_part.split("-", 1)
@@ -61,24 +63,38 @@ def cmd_tip(telegram_user_id, args):
         return "Team nicht gefunden. Kuerzel: FCB, BVB, B04, SGE, HSV, etc."
     from sqlalchemy import or_
     now = datetime.now(timezone.utc)
-    match = Match.query.filter(
+    match_q = Match.query.filter(
         Match.status == "scheduled", Match.kickoff > now,
         or_((Match.home_team_id == home_team.id) & (Match.away_team_id == away_team.id),
             (Match.home_team_id == away_team.id) & (Match.away_team_id == home_team.id)),
-    ).order_by(Match.kickoff.asc()).first()
+    )
+    match = filter_matches_for_active_competition(match_q).order_by(Match.kickoff.asc()).first()
     if not match:
         return "Kein anstehendes Spiel " + home_short + " vs " + away_short + " gefunden."
     existing = Prediction.query.filter_by(user_id=user.id, match_id=match.id).first()
     if existing:
         existing.home_tip = home_tip
         existing.away_tip = away_tip
+        pred = existing
         verb = "aktualisiert"
     else:
-        db.session.add(Prediction(
+        pred = Prediction(
             user_id=user.id, match_id=match.id,
             home_tip=home_tip, away_tip=away_tip, joker=False
-        ))
+        )
+        db.session.add(pred)
         verb = "gespeichert"
+    if wants_joker:
+        old = Prediction.query.join(Match).filter(
+            Prediction.user_id == user.id,
+            Prediction.joker.is_(True),
+            Match.matchday == match.matchday,
+            Match.competition_id == match.competition_id,
+            Prediction.match_id != match.id,
+        ).all()
+        for p in old:
+            p.joker = False
+        pred.joker = True
     db.session.commit()
     try:
         from badges import check_and_award_badges
@@ -111,7 +127,7 @@ def cmd_my_tips(telegram_user_id):
         return "Du bist nicht verknuepft."
     from stats import get_current_matchday
     matchday = get_current_matchday()
-    matches = Match.query.filter_by(matchday=matchday).order_by(Match.kickoff).all()
+    matches = active_match_query().filter_by(matchday=matchday).order_by(Match.kickoff).all()
     if not matches:
         return "Keine Spiele fuer Spieltag " + str(matchday) + "."
     lines = ["Spieltag " + str(matchday) + " - Deine Tipps:"]
@@ -130,7 +146,7 @@ def cmd_my_tips(telegram_user_id):
 def cmd_schedule(telegram_user_id):
     from stats import get_current_matchday
     matchday = get_current_matchday()
-    matches = Match.query.filter_by(matchday=matchday).order_by(Match.kickoff).all()
+    matches = active_match_query().filter_by(matchday=matchday).order_by(Match.kickoff).all()
     if not matches:
         return "Keine Spiele fuer Spieltag " + str(matchday) + "."
     lines = ["Spieltag " + str(matchday) + ":"]
@@ -143,6 +159,78 @@ def cmd_schedule(telegram_user_id):
         ko = m.kickoff.strftime("%d.%m. %H:%M") if m.kickoff else "?"
         lines.append(m.home_team.short_name + " vs " + m.away_team.short_name + score + " (" + ko + ")")
     return "\n".join(lines)
+
+
+def _linked_user(telegram_user_id):
+    return User.query.filter_by(phone="tg:" + str(telegram_user_id)).first()
+
+
+def cmd_open(telegram_user_id):
+    user = _linked_user(telegram_user_id)
+    if not user:
+        return "Du bist nicht verknuepft. Sende /start TOKEN aus deinem Profil."
+    from stats import get_open_matches_for_user
+    matches = get_open_matches_for_user(user, max_hours=24 * 14)[:12]
+    if not matches:
+        return "Du hast aktuell keine offenen Tipps in den naechsten 14 Tagen. ✅"
+    lines = ["Offene Tipps:"]
+    for m in matches:
+        ko = m.kickoff.strftime("%d.%m. %H:%M") if m.kickoff else "?"
+        lines.append(f"{m.home_team.short_name}-{m.away_team.short_name} ({ko}) -> /tipp {m.home_team.short_name}-{m.away_team.short_name} 2:1")
+    return "\n".join(lines)
+
+
+def cmd_joker(telegram_user_id, args):
+    user = _linked_user(telegram_user_id)
+    if not user:
+        return "Du bist nicht verknuepft."
+    if not args:
+        return "Format: /joker FCB-BVB"
+    match_part = args[0].strip().upper()
+    if "-" not in match_part:
+        return "Format: /joker FCB-BVB"
+    home_short, away_short = match_part.split("-", 1)
+    home_team = Team.query.filter_by(short_name=home_short).first()
+    away_team = Team.query.filter_by(short_name=away_short).first()
+    if not home_team or not away_team:
+        return "Team nicht gefunden."
+    from sqlalchemy import or_
+    now = datetime.now(timezone.utc)
+    match_q = Match.query.filter(
+        Match.status == "scheduled", Match.kickoff > now,
+        or_((Match.home_team_id == home_team.id) & (Match.away_team_id == away_team.id),
+            (Match.home_team_id == away_team.id) & (Match.away_team_id == home_team.id)),
+    )
+    match = filter_matches_for_active_competition(match_q).order_by(Match.kickoff.asc()).first()
+    if not match:
+        return "Kein offenes Spiel gefunden."
+    pred = Prediction.query.filter_by(user_id=user.id, match_id=match.id).first()
+    if not pred:
+        return "Bitte erst tippen, dann Joker setzen. Beispiel: /tipp FCB-BVB 2:1 joker"
+    old = Prediction.query.join(Match).filter(
+        Prediction.user_id == user.id,
+        Prediction.joker.is_(True),
+        Match.matchday == match.matchday,
+        Match.competition_id == match.competition_id,
+        Prediction.match_id != match.id,
+    ).all()
+    for p in old:
+        p.joker = False
+    pred.joker = True
+    db.session.commit()
+    return f"⚡ Joker gesetzt fuer {match.home_team.short_name}-{match.away_team.short_name}."
+
+
+def cmd_stats(telegram_user_id):
+    user = _linked_user(telegram_user_id)
+    if not user:
+        return "Du bist nicht verknuepft."
+    from scoring import get_user_stats
+    st = get_user_stats(user)
+    return (f"📊 Deine Statistik\n"
+            f"Punkte: {st['points']}\nTipps: {st['tips']}\n"
+            f"Exakt: {st['exact']} | Diff: {st['diff']} | Tendenz: {st['tendency']}\n"
+            f"Quote exakt: {st['exact_quote']}%")
 
 def process_message(telegram_user_id, text):
     if not text:
@@ -157,6 +245,12 @@ def process_message(telegram_user_id, text):
         return cmd_rankings(telegram_user_id)
     if command in ("/meine_tipps", "/mytipps"):
         return cmd_my_tips(telegram_user_id)
+    if command in ("/offen", "/open"):
+        return cmd_open(telegram_user_id)
+    if command in ("/joker",):
+        return cmd_joker(telegram_user_id, parts[1:])
+    if command in ("/stats", "/statistik"):
+        return cmd_stats(telegram_user_id)
     if command in ("/spielplan", "/schedule"):
         return cmd_schedule(telegram_user_id)
     if command in ("/hilfe", "/help"):
@@ -164,6 +258,9 @@ def process_message(telegram_user_id, text):
                 "/tipp FCB-BVB 2:1 - Tipp abgeben\n"
                 "/rangliste - Top 10\n"
                 "/meine_tipps - Meine Tipps\n"
+                "/offen - Offene Tipps\n"
+                "/joker FCB-BVB - Joker setzen\n"
+                "/stats - Deine Statistik\n"
                 "/spielplan - Aktueller Spieltag\n"
                 "/hilfe - Diese Hilfe")
     return None

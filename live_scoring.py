@@ -15,7 +15,8 @@ from flask_login import login_required, current_user
 
 from extensions import db, cache
 from models import Match, Prediction, User, Competition
-from cache import cache_key_match_detail, invalidate_match
+from cache import cache_key_live_matches, cache_key_match_detail, invalidate_match
+from competition_helpers import get_active_competition
 
 # Blueprint fuer Live-Scoring Routes
 live_bp = Blueprint('live', __name__)
@@ -29,8 +30,11 @@ class LiveMatchManager:
     
     def get_live_matches(self, competition_id: int = None) -> List[dict]:
         """Holt alle aktuell laufenden Spiele."""
+        if competition_id is None:
+            comp = get_active_competition()
+            competition_id = comp.id if comp else None
         # Cache fuer 30 Sekunden
-        cache_key = f"live_matches:{competition_id or 'all'}"
+        cache_key = cache_key_live_matches(competition_id)
         cached = cache.get(cache_key)
         if cached:
             return cached
@@ -109,7 +113,7 @@ class LiveMatchManager:
         
         # Cache invalidieren
         invalidate_match(match_id)
-        cache.delete(f"live_matches:*")
+        cache.delete_pattern("live_matches:*")
         # Live-Leaderboard NICHT cachen, aber falls doch:
         cache.delete_pattern("leaderboard:*")
         
@@ -137,7 +141,7 @@ class LiveMatchManager:
         
         # Caches invalidieren
         invalidate_match(match_id)
-        cache.delete(f"live_matches:*")
+        cache.delete_pattern("live_matches:*")
         from cache import invalidate_leaderboard
         invalidate_leaderboard()
         

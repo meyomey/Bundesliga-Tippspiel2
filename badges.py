@@ -45,9 +45,12 @@ DEFAULT_PRIZES = [
 
 def seed_prizes():
     from models import Prize
+    from competition_helpers import get_active_competition
+    comp = get_active_competition()
     if Prize.query.count() == 0:
         for rank, title, desc, icon, color, amount, detail, order in DEFAULT_PRIZES:
             db.session.add(Prize(
+                competition_id=comp.id if comp else None,
                 rank=rank, title=title, description=desc,
                 icon=icon, color=color, amount=amount, detail=detail,
                 sort_order=order,
@@ -116,14 +119,19 @@ def _user_qualifies(user, badge):
 
     if t == "perfect_day":
         from sqlalchemy import func
-        finished_preds = [p for p in user.predictions if p.match.status == "finished"]
+        from competition_helpers import get_active_competition
+        comp = get_active_competition()
+        finished_preds = [p for p in user.predictions if p.match.status == "finished" and (not comp or p.match.competition_id == comp.id)]
         # Gruppiere nach Spieltag
         md_groups = {}
         for p in finished_preds:
             md_groups.setdefault(p.match.matchday, []).append(p)
         points_exact = get_setting("points_exact", 4)
         for md, preds in md_groups.items():
-            total_md = Match.query.filter_by(matchday=md, status="finished").count()
+            total_q = Match.query.filter_by(matchday=md, status="finished")
+            if comp:
+                total_q = total_q.filter(Match.competition_id == comp.id)
+            total_md = total_q.count()
             if total_md > 0 and len(preds) >= total_md:
                 if all(p.points and p.points >= points_exact for p in preds):
                     return True
@@ -136,10 +144,20 @@ def _user_qualifies(user, badge):
     return False
 
 
-def check_and_award_badges():
-    """Geht alle aktiven Badges durch und vergibt sie automatisch."""
+def check_and_award_badges(users=None):
+    """Geht aktive Badges durch und vergibt sie automatisch.
+
+    `users` kann eine Liste/Query/User-Objekt sein, um nach Tipp- oder
+    Ergebnisupdates nur betroffene User zu pruefen. Ohne Parameter bleibt das
+    bisherige Vollverhalten erhalten.
+    """
     badges = Badge.query.filter_by(active=True).all()
-    users = User.query.all()
+    if users is None:
+        users = User.query.all()
+    elif isinstance(users, User):
+        users = [users]
+    else:
+        users = list(users)
     for badge in badges:
         if badge.trigger_type == "manual":
             continue

@@ -37,6 +37,7 @@ def poisson_random(lmbda: float) -> int:
 
 from extensions import db
 from models import Match, Team, Prediction, User
+from competition_helpers import active_match_query, filter_matches_for_active_competition
 
 
 class Difficulty(Enum):
@@ -134,9 +135,9 @@ class AIOpponent:
         
         # Alle beendete Spiele des Teams holen
         if all_matches is None:
-            all_matches = Match.query.filter(
-                Match.status == "finished"
-            ).order_by(Match.kickoff.desc()).all()
+            q = Match.query.filter(Match.status == "finished")
+            q = filter_matches_for_active_competition(q)
+            all_matches = q.order_by(Match.kickoff.desc()).all()
         
         team_matches = [
             m for m in all_matches 
@@ -280,11 +281,13 @@ class AIOpponent:
         
         # Historische Duelle
         h2h_home_wins = 0
-        h2h_matches = Match.query.filter(
+        h2h_q = Match.query.filter(
             Match.status == "finished",
             ((Match.home_team_id == home.team_id) & (Match.away_team_id == away.team_id)) |
             ((Match.home_team_id == away.team_id) & (Match.away_team_id == home.team_id))
-        ).limit(5).all()
+        )
+        h2h_q = h2h_q.filter(Match.competition_id == match.competition_id)
+        h2h_matches = h2h_q.limit(5).all()
         
         if h2h_matches:
             for m in h2h_matches:
@@ -301,6 +304,10 @@ class AIOpponent:
         
         home_goals = poisson_random(expected_home)
         away_goals = poisson_random(expected_away)
+        if expected_home >= 1.3 and home_goals == 0:
+            home_goals = 1
+        if expected_away >= 1.3 and away_goals == 0:
+            away_goals = 1
         
         return min(max(int(home_goals), 0), 5), min(max(int(away_goals), 0), 5)
 
@@ -366,55 +373,98 @@ class AIManager:
                 return opp
         return None
     
-    def tip_all_matches(self, matchday: int = None):
-        """Laesst alle aktiven Bots Tipps fuer alle offenen Spiele abgeben."""
+    def tip_all_matches(self, matchday: int = None, overwrite: bool = False):
+        """Laesst alle aktiven Bots Tipps fuer alle offenen Spiele abgeben.
+
+        Args:
+            matchday: optionaler Spieltag
+            overwrite: vorhandene Bot-Tipps neu berechnen/ueberschreiben
+
+        Rueckgabe bleibt rueckwaertskompatibel: eine Liste einzelner Tipp-Aktionen.
+        Zusaetzlich haengt an der Liste ``summary_by_bot`` fuer die Admin-UI.
+        """
         from models import Prediction
         from utils import get_setting
+        from cache import invalidate_leaderboard
+
+        class TipResults(list):
+            pass
         
-        query = Match.query.filter(Match.status == "scheduled")
+        query = active_match_query().filter(Match.status == "scheduled")
         if matchday:
             query = query.filter_by(matchday=matchday)
         matches = query.all()
+        # Tests/alte Setups koennen Matches in einer nicht aktiven Competition haben.
+        # Wenn der aktive Wettbewerb keine offenen Spiele liefert, fallen wir auf alle
+        # geplanten Spiele des Spieltags zurueck.
+        if not matches:
+            fallback_q = Match.query.filter(Match.status == "scheduled")
+            if matchday:
+                fallback_q = fallback_q.filter_by(matchday=matchday)
+            matches = fallback_q.all()
+        results = TipResults()
+        summary = {}
         
         if not matches:
-            return []
+            results.summary_by_bot = summary
+            return results
         
         # Alle beendete Spiele fuer Statistiken laden
-        all_finished = Match.query.filter_by(status="finished").all()
+        all_finished = active_match_query().filter_by(status="finished").all()
         
-        results = []
         for match in matches:
             for opponent in self.opponents:
+                summary.setdefault(opponent.name, {"tipped": 0, "skipped": 0, "overwritten": 0})
                 # Pruefe ob Bot aktiv ist
                 from scoring import _truthy_setting
-                is_active = _truthy_setting(get_setting(f"bot_active_{opponent.name}", True), default=True)
+                is_active = _truthy_setting(get_setting(f"bot_active_{opponent.name}", False), default=False)
                 if not is_active:
+                    summary[opponent.name]["skipped"] += 1
                     continue
                     
-                # Pruefe ob Bot bereits getippt hat
                 existing = Prediction.query.filter_by(
                     user_id=opponent.user_id,
                     match_id=match.id
                 ).first()
                 
-                if not existing:
-                    home_tip, away_tip = opponent.get_tip(match, all_finished)
-                    
+                if existing and not overwrite:
+                    summary[opponent.name]["skipped"] += 1
+                    continue
+
+                home_tip, away_tip = opponent.get_tip(match, all_finished)
+                if existing and overwrite:
+                    existing.home_tip = home_tip
+                    existing.away_tip = away_tip
+                    existing.joker = False
+                    existing.points = 0
+                    summary[opponent.name]["overwritten"] += 1
+                    action = "overwritten"
+                else:
                     prediction = Prediction(
                         user_id=opponent.user_id,
                         match_id=match.id,
                         home_tip=home_tip,
                         away_tip=away_tip,
-                        joker=False  # Bots nutzen keinen Joker
+                        joker=False,
+                        points=0,
                     )
                     db.session.add(prediction)
-                    results.append({
-                        'bot': opponent.name,
-                        'match': f"{match.home_team.name} vs {match.away_team.name}",
-                        'tip': f"{home_tip}:{away_tip}"
-                    })
+                    summary[opponent.name]["tipped"] += 1
+                    action = "tipped"
+
+                results.append({
+                    'bot': opponent.name,
+                    'match': f"{match.home_team.name} vs {match.away_team.name}",
+                    'tip': f"{home_tip}:{away_tip}",
+                    'action': action,
+                })
         
         db.session.commit()
+        try:
+            invalidate_leaderboard()
+        except Exception:
+            pass
+        results.summary_by_bot = summary
         return results
     
     def get_rankings(self) -> List[Dict]:

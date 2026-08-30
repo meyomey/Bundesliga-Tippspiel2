@@ -7,7 +7,10 @@ basedir = os.path.abspath(os.path.dirname(__file__))
 
 class Config:
     # Sicherheit
-    SECRET_KEY = os.environ.get("SECRET_KEY") or "change-me-in-production-please-use-32-chars-min"
+    DEFAULT_SECRET_KEY = "change-me-in-production-please-use-32-chars-min"
+    SECRET_KEY = os.environ.get("SECRET_KEY") or DEFAULT_SECRET_KEY
+    REQUIRE_SECURE_CONFIG = os.environ.get("REQUIRE_SECURE_CONFIG", "").lower() in ("1", "true", "yes")
+    APP_ENV = os.environ.get("APP_ENV", os.environ.get("FLASK_ENV", "")).lower()
     WTF_CSRF_ENABLED = True
 
     # Datenbank
@@ -38,6 +41,8 @@ class Config:
     FOOTBALL_DATA_TOKEN = os.environ.get("FOOTBALL_DATA_TOKEN", "")
     OPENLIGADB_BASE = "https://api.openligadb.de"
     FOOTBALL_DATA_BASE = "https://api.football-data.org/v4"
+    PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "")
+    TELEGRAM_WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
 
     # Saison (Bundesliga 2025/26)
     SEASON = "2025"

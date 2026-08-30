@@ -3,11 +3,12 @@ import os
 import sqlite3
 import tempfile
 import shutil
+import zipfile
 from datetime import datetime, timedelta, timezone
 
 from flask import (
     Blueprint, render_template, redirect, url_for, flash, request,
-    abort, send_file, current_app,
+    abort, send_file, current_app, session,
 )
 from flask_login import login_required, current_user
 from sqlalchemy import func
@@ -17,7 +18,7 @@ from extensions import db
 from models import (
     User, Team, Match, Prediction, Setting, Comment, Badge, UserBadge,
     SpecialQuestion, SpecialPrediction, SeasonArchive, Prize, MatchdayWinner,
-    Competition, CompetitionTeam,
+    Competition, CompetitionTeam, AdminActivityLog,
 )
 from forms import (
     MatchResultForm, SettingsForm, SpecialQuestionForm,
@@ -25,14 +26,20 @@ from forms import (
 )
 from scoring import (
     get_setting, set_setting, recalculate_all_points, compute_pot_summary,
+    is_bot_user, is_pot_participant, is_admin_only_user,
 )
 from stats import evaluate_special_predictions, get_current_matchday
 from badges import check_and_award_badges, award_badge, revoke_badge
-from sync import sync_results, _purge_demo_matches, auto_migrate_schema, force_seed_demo_matches
+from sync import sync_results, get_sync_diagnostics, season_code_from_label, _purge_demo_matches, auto_migrate_schema, force_seed_demo_matches
 from mail_helpers import apply_mail_settings, send_email
 from stats import archive_season
+from competition_helpers import (
+    active_match_query, active_matchdays, get_active_competition,
+    filter_competition_scoped,
+)
 
 import json as _json
+from audit_log import log_admin_action
 
 
 admin_bp = Blueprint("admin", __name__)
@@ -44,31 +51,91 @@ def admin_required(f):
     def wrapper(*a, **kw):
         if not current_user.is_authenticated or not current_user.is_admin:
             abort(403)
+        if session.get("player_preview_mode") and request.endpoint != "admin.player_preview_end":
+            flash("Spieleransicht ist aktiv. Beende sie, um den Admin-Bereich zu nutzen.", "info")
+            return redirect(url_for("main.dashboard"))
         return f(*a, **kw)
     return wrapper
+
+
+@admin_bp.route("/player-preview/start")
+@login_required
+@admin_required
+def player_preview_start():
+    session["player_preview_mode"] = True
+    flash("👤 Spieleransicht aktiv: Admin-Menüs sind ausgeblendet.", "info")
+    return redirect(url_for("main.dashboard"))
+
+
+@admin_bp.route("/player-preview/end")
+@login_required
+@admin_required
+def player_preview_end():
+    session.pop("player_preview_mode", None)
+    flash("Admin-Ansicht wieder aktiv.", "success")
+    return redirect(url_for("admin.dashboard"))
 
 
 @admin_bp.route("/")
 @login_required
 @admin_required
 def dashboard():
-    stats = {
-        "users": User.query.count(),
-        "matches": Match.query.count(),
-        "predictions": Prediction.query.count(),
-        "finished": Match.query.filter_by(status="finished").count(),
-    }
+    comp = get_active_competition()
+    pred_q = Prediction.query.join(Match)
+    if comp:
+        pred_q = pred_q.filter(Match.competition_id == comp.id)
     pot = compute_pot_summary()
+    all_users = User.query.all()
+    user_summary = {
+        "accounts": len(all_users),
+        "players": sum(1 for u in all_users if is_pot_participant(u)),
+        "bots": sum(1 for u in all_users if is_bot_user(u)),
+        "admin_only": sum(1 for u in all_users if is_admin_only_user(u)),
+    }
+    stats = {
+        "users": user_summary["players"],
+        "accounts": user_summary["accounts"],
+        "bots": user_summary["bots"],
+        "admin_only": user_summary["admin_only"],
+        "matches": active_match_query().count(),
+        "predictions": pred_q.count(),
+        "finished": active_match_query().filter_by(status="finished").count(),
+    }
     return render_template("admin/dashboard.html", stats=stats, pot=pot)
+
+
+@admin_bp.route("/activity")
+@login_required
+@admin_required
+def activity_log():
+    page = request.args.get("page", 1, type=int)
+    action = (request.args.get("action", "") or "").strip()
+    qtext = (request.args.get("q", "") or "").strip()
+    query = AdminActivityLog.query
+    if action:
+        query = query.filter(AdminActivityLog.action == action)
+    if qtext:
+        like = f"%{qtext}%"
+        query = query.filter(
+            (AdminActivityLog.message.ilike(like)) |
+            (AdminActivityLog.entity_type.ilike(like)) |
+            (AdminActivityLog.entity_id.ilike(like))
+        )
+    pagination = query.order_by(AdminActivityLog.created_at.desc()).paginate(page=page, per_page=50, error_out=False)
+    actions = [a for (a,) in db.session.query(AdminActivityLog.action).distinct().order_by(AdminActivityLog.action.asc()).all()]
+    return render_template("admin/activity.html", pagination=pagination, logs=pagination.items, actions=actions, current_action=action, q=qtext)
 
 
 @admin_bp.route("/sync")
 @login_required
 @admin_required
 def sync():
-    res = sync_results()
-    flash(res["msg"], "success" if res["ok"] else "danger")
-    return redirect(url_for("admin.dashboard"))
+    if request.args.get("run") == "1":
+        res = sync_results()
+        log_admin_action("sync", "competition", get_active_competition().code if get_active_competition() else None, res.get("msg"), {"ok": res.get("ok"), "source": res.get("source"), "created": res.get("created"), "updated": res.get("updated")})
+        flash(res["msg"], "success" if res["ok"] else "danger")
+        return redirect(url_for("admin.sync"), code=303)
+    return render_template("admin/sync.html", diag=get_sync_diagnostics())
 
 
 @admin_bp.route("/purge-demo", methods=["POST"])
@@ -76,6 +143,7 @@ def sync():
 @admin_required
 def purge_demo():
     count = _purge_demo_matches()
+    log_admin_action("purge_demo", "match", None, f"{count} Demo-Spiele entfernt", {"count": count})
     flash(f"{count} Demo-Spiele entfernt.", "success" if count else "info")
     return redirect(url_for("admin.dashboard"))
 
@@ -85,6 +153,7 @@ def purge_demo():
 @admin_required
 def seed_demo():
     count = force_seed_demo_matches()
+    log_admin_action("seed_demo", "match", None, f"{count} Demo-Spiele neu erstellt", {"count": count})
     flash(f"✅ {count} Demo-Spiele neu erstellt (vorhandene geloescht).", "success")
     return redirect(url_for("admin.dashboard"))
 
@@ -97,6 +166,7 @@ def purge_all_matches():
     Comment.query.delete()
     Match.query.delete()
     db.session.commit()
+    log_admin_action("purge_all_matches", "match", None, "Alle Matches und Tipps gelöscht")
     flash("⚠️ Alle Matches und Tipps gelöscht.", "warning")
     return redirect(url_for("admin.dashboard"))
 
@@ -133,6 +203,35 @@ def backup_download():
     filename = f"wulmstoerper_tipprunde_backup_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.db"
     return send_file(db_path, as_attachment=True, download_name=filename,
                      mimetype="application/octet-stream")
+
+
+@admin_bp.route("/backup/zip")
+@login_required
+@admin_required
+def backup_zip_download():
+    """Laedt DB + wichtige Uploads/Logos als ZIP herunter."""
+    db_path = _sqlite_db_path()
+    if not db_path or not os.path.exists(db_path):
+        flash("ZIP-Backup nicht möglich: SQLite-Datenbank nicht gefunden.", "danger")
+        return redirect(url_for("admin.backup_page"))
+    mem = BytesIO()
+    with zipfile.ZipFile(mem, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.write(db_path, arcname="tippspiel.db")
+        for folder, arc_prefix in [
+            (current_app.config.get("UPLOAD_FOLDER"), "static/uploads"),
+            (os.path.join(current_app.static_folder, "team_logos"), "static/team_logos"),
+        ]:
+            if folder and os.path.isdir(folder):
+                for root, _dirs, files in os.walk(folder):
+                    for fn in files:
+                        path = os.path.join(root, fn)
+                        rel = os.path.relpath(path, folder)
+                        zf.write(path, arcname=os.path.join(arc_prefix, rel))
+        zf.writestr("README_BACKUP.txt", "Backup enthaelt SQLite-Datenbank und lokale Uploads/Logos. Sensible Daten sicher aufbewahren.\n")
+    mem.seek(0)
+    filename = f"wulmstoerper_full_backup_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.zip"
+    log_admin_action("backup_zip_download", "database", None, "ZIP-Backup heruntergeladen")
+    return send_file(mem, as_attachment=True, download_name=filename, mimetype="application/zip")
 
 
 @admin_bp.route("/backup/restore", methods=["POST"])
@@ -177,6 +276,7 @@ def backup_restore():
         db.session.remove()
         db.engine.dispose()
         shutil.copy2(tmp_path, db_path)
+        log_admin_action("backup_restore", "database", None, "Backup wiederhergestellt", {"filename": uploaded.filename})
         flash("✅ Backup wiederhergestellt. App neu starten.", "success")
         return redirect(url_for("admin.dashboard"))
     finally:
@@ -191,8 +291,8 @@ def backup_restore():
 @admin_required
 def matches():
     md = request.args.get("matchday", 1, type=int)
-    matches = Match.query.filter_by(matchday=md).order_by(Match.kickoff).all()
-    matchdays = sorted([r[0] for r in db.session.query(Match.matchday).distinct().all()])
+    matches = active_match_query().filter_by(matchday=md).order_by(Match.kickoff).all()
+    matchdays = active_matchdays()
     return render_template("admin/matches.html", matches=matches, current_md=md, matchdays=matchdays)
 
 
@@ -200,15 +300,12 @@ def matches():
 @login_required
 @admin_required
 def edit_result(match_id):
-    match = Match.query.get_or_404(match_id)
+    match = db.get_or_404(Match, match_id)
     form = MatchResultForm(obj=match)
     if form.validate_on_submit():
-        match.home_score = form.home_score.data
-        match.away_score = form.away_score.data
-        match.status = "finished"
-        db.session.commit()
-        recalculate_all_points()
-        check_and_award_badges()
+        from match_results import set_match_result
+        set_match_result(match, form.home_score.data, form.away_score.data, status="finished", source="admin")
+        log_admin_action("result_update", "match", match.id, f"Ergebnis {match.home_team.short_name}-{match.away_team.short_name}: {match.home_score}:{match.away_score}")
         flash(f"Ergebnis gespeichert.", "success")
         return redirect(url_for("admin.matches", matchday=match.matchday))
     return render_template("admin/edit_result.html", match=match, form=form)
@@ -218,111 +315,48 @@ def edit_result(match_id):
 @login_required
 @admin_required
 def users():
-    page = request.args.get("page", 1, type=int)
-    per_page = 25
-    pagination = User.query.order_by(User.username).paginate(page=page, per_page=per_page, error_out=False)
-    all_users = pagination.items
-    pot = compute_pot_summary()
-    return render_template("admin/users.html", users=all_users, pot=pot, pagination=pagination)
+    from admin_users_routes import _admin_users
+    return _admin_users()
 
 
 @admin_bp.route("/user/<int:user_id>/edit", methods=["GET", "POST"])
 @login_required
 @admin_required
 def user_edit(user_id):
-    u = User.query.get_or_404(user_id)
-    form = AdminUserForm(obj=u)
-    teams = Team.query.order_by(Team.name).all()
-    form.favorite_team_id.choices = [(0, "— kein Lieblingsverein —")] + [
-        (t.id, t.name) for t in teams
-    ]
-    if request.method == "GET":
-        form.favorite_team_id.data = u.favorite_team_id or 0
-
-    if form.validate_on_submit():
-        new_uname = (form.username.data or "").strip()
-        if new_uname != u.username:
-            other = User.query.filter(User.username == new_uname, User.id != u.id).first()
-            if other:
-                flash(f"Spielername '{new_uname}' ist bereits vergeben.", "danger")
-                return render_template("admin/user_edit.html", user=u, form=form)
-        new_email = (form.email.data or "").strip().lower()
-        if new_email != u.email:
-            other = User.query.filter(User.email == new_email, User.id != u.id).first()
-            if other:
-                flash(f"E-Mail '{new_email}' ist bereits vergeben.", "danger")
-                return render_template("admin/user_edit.html", user=u, form=form)
-
-        u.username = new_uname
-        u.full_name = (form.full_name.data or "").strip() or None
-        u.show_full_name = bool(form.show_full_name.data)
-        u.email = new_email
-        u.phone = (form.phone.data or "").strip() or None
-        u.favorite_team_id = form.favorite_team_id.data or None
-        if u.id == current_user.id and not form.is_admin.data:
-            flash("Du kannst dir die Admin-Rechte nicht selbst entziehen.", "warning")
-        else:
-            u.is_admin = form.is_admin.data
-
-        was_paid = u.has_paid
-        u.has_paid = form.has_paid.data
-        u.paid_note = (form.paid_note.data or "").strip() or None
-        if u.has_paid and not was_paid:
-            u.paid_at = datetime.now(timezone.utc)
-        elif not u.has_paid:
-            u.paid_at = None
-
-        if form.new_password.data:
-            u.set_password(form.new_password.data)
-
-        db.session.commit()
-        flash(f"Spieler '{u.username}' aktualisiert.", "success")
-        return redirect(url_for("admin.users"))
-
-    return render_template("admin/user_edit.html", user=u, form=form)
+    from admin_users_routes import _admin_user_edit
+    return _admin_user_edit(user_id)
 
 
 @admin_bp.route("/user/<int:user_id>/toggle_paid", methods=["POST"])
 @login_required
 @admin_required
 def toggle_paid(user_id):
-    u = User.query.get_or_404(user_id)
-    u.has_paid = not u.has_paid
-    if u.has_paid:
-        u.paid_at = datetime.now(timezone.utc)
-    else:
-        u.paid_at = None
-    db.session.commit()
-    flash(f"{u.username}: {'✅ Bezahlt' if u.has_paid else '❌ Removed'}.", "success")
-    return redirect(url_for("admin.users"))
+    from admin_users_routes import _admin_toggle_paid
+    return _admin_toggle_paid(user_id)
 
 
 @admin_bp.route("/user/<int:user_id>/toggle_admin", methods=["POST"])
 @login_required
 @admin_required
 def toggle_admin(user_id):
-    u = User.query.get_or_404(user_id)
-    if u.id == current_user.id:
-        flash("Du kannst dich nicht selbst entfernen.", "warning")
-    else:
-        u.is_admin = not u.is_admin
-        db.session.commit()
-        flash(f"{u.username} ist jetzt {'Admin' if u.is_admin else 'normaler User'}.", "success")
-    return redirect(url_for("admin.users"))
+    from admin_users_routes import _admin_toggle_admin
+    return _admin_toggle_admin(user_id)
 
 
 @admin_bp.route("/user/<int:user_id>/delete", methods=["POST"])
 @login_required
 @admin_required
 def delete_user(user_id):
-    u = User.query.get_or_404(user_id)
-    if u.id == current_user.id:
-        flash("Du kannst dich nicht selbst löschen.", "warning")
-    else:
-        db.session.delete(u)
-        db.session.commit()
-        flash(f"User {u.username} gelöscht.", "info")
-    return redirect(url_for("admin.users"))
+    from admin_users_routes import _admin_delete_user
+    return _admin_delete_user(user_id)
+
+
+@admin_bp.route("/open-tips", methods=["GET", "POST"])
+@login_required
+@admin_required
+def admin_open_tips():
+    from admin_open_tips_routes import _admin_open_tips_view
+    return _admin_open_tips_view()
 
 
 # ============================================================ Prizes -
@@ -330,9 +364,8 @@ def delete_user(user_id):
 @login_required
 @admin_required
 def admin_prizes():
-    all_prizes = Prize.query.order_by(Prize.sort_order.asc(), Prize.rank.asc()).all()
-    pot = compute_pot_summary()
-    return render_template("admin/prizes.html", prizes=all_prizes, pot=pot)
+    from admin_prizes_routes import _admin_prizes
+    return _admin_prizes()
 
 
 @admin_bp.route("/prizes/new", methods=["GET", "POST"])
@@ -340,37 +373,16 @@ def admin_prizes():
 @login_required
 @admin_required
 def prize_form(prize_id=None):
-    prize = db.session.get(Prize, prize_id) if prize_id else None
-    form = PrizeForm(obj=prize)
-    if form.validate_on_submit():
-        if not prize:
-            prize = Prize()
-            db.session.add(prize)
-        prize.rank = form.rank.data
-        prize.title = form.title.data.strip()
-        prize.description = (form.description.data or "").strip() or None
-        prize.icon = form.icon.data.strip() or "🏆"
-        prize.color = form.color.data.strip() or "#fbbf24"
-        prize.amount = (form.amount.data or "").strip() or None
-        prize.detail = (form.detail.data or "").strip() or None
-        prize.active = form.active.data
-        prize.sort_order = form.sort_order.data or 0
-        db.session.commit()
-        flash(f"Preis '{prize.title}' gespeichert.", "success")
-        return redirect(url_for("admin.admin_prizes"))
-    return render_template("admin/prize_form.html", form=form, prize=prize)
+    from admin_prizes_routes import _admin_prize_form
+    return _admin_prize_form(prize_id)
 
 
 @admin_bp.route("/prizes/<int:prize_id>/delete", methods=["POST"])
 @login_required
 @admin_required
 def prize_delete(prize_id):
-    prize = Prize.query.get_or_404(prize_id)
-    title = prize.title
-    db.session.delete(prize)
-    db.session.commit()
-    flash(f"Preis '{title}' gelöscht.", "info")
-    return redirect(url_for("admin.admin_prizes"))
+    from admin_prizes_routes import _admin_prize_delete
+    return _admin_prize_delete(prize_id)
 
 
 # ============================================================ Badges -
@@ -378,12 +390,8 @@ def prize_delete(prize_id):
 @login_required
 @admin_required
 def badges():
-    all_badges = Badge.query.order_by(Badge.created_at.desc()).all()
-    award_counts = dict(
-        db.session.query(UserBadge.badge_id, func.count(UserBadge.id))
-        .group_by(UserBadge.badge_id).all()
-    )
-    return render_template("admin/badges.html", badges=all_badges, award_counts=award_counts)
+    from admin_badges_routes import _admin_badges
+    return _admin_badges()
 
 
 @admin_bp.route("/badges/new", methods=["GET", "POST"])
@@ -391,91 +399,32 @@ def badges():
 @login_required
 @admin_required
 def badge_form(badge_id=None):
-    badge = db.session.get(Badge, badge_id) if badge_id else None
-    form = BadgeForm(obj=badge)
-    if form.validate_on_submit():
-        existing = Badge.query.filter(
-            Badge.code == form.code.data,
-            Badge.id != (badge.id if badge else 0),
-        ).first()
-        if existing:
-            flash(f"Badge-Code '{form.code.data}' ist bereits vergeben.", "danger")
-            return render_template("admin/badge_form.html", form=form, badge=badge)
-
-        if not badge:
-            badge = Badge(code=form.code.data)
-            db.session.add(badge)
-        badge.code = form.code.data.strip()
-        badge.name = form.name.data.strip()
-        badge.description = form.description.data.strip()
-        badge.icon = form.icon.data.strip() or "🏅"
-        badge.color = form.color.data.strip() or "#fbbf24"
-        badge.trigger_type = form.trigger_type.data
-        badge.threshold = form.threshold.data or 0
-        badge.active = form.active.data
-        db.session.commit()
-
-        if badge.trigger_type != "manual" and badge.active:
-            check_and_award_badges()
-
-        flash(f"Badge '{badge.name}' gespeichert.", "success")
-        return redirect(url_for("admin.badges"))
-
-    return render_template("admin/badge_form.html", form=form, badge=badge)
+    from admin_badges_routes import _admin_badge_form
+    return _admin_badge_form(badge_id)
 
 
 @admin_bp.route("/badges/<int:badge_id>/delete", methods=["POST"])
 @login_required
 @admin_required
 def badge_delete(badge_id):
-    badge = Badge.query.get_or_404(badge_id)
-    name = badge.name
-    UserBadge.query.filter_by(badge_id=badge.id).delete()
-    db.session.delete(badge)
-    db.session.commit()
-    flash(f"Badge '{name}' gelöscht.", "info")
-    return redirect(url_for("admin.badges"))
+    from admin_badges_routes import _admin_badge_delete
+    return _admin_badge_delete(badge_id)
 
 
 @admin_bp.route("/badges/<int:badge_id>/award", methods=["GET", "POST"])
 @login_required
 @admin_required
 def badge_award(badge_id):
-    badge = Badge.query.get_or_404(badge_id)
-    if request.method == "POST":
-        action = request.form.get("action", "award")
-        user_ids = request.form.getlist("user_ids", type=int)
-        count = 0
-        for uid in user_ids:
-            user = db.session.get(User, uid)
-            if not user:
-                continue
-            if action == "award":
-                if award_badge(user, badge):
-                    count += 1
-            elif action == "revoke":
-                if revoke_badge(user, badge):
-                    count += 1
-        verb = "vergeben" if action == "award" else "entzogen"
-        flash(f"Badge '{badge.name}' bei {count} User(n) {verb}.", "success")
-        return redirect(url_for("admin.badge_award", badge_id=badge_id))
-
-    awarded_user_ids = {ub.user_id for ub in UserBadge.query.filter_by(badge_id=badge.id).all()}
-    all_users = User.query.order_by(User.username).all()
-    return render_template(
-        "admin/badge_award.html",
-        badge=badge, all_users=all_users,
-        awarded_user_ids=awarded_user_ids,
-    )
+    from admin_badges_routes import _admin_badge_award
+    return _admin_badge_award(badge_id)
 
 
 @admin_bp.route("/badges/recheck", methods=["POST"])
 @login_required
 @admin_required
 def badge_recheck():
-    check_and_award_badges()
-    flash("Alle Badge-Regeln neu geprüft.", "success")
-    return redirect(url_for("admin.badges"))
+    from admin_badges_routes import _admin_badge_recheck
+    return _admin_badge_recheck()
 
 
 # ============================================================ Special Questions -
@@ -483,76 +432,32 @@ def badge_recheck():
 @login_required
 @admin_required
 def special_questions():
-    form = SpecialQuestionForm()
-    if form.validate_on_submit():
-        atype = form.answer_type.data or "text"
-        opts_text = form.options.data or ""
-        opt_list = [o.strip() for o in opts_text.split("\n") if o.strip()]
-
-        if atype == "choice":
-            options_json = _json.dumps(opt_list) if opt_list else None
-        elif atype == "yes_no":
-            options_json = _json.dumps(["Ja", "Nein"])
-        else:
-            options_json = None
-
-        correct = (form.correct_answer.data or "").strip() or None
-
-        q = SpecialQuestion(
-            text=form.text.data,
-            description=form.description.data or None,
-            answer_type=atype,
-            options=options_json,
-            multi_count=form.multi_count.data or 1,
-            number_min=form.number_min.data,
-            number_max=form.number_max.data,
-            deadline=form.deadline.data,
-            points_value=form.points_value.data,
-            correct_answer=correct,
-        )
-        db.session.add(q)
-        db.session.commit()
-        evaluate_special_predictions()
-        flash(f"Sonderfrage angelegt.", "success")
-        return redirect(url_for("admin.special_questions"))
-
-    questions = SpecialQuestion.query.order_by(SpecialQuestion.deadline.desc()).all()
-    min_dt = (datetime.now(timezone.utc) + timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M")
-    all_teams = Team.query.order_by(Team.name).all()
-    return render_template(
-        "admin/special_questions.html",
-        form=form, questions=questions, min_dt=min_dt,
-        all_teams=all_teams,
-    )
+    from admin_special_questions_routes import _admin_special_questions
+    return _admin_special_questions()
 
 
 @admin_bp.route("/special-question/<int:qid>/answer", methods=["POST"])
 @login_required
 @admin_required
 def set_special_answer(qid):
-    q = SpecialQuestion.query.get_or_404(qid)
-    if q.answer_type == "multi_team":
-        values = [v.strip() for v in request.form.getlist("correct_answer") if v.strip()]
-        q.correct_answer = _json.dumps(values) if values else None
-    else:
-        ans = request.form.get("correct_answer", "").strip()
-        q.correct_answer = ans or None
-    db.session.commit()
-    evaluate_special_predictions()
-    flash("Antwort gesetzt. Punkte wurden vergeben.", "success")
-    return redirect(url_for("admin.special_questions"))
+    from admin_special_questions_routes import _admin_set_special_answer
+    return _admin_set_special_answer(qid)
+
+
+@admin_bp.route("/special-question/<int:qid>/edit", methods=["POST"])
+@login_required
+@admin_required
+def edit_special_question(qid):
+    from admin_special_questions_routes import _admin_edit_special_question
+    return _admin_edit_special_question(qid)
 
 
 @admin_bp.route("/special-question/<int:qid>/delete", methods=["POST"])
 @login_required
 @admin_required
 def delete_special_question(qid):
-    q = SpecialQuestion.query.get_or_404(qid)
-    SpecialPrediction.query.filter_by(question_id=qid).delete()
-    db.session.delete(q)
-    db.session.commit()
-    flash("Sonderfrage gelöscht.", "info")
-    return redirect(url_for("admin.special_questions"))
+    from admin_special_questions_routes import _admin_delete_special_question
+    return _admin_delete_special_question(qid)
 
 
 @admin_bp.route("/archive-season", methods=["POST"])
@@ -569,6 +474,48 @@ def archive_current_season():
 
 
 # ============================================================ Settings -
+
+
+@admin_bp.route("/integrity", methods=["GET", "POST"])
+@login_required
+@admin_required
+def integrity():
+    from admin_integrity_routes import _admin_integrity_view
+    return _admin_integrity_view()
+
+
+@admin_bp.route("/invitations")
+@login_required
+@admin_required
+def invitations():
+    from admin_invitations_routes import _admin_invitations_view
+    return _admin_invitations_view()
+
+
+@admin_bp.route("/invitations/create", methods=["POST"])
+@login_required
+@admin_required
+def invitation_create():
+    from admin_invitations_routes import _admin_invitation_create
+    return _admin_invitation_create()
+
+
+@admin_bp.route("/invitations/<int:invite_id>/deactivate", methods=["POST"])
+@login_required
+@admin_required
+def invitation_deactivate(invite_id):
+    from admin_invitations_routes import _admin_invitation_deactivate
+    return _admin_invitation_deactivate(invite_id)
+
+
+@admin_bp.route("/invitations/<int:invite_id>/delete", methods=["POST"])
+@login_required
+@admin_required
+def invitation_delete(invite_id):
+    from admin_invitations_routes import _admin_invitation_delete
+    return _admin_invitation_delete(invite_id)
+
+
 @admin_bp.route("/settings/test-mail", methods=["POST"])
 @login_required
 @admin_required
@@ -605,6 +552,52 @@ def test_mail():
     return redirect(url_for("admin.settings"))
 
 
+@admin_bp.route("/settings/test-reminder", methods=["POST"])
+@login_required
+@admin_required
+def test_reminder():
+    """Sendet eine Test-Erinnerung fuer fehlende Tipps an den aktuellen Admin."""
+    # Relevante Einstellungen aus dem Formular uebernehmen, damit der Test direkt
+    # nach dem Eintragen von SMTP/PUBLIC_BASE_URL funktioniert.
+    for key in ["mail_server", "mail_username", "mail_password", "mail_default_sender"]:
+        if key in request.form:
+            val = request.form.get(key, "").strip()
+            if key == "mail_password" and not val:
+                continue
+            set_setting(key, val)
+    if "mail_port" in request.form:
+        try:
+            set_setting("mail_port", int(request.form.get("mail_port") or 587))
+        except ValueError:
+            set_setting("mail_port", 587)
+    if "public_base_url" in request.form:
+        set_setting("public_base_url", (request.form.get("public_base_url") or "").strip().rstrip("/"))
+    set_setting("mail_use_tls", bool(request.form.get("mail_use_tls")))
+    set_setting("mail_use_ssl", bool(request.form.get("mail_use_ssl")))
+    set_setting("reminders_enabled", bool(request.form.get("reminders_enabled")))
+    apply_mail_settings()
+    try:
+        from mail_helpers import apply_vapid_settings
+        apply_vapid_settings()
+    except Exception:
+        pass
+
+    from notification_center import send_test_missing_tip_notification
+    result = send_test_missing_tip_notification(current_user)
+    sent = [k for k, ok in result.items() if ok]
+    log_admin_action(
+        "test_missing_tip_reminder",
+        "user", current_user.id,
+        "Test-Reminder fuer fehlende Tipps gesendet",
+        {"channels": result},
+    )
+    if sent:
+        flash(f"✅ Test-Erinnerung gesendet über: {', '.join(sent)}.", "success")
+    else:
+        flash("ℹ️ Keine Test-Erinnerung gesendet. Prüfe deine Benachrichtigungskanäle im Profil und SMTP/Push/Telegram/WhatsApp-Konfiguration.", "info")
+    return redirect(url_for("admin.settings"))
+
+
 @admin_bp.route("/settings", methods=["GET", "POST"])
 @login_required
 @admin_required
@@ -618,20 +611,26 @@ def settings():
         form.pot_amount.data = get_setting("pot_amount", 5)
         form.pot_currency.data = get_setting("pot_currency", "€")
         form.pot_intro.data = get_setting("pot_intro", "")
-        form.football_data_token.data = get_setting("football_data_token", "")
+        form.payment_info_title.data = get_setting("payment_info_title", "Zahlung an den Spielleiter")
+        form.payment_info_text.data = get_setting("payment_info_text", "")
+        form.prize_notes.data = get_setting("prize_notes", "")
+        form.football_data_token.data = ""
+        form.public_base_url.data = get_setting("public_base_url", current_app.config.get("PUBLIC_BASE_URL", ""))
         form.mail_server.data = get_setting("mail_server", current_app.config.get("MAIL_SERVER", ""))
         form.mail_port.data = get_setting("mail_port", current_app.config.get("MAIL_PORT", 587))
         form.mail_username.data = get_setting("mail_username", current_app.config.get("MAIL_USERNAME", ""))
-        form.mail_password.data = get_setting("mail_password", current_app.config.get("MAIL_PASSWORD", ""))
+        form.mail_password.data = ""
         form.mail_default_sender.data = get_setting("mail_default_sender", current_app.config.get("MAIL_DEFAULT_SENDER", ""))
         form.mail_use_tls.data = bool(get_setting("mail_use_tls", True))
         form.mail_use_ssl.data = bool(get_setting("mail_use_ssl", False))
         form.mail_test_recipient.data = current_user.email
-        form.vapid_public.data = get_setting("vapid_public", "")
-        form.vapid_private.data = get_setting("vapid_private", "")
-        form.telegram_bot_token.data = get_setting("telegram_bot_token", "")
+        form.vapid_public.data = ""
+        form.vapid_private.data = ""
+        form.telegram_bot_token.data = ""
         form.telegram_bot_username.data = get_setting("telegram_bot_username", "")
+        form.telegram_webhook_secret.data = ""
         form.reminders_enabled.data = get_setting("reminders_enabled", True)
+        form.registration_mode.data = get_setting("registration_mode", "invite")
 
     if form.validate_on_submit():
         old_exact = get_setting("points_exact", 4)
@@ -644,10 +643,14 @@ def settings():
         set_setting("pot_amount", int(form.pot_amount.data or 5))
         set_setting("pot_currency", (form.pot_currency.data or "€").strip())
         set_setting("pot_intro", (form.pot_intro.data or "").strip())
+        set_setting("payment_info_title", (form.payment_info_title.data or "").strip())
+        set_setting("payment_info_text", (form.payment_info_text.data or "").strip())
+        set_setting("prize_notes", (form.prize_notes.data or "").strip())
 
         api_token = (form.football_data_token.data or "").strip()
         if api_token:
             set_setting("football_data_token", api_token)
+        set_setting("public_base_url", (form.public_base_url.data or "").strip().rstrip("/"))
 
         set_setting("mail_server", (form.mail_server.data or "").strip())
         set_setting("mail_port", int(form.mail_port.data or 587))
@@ -672,7 +675,11 @@ def settings():
         tg_username = (form.telegram_bot_username.data or "").strip()
         if tg_username:
             set_setting("telegram_bot_username", tg_username)
+        tg_webhook_secret = (form.telegram_webhook_secret.data or "").strip()
+        if tg_webhook_secret:
+            set_setting("telegram_webhook_secret", tg_webhook_secret)
         set_setting("reminders_enabled", bool(form.reminders_enabled.data))
+        set_setting("registration_mode", form.registration_mode.data or "invite")
 
         apply_mail_settings()
         from mail_helpers import apply_vapid_settings
@@ -684,8 +691,10 @@ def settings():
 
         if old_exact != new_exact or old_diff != new_diff or old_tendency != new_tendency:
             recalculate_all_points()
+            log_admin_action("settings_update", "settings", None, "Einstellungen gespeichert und Punkte neu berechnet")
             flash("✅ Einstellungen gespeichert und Punkte neu berechnet.", "success")
         else:
+            log_admin_action("settings_update", "settings", None, "Einstellungen gespeichert")
             flash("✅ Einstellungen gespeichert.", "success")
         return redirect(url_for("admin.settings"), code=303)
 
@@ -698,15 +707,28 @@ def settings():
         flash("⚠️ Einstellungen konnten nicht gespeichert werden.", "warning")
 
     mail_missing = not (form.mail_server.data) or not (form.mail_username.data)
-    api_missing = not (form.football_data_token.data)
-    vapid_missing = not (form.vapid_public.data) or not (form.vapid_private.data)
+    api_missing = not (get_setting("football_data_token", current_app.config.get("FOOTBALL_DATA_TOKEN", "")))
+    vapid_missing = not (get_setting("vapid_public", current_app.config.get("VAPID_PUBLIC_KEY", ""))) or not (get_setting("vapid_private", current_app.config.get("VAPID_PRIVATE_KEY", "")))
     pts_missing = not (form.points_exact.data) or not (form.points_diff.data) or not (form.points_tendency.data)
     pot_missing = not (form.pot_amount.data) or form.pot_amount.data == 0
 
     return render_template("admin/settings.html", form=form,
                            mail_missing=mail_missing, api_missing=api_missing,
                            vapid_missing=vapid_missing, pts_missing=pts_missing,
-                           pot_missing=pot_missing)
+                           pot_missing=pot_missing,
+                           api_configured=not api_missing,
+                           mail_password_configured=bool(get_setting("mail_password", current_app.config.get("MAIL_PASSWORD", ""))),
+                           vapid_private_configured=bool(get_setting("vapid_private", current_app.config.get("VAPID_PRIVATE_KEY", ""))),
+                           telegram_token_configured=bool(get_setting("telegram_bot_token", current_app.config.get("TELEGRAM_BOT_TOKEN", ""))),
+                           telegram_secret_configured=bool(get_setting("telegram_webhook_secret", current_app.config.get("TELEGRAM_WEBHOOK_SECRET", ""))))
+
+
+@admin_bp.route("/export/tip-matrix/<int:matchday>")
+@login_required
+@admin_required
+def export_tip_matrix(matchday):
+    from admin_export_routes import _admin_export_tip_matrix
+    return _admin_export_tip_matrix(matchday)
 
 
 # ============================================================ Bot/Cache/New-Season Routes -
@@ -750,6 +772,14 @@ def admin_bots_toggle():
     return _admin_bots_toggle()
 
 
+@admin_bp.route("/bots/toggle-auto", methods=["POST"])
+@login_required
+@admin_required
+def admin_bots_toggle_auto():
+    from admin_bots_routes import _admin_bots_toggle_auto
+    return _admin_bots_toggle_auto()
+
+
 @admin_bp.route("/bots/seed", methods=["POST"])
 @login_required
 @admin_required
@@ -764,6 +794,54 @@ def admin_bots_seed():
 def admin_bots_create():
     from admin_bots_routes import _admin_bots_create_one
     return _admin_bots_create_one()
+
+
+@admin_bp.route("/schema")
+@login_required
+@admin_required
+def schema_center():
+    from admin_schema_routes import _admin_schema_view
+    return _admin_schema_view()
+
+
+@admin_bp.route("/schema/run", methods=["POST"])
+@login_required
+@admin_required
+def schema_run():
+    from admin_schema_routes import _admin_schema_run
+    return _admin_schema_run()
+
+
+@admin_bp.route("/season-awards")
+@login_required
+@admin_required
+def season_awards():
+    from admin_awards_routes import _admin_season_awards_view
+    return _admin_season_awards_view()
+
+
+@admin_bp.route("/season-awards/pdf")
+@login_required
+@admin_required
+def season_awards_pdf():
+    from admin_awards_routes import _admin_season_awards_pdf
+    return _admin_season_awards_pdf()
+
+
+@admin_bp.route("/maintenance")
+@login_required
+@admin_required
+def maintenance_center():
+    from admin_maintenance_routes import _admin_maintenance_view
+    return _admin_maintenance_view()
+
+
+@admin_bp.route("/maintenance/run", methods=["POST"])
+@login_required
+@admin_required
+def maintenance_run():
+    from admin_maintenance_routes import _admin_maintenance_run
+    return _admin_maintenance_run()
 
 
 @admin_bp.route("/cache")
@@ -802,111 +880,199 @@ def admin_cache_delete_key():
 @login_required
 @admin_required
 def new_season():
+    """Saisonwechsel-Assistent 2.0.
+
+    Fokus: erst prüfen/archivieren, dann gezielt wettbewerbsbezogene Daten
+    löschen und die aktive Competition auf die neue Saison setzen.
+    """
+    comp = get_active_competition()
+    current_season = get_setting("current_season", comp.season if comp else "2025/26")
+
+    def _suggest_next(label):
+        try:
+            first = int(str(label).split("/")[0])
+            return f"{first + 1}/{str(first + 2)[-2:]}"
+        except Exception:
+            year = datetime.now(timezone.utc).year
+            return f"{year}/{str(year + 1)[-2:]}"
+
     if request.method == "POST":
+        confirm_text = (request.form.get("confirm_text", "") or "").strip().upper()
+        if confirm_text != "SAISON STARTEN":
+            flash("Bitte bestätige den Saisonwechsel mit 'SAISON STARTEN'.", "warning")
+            return redirect(url_for("admin.new_season"), code=303)
+
         do_archive = request.form.get("do_archive") == "1"
         do_delete_schedule = request.form.get("do_delete_schedule") == "1"
         do_delete_specials = request.form.get("do_delete_specials") == "1"
         do_reset_bots = request.form.get("do_reset_bots") == "1"
         do_reset_badges = request.form.get("do_reset_badges") == "1"
         do_reset_paid = request.form.get("do_reset_paid") == "1"
-        new_season_label = (request.form.get("new_season_label", "") or "2025/26").strip()
+        new_season_label = (request.form.get("new_season_label", "") or _suggest_next(current_season)).strip()
+        old_season_label = (request.form.get("old_season_label", "") or current_season).strip()
 
-        season_code = get_setting("season", "2025")
+        if not new_season_label or new_season_label == old_season_label:
+            flash("Bitte eine neue Saison eintragen (z.B. 2026/27).", "danger")
+            return redirect(url_for("admin.new_season"), code=303)
 
-        if do_archive:
-            rows = db.session.query(
-                User.id.label("user_id"),
-                func.coalesce(func.sum(Prediction.points), 0).label("points"),
-                func.coalesce(func.sum(func.case((Prediction.points == 4, 1), else_=0)), 0).label("exact_count"),
-            ).outerjoin(Prediction, Prediction.user_id == User.id).group_by(User.id).all()
+        if request.form.get("backup_ack") != "1":
+            flash("Bitte bestätige zuerst, dass ein aktuelles Backup vorhanden ist.", "warning")
+            return redirect(url_for("admin.new_season"), code=303)
 
-            for r in rows:
-                existing = SeasonArchive.query.filter_by(user_id=r.user_id, season=season_code).first()
-                if existing:
-                    existing.points = int(r.points or 0)
-                    existing.exact_count = int(r.exact_count or 0)
-                else:
-                    db.session.add(SeasonArchive(
-                        user_id=r.user_id, season=season_code,
-                        points=int(r.points or 0), exact_count=int(r.exact_count or 0),
-                        rank=0, diff_count=0,
-                    ))
-            db.session.commit()
-            flash("✅ Ewige Tabelle aktualisiert.", "success")
+        risky_open_matches = active_match_query().filter(Match.status.in_(["scheduled", "live"])).count()
+        risky_missing_results = active_match_query().filter(
+            Match.status == "finished",
+            (Match.home_score.is_(None)) | (Match.away_score.is_(None)),
+        ).count()
+        risky_special_open = filter_competition_scoped(
+            SpecialQuestion.query.filter(SpecialQuestion.correct_answer.is_(None)), SpecialQuestion
+        ).count()
+        if (risky_open_matches or risky_missing_results or risky_special_open) and request.form.get("risk_ack") != "1":
+            flash(
+                "Es gibt noch offene/live Spiele, fehlende Ergebnisse oder offene Sonderfragen. Bitte prüfen und Risiko bestätigen.",
+                "warning",
+            )
+            return redirect(url_for("admin.new_season"), code=303)
 
-        if do_delete_schedule:
-            MatchdayWinner.query.filter_by(season=season_code).delete(synchronize_session=False)
-            Comment.query.delete(synchronize_session=False)
-            Prediction.query.delete(synchronize_session=False)
-            Match.query.delete(synchronize_session=False)
-            db.session.commit()
-            flash("🗑️ Spielplan gelöscht.", "success")
-
-        if do_delete_specials:
-            SpecialPrediction.query.delete(synchronize_session=False)
-            SpecialQuestion.query.delete(synchronize_session=False)
-            db.session.commit()
-            flash("🗑️ Sonderfragen gelöscht.", "success")
-
-        if do_reset_bots:
-            bot_ids = [u.id for u in User.query.filter(User.email.like("%@bot.local")).all()]
-            if bot_ids:
-                Prediction.query.filter(Prediction.user_id.in_(bot_ids)).delete(synchronize_session=False)
-                db.session.commit()
-            flash("🤖 Bot-Tipps zurückgesetzt.", "success")
-
-        if do_reset_badges:
-            from models import UserBadge
-            UserBadge.query.delete(synchronize_session=False)
-            db.session.commit()
-            flash("🏅 Badges zurückgesetzt.", "success")
-
-        if do_reset_paid:
-            User.query.filter(~User.email.like("%@bot.local")).update({
-                "has_paid": False, "paid_at": None, "paid_note": None
-            }, synchronize_session=False)
-            db.session.commit()
-            flash("💰 Bezahlstatus zurückgesetzt.", "success")
-
-        # ----- Competition aktualisieren -----
-        # Wichtig: "competitions.code" ist UNIQUE. Wir können also nicht
-        # einfach einen zweiten BL1 anlegen, sondern updaten den bestehenden
-        # Eintrag mit dem neuen Saison-Label.
         try:
-            existing = Competition.query.filter_by(code="BL1").first()
-            if existing:
-                existing.name = f"Bundesliga {new_season_label}"
-                existing.season = new_season_label
-                existing.is_active = True
-                existing.external_id = None
+            if do_archive:
+                archive_season(old_season_label)
+                flash(f"✅ Saison {old_season_label} wurde in der Ewigen Tabelle archiviert.", "success")
+
+            if do_delete_schedule:
+                mdw_q = MatchdayWinner.query.filter_by(season=old_season_label)
+                if comp:
+                    mdw_q = mdw_q.filter(MatchdayWinner.competition_id == comp.id)
+                mdw_q.delete(synchronize_session=False)
+
+                match_ids = [m.id for m in active_match_query().all()]
+                if match_ids:
+                    Comment.query.filter(Comment.match_id.in_(match_ids)).delete(synchronize_session=False)
+                    Prediction.query.filter(Prediction.match_id.in_(match_ids)).delete(synchronize_session=False)
+                    Match.query.filter(Match.id.in_(match_ids)).delete(synchronize_session=False)
+                db.session.commit()
+                flash("🗑️ Spielplan, Tipps, Kommentare und Spieltagsieger gelöscht.", "success")
+
+            if do_delete_specials:
+                sp_q = filter_competition_scoped(SpecialPrediction.query, SpecialPrediction, include_global=False)
+                sq_q = filter_competition_scoped(SpecialQuestion.query, SpecialQuestion, include_global=False)
+                sp_q.delete(synchronize_session=False)
+                sq_q.delete(synchronize_session=False)
+                db.session.commit()
+                flash("🗑️ Sonderfragen und Sondertipps gelöscht.", "success")
+
+            if do_reset_bots:
+                bot_ids = [u.id for u in User.query.filter(User.email.like("%@bot.local")).all()]
+                if bot_ids:
+                    match_ids = [m.id for m in active_match_query().all()]
+                    if match_ids:
+                        Prediction.query.filter(
+                            Prediction.user_id.in_(bot_ids),
+                            Prediction.match_id.in_(match_ids),
+                        ).delete(synchronize_session=False)
+                    db.session.commit()
+                flash("🤖 Bot-Tipps zurückgesetzt.", "success")
+
+            if do_reset_badges:
+                from models import UserBadge
+                UserBadge.query.delete(synchronize_session=False)
+                db.session.commit()
+                flash("🏅 Spieler-Badges zurückgesetzt.", "success")
+
+            if do_reset_paid:
+                User.query.filter(~User.email.like("%@bot.local")).update({
+                    "has_paid": False, "paid_at": None, "paid_note": None
+                }, synchronize_session=False)
+                db.session.commit()
+                flash("💰 Bezahlstatus zurückgesetzt.", "success")
+
+            # Aktive Competition aktualisieren (nicht blind alle anderen deaktivieren)
+            target = comp or Competition.query.filter_by(code=current_app.config.get("COMPETITION", "BL1")).first()
+            if target:
+                target.name = f"Bundesliga {new_season_label}" if target.code == "BL1" else f"{target.name.split(' ')[0]} {new_season_label}"
+                target.season = new_season_label
+                target.is_active = True
+                target.external_id = None
             else:
-                db.session.add(Competition(
+                target = Competition(
                     code="BL1", name=f"Bundesliga {new_season_label}",
                     season=new_season_label, matchdays=34, teams_count=18,
                     is_active=True, external_id=None,
-                ))
-            # Andere Competitions deaktivieren (falls vorhanden)
-            Competition.query.filter(Competition.code != "BL1").update(
-                {"is_active": False}, synchronize_session=False
-            )
+                )
+                db.session.add(target)
             db.session.commit()
+
+            set_setting("season", season_code_from_label(new_season_label))
+            set_setting("current_season", new_season_label)
+
+            try:
+                from cache import invalidate_leaderboard
+                invalidate_leaderboard()
+            except Exception:
+                pass
+
+            log_admin_action("season_change", "competition", target.code if target else None,
+                             f"Saisonwechsel {old_season_label} → {new_season_label}",
+                             {"old_season": old_season_label, "new_season": new_season_label,
+                              "archive": do_archive, "delete_schedule": do_delete_schedule,
+                              "delete_specials": do_delete_specials, "reset_bots": do_reset_bots,
+                              "reset_badges": do_reset_badges, "reset_paid": do_reset_paid})
+            flash(f"🏁 Neue Saison '{new_season_label}' gestartet. Lade jetzt den neuen Spielplan per Sync.", "success")
+            return redirect(url_for("admin.new_season"), code=303)
+
         except Exception as e:
             db.session.rollback()
             current_app.logger.exception("Saison-Wechsel fehlgeschlagen")
-            flash(f"❌ Saison konnte nicht angelegt werden: {e}", "danger")
+            flash(f"❌ Saisonwechsel fehlgeschlagen: {e}", "danger")
             return redirect(url_for("admin.new_season"), code=303)
 
-        set_setting("season", new_season_label)
-        set_setting("current_season", new_season_label)
+    # Diagnose/Checkliste fuer GET
+    match_q = active_match_query()
+    total_matches = match_q.count()
+    finished_matches = active_match_query().filter_by(status="finished").count()
+    scheduled_matches = active_match_query().filter(Match.status.in_(["scheduled", "live"])).count()
+    missing_results = active_match_query().filter(
+        Match.status == "finished",
+        (Match.home_score.is_(None)) | (Match.away_score.is_(None)),
+    ).count()
+    match_ids = [m.id for m in active_match_query().all()]
+    predictions_count = Prediction.query.filter(Prediction.match_id.in_(match_ids)).count() if match_ids else 0
+    comments_count = Comment.query.filter(Comment.match_id.in_(match_ids)).count() if match_ids else 0
+    pot_summary = compute_pot_summary()
+    users_count = pot_summary.get("total_count", 0)
+    paid_count = pot_summary.get("paid_count", 0)
+    special_questions_count = filter_competition_scoped(SpecialQuestion.query, SpecialQuestion).count()
+    special_open_count = filter_competition_scoped(
+        SpecialQuestion.query.filter(SpecialQuestion.correct_answer.is_(None)), SpecialQuestion
+    ).count()
+    archived = filter_competition_scoped(
+        SeasonArchive.query.filter_by(season=current_season), SeasonArchive
+    ).count()
 
-        # Caches invalidieren (Rangliste etc.)
-        try:
-            from cache import invalidate_leaderboard
-            invalidate_leaderboard()
-        except Exception:
-            pass
+    checklist = {
+        "backup_recommended": True,
+        "all_matches_finished": total_matches > 0 and scheduled_matches == 0,
+        "missing_results": missing_results,
+        "special_open_count": special_open_count,
+        "archived_count": archived,
+        "can_archive": total_matches > 0,
+    }
+    counts = {
+        "total_matches": total_matches,
+        "finished_matches": finished_matches,
+        "scheduled_matches": scheduled_matches,
+        "predictions_count": predictions_count,
+        "comments_count": comments_count,
+        "users_count": users_count,
+        "paid_count": paid_count,
+        "special_questions_count": special_questions_count,
+    }
+    return render_template(
+        "admin/new_season.html",
+        comp=comp,
+        current_season=current_season,
+        suggested_next_season=_suggest_next(current_season),
+        checklist=checklist,
+        counts=counts,
+    )
 
-        flash(f"🏁 Neue Saison '{new_season_label}' gestartet.", "success")
-        return redirect(url_for("admin.new_season"), code=303)
-
-    return render_template("admin/new_season.html")

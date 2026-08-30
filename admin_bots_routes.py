@@ -3,9 +3,45 @@ from flask import render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
 from extensions import db
 from models import User, Match, Prediction
+from competition_helpers import active_match_query, filter_matches_for_active_competition
+from audit_log import log_admin_action
 
 BOT_NAMES = ["RookieBot", "AmateurBot", "ProBot", "ExpertBot", "MasterBot"]
 BOT_LEVELS = {"RookieBot": 1, "AmateurBot": 2, "ProBot": 3, "ExpertBot": 4, "MasterBot": 5}
+
+BOT_PROFILES = {
+    "RookieBot": {
+        "short": "Sehr viel Zufall",
+        "details": "Einfacher Bot mit leichtem Heimvorteil. Kaum Datengewichtung, viele Überraschungstipps.",
+        "randomness": "hoch",
+        "data": "niedrig",
+    },
+    "AmateurBot": {
+        "short": "Zufällig, aber spielbar",
+        "details": "Nutzt dieselbe einfache Basis wie RookieBot, ist aber als zweite Einstiegsstufe gedacht.",
+        "randomness": "hoch",
+        "data": "niedrig",
+    },
+    "ProBot": {
+        "short": "Form + Heimvorteil",
+        "details": "Berücksichtigt Heimvorteil, aktuelle Form und Heim-/Auswärtsstärke mit moderatem Zufall.",
+        "randomness": "mittel",
+        "data": "mittel",
+    },
+    "ExpertBot": {
+        "short": "Statistikfokus",
+        "details": "Gewichtet Form, Heim-/Auswärtsstärke und Tordurchschnitt stärker. Ergebnisse werden über eine Poisson-Logik erzeugt.",
+        "randomness": "niedrig-mittel",
+        "data": "hoch",
+    },
+    "MasterBot": {
+        "short": "Stärkster Bot",
+        "details": "Wie ExpertBot, zusätzlich mit Head-to-Head-Faktor und geringstem Zufallsanteil.",
+        "randomness": "niedrig",
+        "data": "sehr hoch",
+    },
+}
+
 
 
 def _get_bots():
@@ -15,17 +51,17 @@ def _get_bots():
 def _current_matchday():
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc)
-    next_match = Match.query.filter(Match.status == "scheduled").order_by(Match.kickoff).first()
+    next_match = active_match_query().filter(Match.status == "scheduled").order_by(Match.kickoff).first()
     if next_match:
         return next_match.matchday
-    last = Match.query.filter(Match.status == "finished").order_by(Match.matchday.desc()).first()
+    last = active_match_query().filter(Match.status == "finished").order_by(Match.matchday.desc()).first()
     return last.matchday if last else 1
 
 
 def _get_bot_active_status(bot_name):
     """True, wenn Bot aktiv ist (tolerant gegen str/bool)."""
     from scoring import get_setting, _truthy_setting
-    return _truthy_setting(get_setting(f"bot_active_{bot_name}", True), default=True)
+    return _truthy_setting(get_setting(f"bot_active_{bot_name}", False), default=False)
 
 
 def _admin_bots_view():
@@ -49,7 +85,9 @@ def _admin_bots_view():
     # 🔥 PERFORMANCE: Bulk-Query statt N+1 (1 Query statt 15+)
     from sqlalchemy import func, case
     from scoring import get_setting
+    from scoring import _truthy_setting
     points_exact = get_setting("points_exact", 4)
+    auto_tip_active = _truthy_setting(get_setting("bot_auto_tip_active", False), default=False)
 
     stats_rows = db.session.query(
         Prediction.user_id,
@@ -63,7 +101,8 @@ def _admin_bots_view():
     for b in bots:
         s = stats_map.get(b.id)
         from scoring import _truthy_setting
-        active = _truthy_setting(get_setting(f"bot_active_{b.username}", True), default=True)
+        active = _truthy_setting(get_setting(f"bot_active_{b.username}", False), default=False)
+        profile = BOT_PROFILES.get(b.username, {})
         bot_list.append({
             "user": b,
             "name": b.username,
@@ -72,15 +111,18 @@ def _admin_bots_view():
             "exact": int(s.exact or 0) if s else 0,
             "points": int(s.pts or 0) if s else 0,
             "active": active,
+            "profile": profile,
         })
     bot_list.sort(key=lambda x: x["points"], reverse=True)
     total_tips = sum(b["tips"] for b in bot_list)
-    open_matches = Match.query.filter_by(status="scheduled").count()
+    open_matches = active_match_query().filter_by(status="scheduled").count()
     active_count = sum(1 for b in bot_list if b["active"])
     return render_template(
         "admin/bots.html", bots=bot_list, current_matchday=matchday,
         total_tips=total_tips, open_matches=open_matches, active_count=active_count,
         bot_names=BOT_NAMES, missing_bots=missing_bots,
+        bot_profiles=BOT_PROFILES,
+        auto_tip_active=auto_tip_active,
     )
 
 
@@ -90,12 +132,23 @@ def _admin_bots_tip_all():
     overwrite = request.form.get("overwrite") == "1"
     try:
         results = ai_manager.tip_all_matches(matchday=matchday, overwrite=overwrite)
-        tipped = sum(r.get("tipped", 0) for r in results.values())
-        skipped = sum(r.get("skipped", 0) for r in results.values())
-        if tipped > 0:
-            flash(f"✅ {tipped} Bot-Tipps für Spieltag {matchday} abgegeben", "success")
+        summary = getattr(results, "summary_by_bot", {})
+        tipped = sum(v.get("tipped", 0) for v in summary.values())
+        overwritten = sum(v.get("overwritten", 0) for v in summary.values())
+        skipped = sum(v.get("skipped", 0) for v in summary.values())
+        if tipped or overwritten:
+            active_skipped = sum(1 for v in summary.values() if v.get("skipped", 0) and not v.get("tipped", 0) and not v.get("overwritten", 0))
+            msg = f"✅ Aktive Bots: {tipped} neue Tipps"
+            if overwritten:
+                msg += f", {overwritten} überschrieben"
+            msg += f" für Spieltag {matchday}."
+            if skipped:
+                msg += f" ({skipped} übersprungen)"
+            log_admin_action("bots_tip_all", "matchday", matchday, msg, {"tipped": tipped, "overwritten": overwritten, "skipped": skipped})
+            flash(msg, "success")
         else:
-            flash(f"ℹ️ Keine neuen Tipps für Spieltag {matchday}.", "info")
+            log_admin_action("bots_tip_all", "matchday", matchday, f"Keine neuen Tipps fuer Spieltag {matchday}", {"skipped": skipped})
+            flash(f"ℹ️ Keine neuen Tipps für Spieltag {matchday}. ({skipped} übersprungen)", "info")
     except Exception as e:
         flash(f"❌ Fehler beim Tippen: {e}", "error")
     return redirect(url_for("admin.admin_bots"))
@@ -115,7 +168,7 @@ def _admin_bots_tip_single():
         if opponent is None:
             flash(f"❌ KI-Opponent '{bot_name}' nicht gefunden.", "error")
             return redirect(url_for("admin.admin_bots"))
-        matches = Match.query.filter_by(matchday=matchday, status="scheduled").all()
+        matches = active_match_query().filter_by(matchday=matchday, status="scheduled").all()
         tipped = 0
         for match in matches:
             existing = Prediction.query.filter_by(user_id=bot_id, match_id=match.id).first()
@@ -128,6 +181,7 @@ def _admin_bots_tip_single():
                 ))
                 tipped += 1
         db.session.commit()
+        log_admin_action("bot_tip_single", "user", bot_id, f"{bot_name}: {tipped} Tipps fuer Spieltag {matchday}", {"matchday": matchday, "tipped": tipped})
         flash(f"✅ {bot_name}: {tipped} Tipps für Spieltag {matchday} abgegeben.", "success")
     except Exception as e:
         flash(f"❌ Fehler: {e}", "error")
@@ -141,12 +195,13 @@ def _admin_bots_reset():
     if not bot_user or "@bot.local" not in bot_user.email:
         flash("❌ Bot nicht gefunden.", "error")
         return redirect(url_for("admin.admin_bots"))
-    match_ids = [m.id for m in Match.query.filter_by(matchday=matchday).all()]
+    match_ids = [m.id for m in active_match_query().filter_by(matchday=matchday).all()]
     deleted = Prediction.query.filter(
         Prediction.user_id == bot_id,
         Prediction.match_id.in_(match_ids),
     ).delete(synchronize_session=False)
     db.session.commit()
+    log_admin_action("bot_reset", "user", bot_id, f"{deleted} Tipps von {bot_user.username} fuer Spieltag {matchday} geloescht", {"matchday": matchday, "deleted": deleted})
     flash(f"🗑️ {deleted} Tipps von {bot_user.username} für Spieltag {matchday} gelöscht.", "warning")
     return redirect(url_for("admin.admin_bots"))
 
@@ -159,7 +214,7 @@ def _admin_bots_toggle():
         return redirect(url_for("admin.admin_bots"))
     from scoring import _truthy_setting
     key = f"bot_active_{bot_name}"
-    is_currently_active = _truthy_setting(get_setting(key, True), default=True)
+    is_currently_active = _truthy_setting(get_setting(key, False), default=False)
     new_val = "0" if is_currently_active else "1"
     set_setting(key, new_val)
     status = "aktiviert" if new_val == "1" else "deaktiviert"
@@ -172,7 +227,19 @@ def _admin_bots_toggle():
     except Exception:
         pass
 
+    log_admin_action("bot_toggle", "bot", bot_name, f"{bot_name} {status}")
     flash(f"🤖 {bot_name} {status}.", "success")
+    return redirect(url_for("admin.admin_bots"))
+
+
+def _admin_bots_toggle_auto():
+    from scoring import get_setting, set_setting, _truthy_setting
+    current = _truthy_setting(get_setting("bot_auto_tip_active", False), default=False)
+    new_val = not current
+    set_setting("bot_auto_tip_active", new_val)
+    status = "aktiviert" if new_val else "deaktiviert"
+    log_admin_action("bot_auto_toggle", "setting", "bot_auto_tip_active", f"Automatische Bot-Tipps {status}")
+    flash(f"🤖 Automatische Tipps aktiver Bots {status}.", "success")
     return redirect(url_for("admin.admin_bots"))
 
 
@@ -221,6 +288,11 @@ def _admin_bots_create_one():
     try:
         db.session.add(bot)
         db.session.commit()
+        try:
+            from utils import set_setting
+            set_setting(f"bot_active_{bot_name}", "0")
+        except Exception:
+            pass
         # Cache invalidieren
         import ai_opponent
         ai_opponent._ai_manager = None

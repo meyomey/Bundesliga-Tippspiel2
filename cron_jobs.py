@@ -13,8 +13,9 @@ Stattdessen ruft Plesk-Cron dieses Script periodisch auf:
 
 Verfuegbare Tasks:
   python cron_jobs.py sync       -> Ergebnisse von API holen
-  python cron_jobs.py reminder   -> 1h-Reminder per E-Mail senden
-  python cron_jobs.py all        -> Beides nacheinander
+  python cron_jobs.py reminder   -> Tipp-Erinnerungen ueber aktivierte Kanaele senden
+  python cron_jobs.py bots       -> aktive KI-Bots fuer aktuellen Spieltag tippen lassen
+  python cron_jobs.py all        -> Sync, Bot-Tipps und Reminder nacheinander
 """
 import sys
 import os
@@ -43,33 +44,36 @@ def run_sync():
 
 
 def run_reminders():
-    """Sendet Tipp-Erinnerungen fuer Spiele, die in <=1h beginnen."""
+    """Sendet Tipp-Erinnerungen fuer fehlende Tipps ueber die Benachrichtigungszentrale."""
     from app import app
-    from extensions import db
-    from models import Match, User, Prediction
-    from utils import send_kickoff_reminder
+    from notification_center import run_reminder_cycle
 
     with app.app_context():
-        now = datetime.now(timezone.utc)
-        # Spiele in den naechsten 60-65 Minuten (kleines Fenster, damit Cron alle 15min ok ist)
-        upcoming = Match.query.filter(
-            Match.kickoff > now + timedelta(minutes=55),
-            Match.kickoff <= now + timedelta(minutes=70),
-            Match.status == "scheduled",
-        ).all()
+        res = run_reminder_cycle()
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        print(f"[{ts}] REMINDER: {res}")
+        return True
 
-        sent = 0
-        for match in upcoming:
-            for user in User.query.all():
-                pred = Prediction.query.filter_by(
-                    user_id=user.id, match_id=match.id
-                ).first()
-                if not pred:
-                    if send_kickoff_reminder(user, match):
-                        sent += 1
 
-        ts = now.strftime("%Y-%m-%d %H:%M:%S")
-        print(f"[{ts}] REMINDER: {sent} Mails fuer {len(upcoming)} Spiele gesendet.")
+def run_bot_tips():
+    """Laesst aktive KI-Bots fuer den aktuellen Spieltag tippen, falls aktiviert."""
+    from app import app
+    from scoring import get_setting, _truthy_setting
+    from stats import get_current_matchday
+    from ai_opponent import get_ai_manager
+
+    with app.app_context():
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        if not _truthy_setting(get_setting("bot_auto_tip_active", False), default=False):
+            print(f"[{ts}] BOTS: Auto-Tipp deaktiviert")
+            return True
+        matchday = get_current_matchday()
+        manager = get_ai_manager()
+        results = manager.tip_all_matches(matchday=matchday, overwrite=False)
+        summary = getattr(results, "summary_by_bot", {})
+        tipped = sum(v.get("tipped", 0) for v in summary.values())
+        skipped = sum(v.get("skipped", 0) for v in summary.values())
+        print(f"[{ts}] BOTS: Spieltag {matchday}, {tipped} Tipps, {skipped} uebersprungen")
         return True
 
 
@@ -80,12 +84,15 @@ def main():
         run_sync()
     elif task == "reminder":
         run_reminders()
+    elif task == "bots":
+        run_bot_tips()
     elif task == "all":
         run_sync()
+        run_bot_tips()
         run_reminders()
     else:
         print(f"Unbekannte Task: {task}")
-        print("Verwendung: python cron_jobs.py [sync|reminder|all]")
+        print("Verwendung: python cron_jobs.py [sync|reminder|bots|all]")
         sys.exit(1)
 
 

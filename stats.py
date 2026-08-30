@@ -9,13 +9,21 @@ from extensions import db
 from models import (
     User, Team, Match, Prediction, SpecialPrediction, SeasonArchive, MatchdayWinner,
 )
-from scoring import get_setting, get_leaderboard, classify_prediction
+from scoring import get_setting, get_leaderboard, classify_prediction, is_bot_user
+from competition_helpers import (
+    get_active_competition, filter_matches_for_active_competition,
+    filter_competition_scoped,
+)
 
 
 # ============================================================ Trend-Tracking -
 def get_user_trend(user_id, last_n_matchdays=8):
     """Punkte-Verlauf ueber die letzten N Spieltage + Rang-Entwicklung."""
-    preds = Prediction.query.filter_by(user_id=user_id).all()
+    comp = get_active_competition()
+    q = Prediction.query.filter_by(user_id=user_id).join(Match)
+    if comp:
+        q = q.filter(Match.competition_id == comp.id)
+    preds = q.all()
     finished_preds = [p for p in preds if p.match.status == "finished"]
 
     md_points = {}
@@ -56,11 +64,14 @@ def _compute_rank_through(user_id, max_matchday):
     all_users = User.query.all()
     user_points = {}
     for u in all_users:
-        pts = db.session.query(func.coalesce(func.sum(Prediction.points), 0)) \
+        comp = get_active_competition()
+        pts_q = db.session.query(func.coalesce(func.sum(Prediction.points), 0)) \
             .join(Match, Prediction.match_id == Match.id) \
             .filter(Prediction.user_id == u.id, Match.matchday <= max_matchday,
-                    Match.status == "finished") \
-            .scalar() or 0
+                    Match.status == "finished")
+        if comp:
+            pts_q = pts_q.filter(Match.competition_id == comp.id)
+        pts = pts_q.scalar() or 0
         user_points[u.id] = pts
 
     sorted_users = sorted(user_points.items(), key=lambda x: -x[1])
@@ -73,7 +84,11 @@ def _compute_rank_through(user_id, max_matchday):
 # ============================================================ Tipp-Stil-Insights -
 def get_user_insights(user):
     """Analysiert den Tipp-Stil eines Users."""
-    preds = user.predictions.all()
+    comp = get_active_competition()
+    q = Prediction.query.filter_by(user_id=user.id).join(Match)
+    if comp:
+        q = q.filter(Match.competition_id == comp.id)
+    preds = q.all()
     finished = [p for p in preds if p.match.status == "finished"]
     if not finished:
         return None
@@ -119,13 +134,34 @@ def get_user_insights(user):
 
 
 # ============================================================ Match-Insights -
-def get_match_tip_distribution(match_id):
-    """Tipp-Verteilung fuer ein Spiel: wie viele tippen auf Heim/Unentschieden/Auswaerts."""
-    preds = Prediction.query.filter_by(match_id=match_id).all()
+def get_match_tip_distribution(match_id, exclude_user_id=None, active_only=True):
+    """Tipp-Verteilung fuer ein Spiel.
+
+    Standardmaessig werden nur aktive Mitspieler gezaehlt; reine Admin-Konten
+    und deaktivierte Bots fallen damit heraus. Fuer die Matchdetail-Seite kann
+    ``exclude_user_id`` gesetzt werden, damit der Block "Wie tippen die
+    anderen?" wirklich nur die anderen Spieler auswertet.
+    """
+    q = Prediction.query.filter_by(match_id=match_id)
+    if exclude_user_id is not None:
+        q = q.filter(Prediction.user_id != exclude_user_id)
+    preds = q.all()
+
+    if active_only and preds:
+        from scoring import filter_active_users
+        active_ids = {u.id for u in filter_active_users([p.user for p in preds if p.user])}
+        preds = [p for p in preds if p.user_id in active_ids]
+
+    empty = {
+        "home": 0, "draw": 0, "away": 0,
+        "total": 0, "n_total": 0,
+        "tendency_pct": {"home": 0, "draw": 0, "away": 0},
+        "avg_home": 0, "avg_away": 0,
+        "scores": {}, "all_combos": [],
+        "most_common_tip": None, "most_common_count": 0, "most_common_pct": 0,
+    }
     if not preds:
-        return {"home": 0, "draw": 0, "away": 0, "total": 0, "n_total": 0,
-                "tendency_pct": {"home": 0, "draw": 0, "away": 0},
-                "avg_home": 0, "avg_away": 0, "scores": {}}
+        return empty
 
     home = sum(1 for p in preds if p.home_tip > p.away_tip)
     draw = sum(1 for p in preds if p.home_tip == p.away_tip)
@@ -140,6 +176,9 @@ def get_match_tip_distribution(match_id):
         key = f"{p.home_tip}:{p.away_tip}"
         scores[key] = scores.get(key, 0) + 1
 
+    all_combos = sorted(scores.items(), key=lambda item: (-item[1], item[0]))
+    most_common_tip, most_common_count = all_combos[0]
+
     # Berechne Prozentwerte für die UI
     total_for_pct = max(total, 1)
     tendency_pct = {
@@ -151,7 +190,11 @@ def get_match_tip_distribution(match_id):
         "home": home, "draw": draw, "away": away,
         "total": total, "n_total": total,
         "tendency_pct": tendency_pct,
-        "avg_home": avg_h, "avg_away": avg_a, "scores": scores,
+        "avg_home": avg_h, "avg_away": avg_a,
+        "scores": scores, "all_combos": all_combos,
+        "most_common_tip": most_common_tip,
+        "most_common_count": most_common_count,
+        "most_common_pct": round(most_common_count / total_for_pct * 100),
     }
 
 
@@ -253,14 +296,35 @@ def _weather_code_to_label(code):
 
 # ==================================================== Live-Bundesliga-Tabelle -
 def compute_live_standings():
-    """Berechnet die aktuelle Bundesliga-Tabelle aus allen finished Matches."""
-    teams = Team.query.all()
+    """Berechnet die aktuelle Tabelle des aktiven Wettbewerbs.
+
+    Wichtig: Es werden nicht mehr pauschal alle Teams aus der Team-Tabelle
+    angezeigt. Alte Absteiger bleiben als historische Teams in der DB, duerfen
+    aber in der aktuellen Liga-Tabelle nicht erscheinen. Basis sind Teams mit
+    Matches im aktiven Wettbewerb; falls noch kein Spielplan vorhanden ist,
+    faellt die Funktion auf CompetitionTeam zurueck.
+    """
+    from models import CompetitionTeam
+    from competition_helpers import get_active_competition
+    comp = get_active_competition()
+
+    match_q = Match.query
+    match_q = filter_matches_for_active_competition(match_q)
+    match_team_rows = match_q.with_entities(Match.home_team_id, Match.away_team_id).all()
+    team_ids = {tid for row in match_team_rows for tid in row if tid}
+
+    if not team_ids and comp:
+        team_ids = {ct.team_id for ct in CompetitionTeam.query.filter_by(competition_id=comp.id).all()}
+
+    teams = Team.query.filter(Team.id.in_(team_ids)).all() if team_ids else []
     table = {t.id: {
         "team": t, "played": 0, "won": 0, "drawn": 0, "lost": 0,
         "goals_for": 0, "goals_against": 0, "points": 0,
     } for t in teams}
 
-    finished = Match.query.filter_by(status="finished").all()
+    finished_q = Match.query.filter_by(status="finished")
+    finished_q = filter_matches_for_active_competition(finished_q)
+    finished = finished_q.all()
     for m in finished:
         if m.home_score is None or m.away_score is None:
             continue
@@ -292,12 +356,29 @@ def compute_live_standings():
     return rows
 
 
+def get_official_standings_positions():
+    """Liefert offizielle Tabellenpositionen aus der externen Tabellenquelle.
+
+    Wichtig fuer die Tippseiten: Die bisher lokal aus beendeten Matches
+    berechnete Tabelle kann unvollstaendig oder durch Test-/Importdaten
+    irrefuehrend sein. Auf Tippkarten zeigen wir daher nur Positionen, wenn sie
+    aus der offiziellen Tabellenquelle kommen. Ist die Quelle nicht erreichbar,
+    bleibt der Platz bewusst ausgeblendet statt falsch zu wirken.
+    """
+    try:
+        from sync import fetch_live_standings
+        rows, err = fetch_live_standings()
+    except Exception:
+        return {}
+    if not rows:
+        return {}
+    return {r["team"].id: r for r in rows if r.get("team") and r.get("rank")}
+
+
 def get_team_position(team_id):
-    """Liefert die aktuelle Tabellenposition eines Teams."""
-    for r in compute_live_standings():
-        if r["team"].id == team_id:
-            return r["rank"]
-    return None
+    """Liefert die offizielle aktuelle Tabellenposition eines Teams."""
+    row = get_official_standings_positions().get(team_id)
+    return row["rank"] if row else None
 
 
 # ============================================================== Form / H2H -
@@ -311,16 +392,12 @@ def get_team_form(team_id, limit=5):
     Templates (schedule.html, match_detail.html, quick_tip.html) erwarten
     die Felder ``result``, ``opponent``, ``score`` und ``home``.
     """
-    finished = (
-        Match.query
-        .filter(
-            Match.status == "finished",
-            (Match.home_team_id == team_id) | (Match.away_team_id == team_id),
-        )
-        .order_by(Match.kickoff.desc())
-        .limit(limit)
-        .all()
+    q = Match.query.filter(
+        Match.status == "finished",
+        (Match.home_team_id == team_id) | (Match.away_team_id == team_id),
     )
+    q = filter_matches_for_active_competition(q)
+    finished = q.order_by(Match.kickoff.desc()).limit(limit).all()
 
     form = []
     for m in finished:
@@ -350,11 +427,13 @@ def get_team_form(team_id, limit=5):
 
 def get_h2h(home_team_id, away_team_id, limit=5):
     """Historische Duelle zwischen zwei Teams."""
-    matches = Match.query.filter(
+    q = Match.query.filter(
         Match.status == "finished",
         ((Match.home_team_id == home_team_id) & (Match.away_team_id == away_team_id))
         | ((Match.home_team_id == away_team_id) & (Match.away_team_id == home_team_id))
-    ).order_by(Match.kickoff.desc()).limit(limit).all()
+    )
+    q = filter_matches_for_active_competition(q)
+    matches = q.order_by(Match.kickoff.desc()).limit(limit).all()
 
     results = []
     for m in matches:
@@ -420,7 +499,8 @@ def compare_special_answer(question, user_answer):
 def evaluate_special_predictions():
     """Berechnet Punkte fuer alle Sondertipps mit gesetzter correct_answer."""
     from models import SpecialQuestion
-    questions = SpecialQuestion.query.filter(SpecialQuestion.correct_answer.isnot(None)).all()
+    q_base = SpecialQuestion.query.filter(SpecialQuestion.correct_answer.isnot(None))
+    questions = filter_competition_scoped(q_base, SpecialQuestion).all()
     for q in questions:
         if not q.correct_answer:
             continue
@@ -432,7 +512,8 @@ def evaluate_special_predictions():
 # ============================================================ Ewige Tabelle -
 def get_eternal_table():
     """Aggregiert SeasonArchive ueber alle Saisons + aktuelle Saison."""
-    archives = SeasonArchive.query.all()
+    archives = filter_competition_scoped(SeasonArchive.query, SeasonArchive).all()
+    archives = [a for a in archives if a.user is not None and not is_bot_user(a.user)]
     table = {}
     for a in archives:
         uid = a.user_id
@@ -488,7 +569,11 @@ def archive_season(season_label):
     """Speichert die aktuelle Tabelle als Saison-Archiv."""
     rows = get_leaderboard()
     for r in rows:
-        existing = SeasonArchive.query.filter_by(user_id=r["user"].id, season=season_label).first()
+        comp = get_active_competition()
+        archive_q = SeasonArchive.query.filter_by(user_id=r["user"].id, season=season_label)
+        if comp:
+            archive_q = archive_q.filter(SeasonArchive.competition_id == comp.id)
+        existing = archive_q.first()
         if existing:
             existing.rank = r["rank"]
             existing.points = r["points"]
@@ -498,6 +583,7 @@ def archive_season(season_label):
             existing.wrong_count = r["wrong"]
         else:
             db.session.add(SeasonArchive(
+                competition_id=comp.id if comp else None,
                 user_id=r["user"].id, season=season_label,
                 rank=r["rank"], points=r["points"],
                 exact_count=r["exact"], diff_count=r["diff"],
@@ -511,11 +597,13 @@ def get_open_matches_for_user(user, max_hours=72):
     """Findet offene Spiele ohne Tipp in den naechsten Stunden."""
     now = datetime.now(timezone.utc)
     horizon = now + timedelta(hours=max_hours)
-    matches = Match.query.filter(
+    q = Match.query.filter(
         Match.status == "scheduled",
         Match.kickoff > now,
         Match.kickoff <= horizon,
-    ).order_by(Match.kickoff.asc()).all()
+    )
+    q = filter_matches_for_active_competition(q)
+    matches = q.order_by(Match.kickoff.asc()).all()
     if not matches:
         return []
     tipped_ids = {p.match_id for p in user.predictions.all()}
@@ -524,10 +612,232 @@ def get_open_matches_for_user(user, max_hours=72):
 
 def get_current_matchday():
     """Liefert den aktuell relevanten Spieltag."""
-    open_md = db.session.query(Match.matchday).filter(
+    open_q = db.session.query(Match.matchday).filter(
         Match.status.in_(["scheduled", "live"])
-    ).order_by(Match.matchday.asc()).first()
+    )
+    open_q = filter_matches_for_active_competition(open_q)
+    open_md = open_q.order_by(Match.matchday.asc()).first()
     if open_md:
         return open_md[0]
-    last_md = db.session.query(Match.matchday).order_by(Match.matchday.desc()).first()
+    last_q = db.session.query(Match.matchday)
+    last_q = filter_matches_for_active_competition(last_q)
+    last_md = last_q.order_by(Match.matchday.desc()).first()
     return last_md[0] if last_md else 1
+
+# ============================================================ Stats 2.0 -
+def get_user_stats_20(user):
+    """Spassige Zusatz-Statistiken fuer das Dashboard."""
+    from scoring import classify_prediction
+    from competition_helpers import get_active_competition
+    comp = get_active_competition()
+    q = Prediction.query.filter_by(user_id=user.id).join(Match)
+    if comp:
+        q = q.filter(Match.competition_id == comp.id)
+    preds = q.all()
+    finished = [p for p in preds if p.match and p.match.status == "finished"]
+
+    # Serien ueber Kickoff sortiert
+    streak_best = 0
+    streak_current = 0
+    dry_best = 0
+    dry_current = 0
+    upset_hits = 0
+    home_bias = draw_bias = away_bias = 0
+    team_points = {}
+
+    for p in sorted(finished, key=lambda x: x.match.kickoff):
+        kind = classify_prediction(p, p.match)
+        pts = p.points or 0
+        if p.home_tip > p.away_tip:
+            home_bias += 1
+        elif p.home_tip == p.away_tip:
+            draw_bias += 1
+        else:
+            away_bias += 1
+        team_points[p.match.home_team.short_name] = team_points.get(p.match.home_team.short_name, 0) + pts
+        team_points[p.match.away_team.short_name] = team_points.get(p.match.away_team.short_name, 0) + pts
+
+        if pts > 0:
+            streak_current += 1
+            dry_current = 0
+            streak_best = max(streak_best, streak_current)
+        else:
+            dry_current += 1
+            streak_current = 0
+            dry_best = max(dry_best, dry_current)
+
+        # Upset-Hit: auf klaren Außensieg oder überraschendes Remis getippt und Punkte geholt
+        if pts > 0 and ((p.home_tip < p.away_tip and p.match.home_score > p.match.away_score) is False):
+            if abs((p.home_tip - p.away_tip)) >= 2 or (p.home_tip == p.away_tip and p.match.home_score == p.match.away_score):
+                upset_hits += 1
+
+    total = len(finished)
+    favorite_score_team = None
+    if team_points:
+        favorite_score_team = max(team_points.items(), key=lambda x: x[1])
+
+    return {
+        "best_point_streak": streak_best,
+        "current_point_streak": streak_current,
+        "longest_dry_run": dry_best,
+        "upset_hits": upset_hits,
+        "home_bias": round(home_bias / total * 100) if total else 0,
+        "draw_bias": round(draw_bias / total * 100) if total else 0,
+        "away_bias": round(away_bias / total * 100) if total else 0,
+        "favorite_score_team": favorite_score_team,
+        "finished_count": total,
+    }
+
+# ============================================================ Spieltags-Preview & Recap 2.0 -
+def get_matchday_preview(matchday=None):
+    """Aggregierte Vorschau fuer einen Spieltag.
+
+    Zeigt bewusst nur Community-Trends und Abgabequoten, keine individuellen
+    Tipps vor Anpfiff.
+    """
+    from scoring import filter_active_users
+    from competition_helpers import active_match_query, get_active_competition
+    if matchday is None:
+        matchday = get_current_matchday()
+    comp = get_active_competition()
+    matches = active_match_query().filter_by(matchday=matchday).order_by(Match.kickoff, Match.id).all()
+    users = filter_active_users(User.query.all())
+    user_ids = [u.id for u in users]
+    match_ids = [m.id for m in matches]
+    preds = []
+    if user_ids and match_ids:
+        preds = Prediction.query.filter(Prediction.user_id.in_(user_ids), Prediction.match_id.in_(match_ids)).all()
+
+    by_match = {}
+    by_user = {}
+    for p in preds:
+        by_match.setdefault(p.match_id, []).append(p)
+        by_user.setdefault(p.user_id, []).append(p)
+
+    rows = []
+    top_match = None
+    max_tips = -1
+    for m in matches:
+        mp = by_match.get(m.id, [])
+        home = draw = away = 0
+        score_counts = {}
+        joker_count = 0
+        for p in mp:
+            if p.home_tip > p.away_tip:
+                home += 1
+            elif p.home_tip == p.away_tip:
+                draw += 1
+            else:
+                away += 1
+            score = f"{p.home_tip}:{p.away_tip}"
+            score_counts[score] = score_counts.get(score, 0) + 1
+            if p.joker:
+                joker_count += 1
+        total = len(mp)
+        top_score = max(score_counts.items(), key=lambda x: x[1]) if score_counts else None
+        row = {
+            "match": m,
+            "tips": total,
+            "missing": max(len(users) - total, 0),
+            "completion_pct": round(total / len(users) * 100) if users else 0,
+            "home_pct": round(home / total * 100) if total else 0,
+            "draw_pct": round(draw / total * 100) if total else 0,
+            "away_pct": round(away / total * 100) if total else 0,
+            "top_score": top_score[0] if top_score else "—",
+            "top_score_count": top_score[1] if top_score else 0,
+            "joker_count": joker_count,
+            "is_open": m.is_open(),
+        }
+        rows.append(row)
+        if total > max_tips:
+            max_tips = total
+            top_match = row
+
+    missing_users = [u for u in users if len(by_user.get(u.id, [])) < len(matches)]
+    return {
+        "competition": comp,
+        "matchday": matchday,
+        "matches": rows,
+        "users_count": len(users),
+        "total_predictions": len(preds),
+        "possible_predictions": len(users) * len(matches),
+        "overall_completion_pct": round(len(preds) / (len(users) * len(matches)) * 100) if users and matches else 0,
+        "missing_users": missing_users,
+        "top_match": top_match,
+    }
+
+
+def get_matchday_recap(matchday=None):
+    """Spieltag-Rueckblick fuer alle User mit Fun-Facts."""
+    from scoring import filter_active_users, classify_prediction
+    from competition_helpers import active_match_query, get_active_competition
+    if matchday is None:
+        # letzter Spieltag mit mindestens einem beendeten Spiel
+        last = active_match_query().filter_by(status="finished").order_by(Match.matchday.desc()).first()
+        matchday = last.matchday if last else get_current_matchday()
+    comp = get_active_competition()
+    matches = active_match_query().filter_by(matchday=matchday).order_by(Match.kickoff, Match.id).all()
+    match_ids = [m.id for m in matches]
+    users = filter_active_users(User.query.all())
+    user_ids = [u.id for u in users]
+    preds = []
+    if match_ids and user_ids:
+        preds = Prediction.query.filter(Prediction.match_id.in_(match_ids), Prediction.user_id.in_(user_ids)).options(
+            db.joinedload(Prediction.match).joinedload(Match.home_team),
+            db.joinedload(Prediction.match).joinedload(Match.away_team),
+        ).all()
+
+    by_user = {}
+    for p in preds:
+        by_user.setdefault(p.user_id, []).append(p)
+
+    rows = []
+    best_single = None
+    best_joker = None
+    for u in users:
+        ups = by_user.get(u.id, [])
+        exact = diff = tendency = wrong = pending = 0
+        points = 0
+        joker_points = 0
+        for p in ups:
+            kind = classify_prediction(p, p.match)
+            if kind == "exact": exact += 1
+            elif kind == "diff": diff += 1
+            elif kind == "tendency": tendency += 1
+            elif kind == "wrong": wrong += 1
+            else: pending += 1
+            pts = p.points or 0
+            points += pts
+            if p.joker:
+                joker_points += pts
+                if pts > 0 and (best_joker is None or pts > best_joker["points"]):
+                    best_joker = {"user": u, "prediction": p, "points": pts}
+            if pts > 0 and (best_single is None or pts > best_single["points"]):
+                best_single = {"user": u, "prediction": p, "points": pts}
+        rows.append({
+            "user": u,
+            "points": points,
+            "tips": len(ups),
+            "exact": exact,
+            "diff": diff,
+            "tendency": tendency,
+            "wrong": wrong,
+            "pending": pending,
+            "joker_points": joker_points,
+        })
+    rows.sort(key=lambda r: (-r["points"], -r["exact"], -r["diff"], r["user"].username.lower()))
+    for i, r in enumerate(rows, 1):
+        r["rank"] = i
+
+    finished_count = sum(1 for m in matches if m.status == "finished")
+    return {
+        "competition": comp,
+        "matchday": matchday,
+        "matches": matches,
+        "finished_count": finished_count,
+        "total_matches": len(matches),
+        "rows": rows,
+        "winner": rows[0] if rows else None,
+        "best_single": best_single,
+        "best_joker": best_joker,
+    }

@@ -9,9 +9,10 @@ from sqlalchemy import inspect, text
 from extensions import db
 from models import (
     User, Team, Match, Prediction, Comment, Setting,
-    Competition, CompetitionTeam,
+    Competition, CompetitionTeam, InvitationCode,
 )
 from scoring import get_setting, set_setting
+from match_results import apply_match_update
 
 
 # Bundesliga-Teams für automatische Befüllung
@@ -31,10 +32,93 @@ BUNDESLIGA_TEAMS = [
     ("FC Augsburg",             "FCA", 16,  "https://crests.football-data.org/16.png",  "#BA3733"),
     ("SV Werder Bremen",        "SVW", 12,  "https://crests.football-data.org/12.png",  "#1D9053"),
     ("1. FC Heidenheim",        "FCH", 44,  "https://crests.football-data.org/44.png",  "#E2001A"),
-    ("FC St. Pauli",            "STP", 24,  "https://crests.football-data.org/24.png",  "#62351D"),
-    ("Hamburger SV",            "HSV", 269, "https://crests.football-data.org/269.png", "#0F4D92"),
+    # football-data.org liefert fuer diese Teams teils falsche/fehlende Crest-URLs.
+    # Deshalb nutzen wir nur hier die von OpenLigaDB verlinkten Wikimedia-SVGs.
+    ("FC St. Pauli",            "STP", 24,  "https://upload.wikimedia.org/wikipedia/commons/b/b3/Fc_st_pauli_logo.svg", "#62351D"),
+    ("Hamburger SV",            "HSV", 269, "https://upload.wikimedia.org/wikipedia/commons/f/f7/Hamburger_SV_logo.svg", "#0F4D92"),
     ("1. FC Köln",              "KOE", 1,   "https://crests.football-data.org/1.png",   "#ED1C24"),
 ]
+
+
+# Nur gezielte Logo-Fixes. Andere Teams werden bewusst nicht angefasst.
+KNOWN_TEAM_LOGO_FIXES = {
+    # Problematische/fehlende football-data-Crests gezielt mit OpenLigaDB/Wikimedia-Quellen ersetzen.
+    "STP": "https://upload.wikimedia.org/wikipedia/commons/b/b3/Fc_st_pauli_logo.svg",
+    "HSV": "https://upload.wikimedia.org/wikipedia/commons/f/f7/Hamburger_SV_logo.svg",
+    "FCB": "https://upload.wikimedia.org/wikipedia/commons/1/1f/Logo_FC_Bayern_M%C3%BCnchen_%282002%E2%80%932017%29.svg",
+    "BVB": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/67/Borussia_Dortmund_logo.svg/960px-Borussia_Dortmund_logo.svg.png",
+    "B04": "https://www.bundesliga-reisefuehrer.de/sites/default/files/B04_Standard_Logo_RGB.png",
+    "RBL": "https://i.imgur.com/Rpwsjz1.png",
+    "S04": "https://upload.wikimedia.org/wikipedia/commons/9/97/FC_Schalke_04_Logo.png",
+    "SCP": "https://upload.wikimedia.org/wikipedia/commons/e/e3/SC_Paderborn_07_Logo.svg",
+    "PAD": "https://upload.wikimedia.org/wikipedia/commons/e/e3/SC_Paderborn_07_Logo.svg",
+    "ELV": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/35/SV_Elversberg_Logo.svg/500px-SV_Elversberg_Logo.svg.png",
+    "N09": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/35/SV_Elversberg_Logo.svg/500px-SV_Elversberg_Logo.svg.png",
+}
+
+
+def update_known_team_logos():
+    """Korrigiert bekannte falsche/fehlende Logo-URLs in Bestandsdaten.
+
+    Hintergrund: football-data.org zeigt bei St. Pauli/HSV je nach Saison/ID
+    falsche bzw. fehlende Crest-URLs. Wir aktualisieren deshalb nur diese zwei
+    Teams auf die von OpenLigaDB referenzierten Wikimedia-SVGs.
+    """
+    changed = 0
+    for short_name, logo_url in KNOWN_TEAM_LOGO_FIXES.items():
+        team = Team.query.filter_by(short_name=short_name).first()
+        # Lokale Logos nicht wieder auf externe URLs zurueckdrehen.
+        if team and team.logo and str(team.logo).startswith("/static/team_logos/"):
+            continue
+        if team and team.logo != logo_url:
+            team.logo = logo_url
+            changed += 1
+    if changed:
+        db.session.commit()
+        try:
+            current_app.logger.info(f"✅ Team-Logo-Fixes aktualisiert: {changed}")
+        except Exception:
+            pass
+    return changed
+
+
+def season_code_from_label(value, default=None):
+    """Extrahiert den football-data/OpenLigaDB Saison-Code aus Labels.
+
+    Beispiele:
+    - "2026/27" -> "2026"
+    - "2026" -> "2026"
+    - None -> default
+    """
+    if value is None:
+        return str(default or current_app.config.get("SEASON", "2025"))
+    raw = str(value).strip()
+    if not raw:
+        return str(default or current_app.config.get("SEASON", "2025"))
+    # Erstes vierstelliges Jahr gewinnt.
+    import re
+    m = re.search(r"(20\d{2})", raw)
+    if m:
+        return m.group(1)
+    return raw
+
+
+def current_sync_season_code():
+    """Saison-Code fuer externe APIs. Admin-Settings haben Vorrang vor Config.
+
+    Wichtig: football-data.org erwartet fuer 2026/27 den Parameter `season=2026`,
+    nicht das Label `2026/27`.
+    """
+    configured = current_app.config.get("SEASON", "2025")
+    setting_value = get_setting("season", None)
+    if setting_value is None:
+        current_label = get_setting("current_season", None)
+        if current_label is not None:
+            return season_code_from_label(current_label, configured)
+        comp = Competition.query.filter_by(is_active=True).order_by(Competition.id.asc()).first()
+        if comp and comp.season:
+            return season_code_from_label(comp.season, configured)
+    return season_code_from_label(setting_value, configured)
 
 
 # ============================================================ Seeding -
@@ -45,6 +129,7 @@ def seed_teams_if_empty():
                 name=name, short_name=short, external_id=ext_id, logo=logo, color=color
             ))
         db.session.commit()
+    update_known_team_logos()
 
 
 def _purge_demo_matches():
@@ -154,6 +239,192 @@ def _fd_request(path, ttl_seconds=30):
     return data, None
 
 
+def _team_color_from_name(name):
+    """Deterministische Fallback-Farbe fuer neu erkannte Teams."""
+    palette = ["#0ea5e9", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6", "#14b8a6", "#64748b"]
+    return palette[sum(ord(c) for c in (name or "")) % len(palette)]
+
+
+def _resolve_or_create_team_from_fd(team_data):
+    """Findet oder erstellt Team anhand football-data.org Teamobjekt.
+
+    Wichtig fuer neue Saisons: Aufsteiger sind oft nicht in den initialen
+    Seed-Daten. Frueher wurden solche Spiele uebersprungen. Jetzt wird das Team
+    automatisch angelegt und dem Sync nicht mehr blockiert.
+    """
+    if not isinstance(team_data, dict):
+        return None, False
+    name = team_data.get("name") or team_data.get("shortName") or team_data.get("tla")
+    if not name:
+        return None, False
+    ext_id = team_data.get("id")
+    short = (team_data.get("tla") or team_data.get("shortName") or name[:3]).upper()[:10]
+    logo = team_data.get("crest") or team_data.get("crestUrl") or ""
+
+    team = None
+    if ext_id is not None:
+        team = Team.query.filter_by(external_id=ext_id).first()
+    if not team:
+        team = _resolve_team_by_name(name)
+    if not team:
+        # Kuerzel-Kollision vermeiden
+        base_short = short
+        i = 2
+        while Team.query.filter_by(short_name=short).first():
+            short = (base_short[:7] + str(i))[:10]
+            i += 1
+        team = Team(
+            name=name,
+            short_name=short,
+            external_id=ext_id,
+            logo=logo or f"/static/team_logos/{_normalize_team_key(short) or 'team'}.svg",
+            color=_team_color_from_name(name),
+        )
+        db.session.add(team)
+        db.session.flush()
+        return team, True
+
+    changed = False
+    if ext_id is not None and team.external_id != ext_id:
+        team.external_id = ext_id
+        changed = True
+    if logo and (not team.logo or str(team.logo).startswith("https://crests.football-data.org/")):
+        team.logo = logo
+        changed = True
+    if changed:
+        db.session.flush()
+    return team, False
+
+
+def _ensure_competition_team(comp_id, team):
+    if not comp_id or not team:
+        return
+    exists = CompetitionTeam.query.filter_by(competition_id=comp_id, team_id=team.id).first()
+    if not exists:
+        db.session.add(CompetitionTeam(competition_id=comp_id, team_id=team.id))
+
+
+def _find_existing_match(comp_id, ext_id, matchday, home_team, away_team, source_prefix=None):
+    """Findet vorhandenes Spiel stabil ueber externe ID oder Paarung.
+
+    Wichtig beim Wechsel der Datenquelle (football-data.org -> OpenLigaDB):
+    Bereits vorhandene Tipps duerfen nicht geloescht werden, nur weil die
+    externe ID einen anderen Prefix hat. Deshalb suchen wir nach der externen
+    ID zunaechst comp-scoped und danach nach Spieltag + Team-Paarung.
+    """
+    existing = Match.query.filter_by(competition_id=comp_id, external_id=ext_id).first()
+    if existing:
+        return existing
+    if home_team and away_team:
+        candidate = Match.query.filter_by(
+            competition_id=comp_id,
+            matchday=matchday,
+            home_team_id=home_team.id,
+            away_team_id=away_team.id,
+        ).first()
+        # Innerhalb derselben Quelle keine alte externe ID versehentlich auf
+        # ein neues Spiel mappen (typischer Fall: alter Saisonspielplan mit
+        # gleicher Paarung/gleichem Spieltag). Beim Quellenwechsel, z.B.
+        # fd:* -> oldb:*, ist Matching dagegen gewuenscht, um Tipps zu erhalten.
+        if candidate and source_prefix and candidate.external_id:
+            same_source = str(candidate.external_id).startswith(f"{source_prefix}:")
+            if same_source and candidate.external_id != ext_id:
+                return None
+        return candidate
+    return None
+
+
+def _purge_stale_matches_for_comp(comp_id, current_ext_ids):
+    """Loescht Spiele des aktiven Wettbewerbs, die nicht in einem Vollsync vorkommen.
+
+    Sicherheitsbremse: Wenn lokal bereits viele Spiele existieren, die API aber
+    nur eine offensichtlich unvollstaendige Teilmenge liefert, wird NICHT
+    geloescht. Sonst koennte ein temporaerer API-/Saisonfehler echte Tipps
+    entfernen.
+    """
+    if not comp_id or not current_ext_ids:
+        return 0
+
+    local_count = Match.query.filter(Match.competition_id == comp_id).count()
+    incoming_count = len(current_ext_ids)
+    comp = db.session.get(Competition, comp_id)
+    expected = (comp.matchdays or 34) * ((comp.teams_count or 18) // 2) if comp else 306
+    min_plausible = max(50, int(min(expected, max(local_count, expected)) * 0.75))
+    if local_count >= 50 and incoming_count < min_plausible:
+        try:
+            current_app.logger.warning(
+                f"Sync-Purge uebersprungen: API liefert nur {incoming_count} Spiele, "
+                f"lokal existieren {local_count}, Mindestwert {min_plausible}."
+            )
+        except Exception:
+            pass
+        return 0
+
+    stale = Match.query.filter(
+        Match.competition_id == comp_id,
+        (
+            (Match.external_id.is_(None)) |
+            (~Match.external_id.in_(current_ext_ids))
+        )
+    ).all()
+    if not stale:
+        return 0
+    stale_ids = [m.id for m in stale]
+    Prediction.query.filter(Prediction.match_id.in_(stale_ids)).delete(synchronize_session=False)
+    Comment.query.filter(Comment.match_id.in_(stale_ids)).delete(synchronize_session=False)
+    Match.query.filter(Match.id.in_(stale_ids)).delete(synchronize_session=False)
+    return len(stale_ids)
+
+
+def _resolve_or_create_team_from_olb(team_dict):
+    """Findet/erstellt Team anhand OpenLigaDB-Teamobjekt.
+
+    OpenLigaDB ist unser Fallback. Auch dort duerfen Aufsteiger nicht mehr zum
+    Ueberspringen kompletter Spiele fuehren.
+    """
+    if not isinstance(team_dict, dict):
+        return None, False
+    name = _olb_team_name(team_dict)
+    if not name:
+        return None, False
+    ext_id = _olb_get(team_dict, "teamId", "TeamId", "teamID", "TeamID")
+    short = (_OLB_TEAM_MAP.get(name) or _olb_get(team_dict, "shortName", "ShortName") or name[:3]).upper()[:10]
+    logo = _olb_get(team_dict, "teamIconUrl", "TeamIconUrl", "iconUrl", "IconUrl") or ""
+
+    team = None
+    if ext_id is not None:
+        team = Team.query.filter_by(external_id=ext_id).first()
+    if not team:
+        team = _resolve_team_by_name(name)
+    if not team:
+        base_short = short
+        i = 2
+        while Team.query.filter_by(short_name=short).first():
+            short = (base_short[:7] + str(i))[:10]
+            i += 1
+        team = Team(
+            name=name,
+            short_name=short,
+            external_id=ext_id,
+            logo=logo or f"/static/team_logos/{_normalize_team_key(short) or 'team'}.svg",
+            color=_team_color_from_name(name),
+        )
+        db.session.add(team)
+        db.session.flush()
+        return team, True
+
+    changed = False
+    if ext_id is not None and team.external_id != ext_id:
+        team.external_id = ext_id
+        changed = True
+    if logo and (not team.logo or str(team.logo).startswith("https://crests.football-data.org/")):
+        team.logo = logo
+        changed = True
+    if changed:
+        db.session.flush()
+    return team, False
+
+
 def sync_with_football_data():
     """Hauptsync gegen football-data.org (Spielplan + Ergebnisse).
 
@@ -162,7 +433,7 @@ def sync_with_football_data():
     Token von https://www.football-data.org/client/register
     (10 Calls/min im Free Tier).
     """
-    season = current_app.config["SEASON"]
+    season = current_sync_season_code()
     comp = current_app.config["COMPETITION"]
 
     comp_obj = Competition.query.filter_by(code=comp, is_active=True).first()
@@ -179,24 +450,39 @@ def sync_with_football_data():
 
 def _process_football_data(data, comp_id, source="football-data.org"):
     """Verarbeitet die Match-Daten und speichert sie in der DB."""
-    from scoring import recalculate_all_points, calculate_points
+    from scoring import recalculate_all_points, recalculate_matches_points
     from badges import check_and_award_badges
+    from models import User
 
     matches_data = data.get("matches", [])
     updated = 0
     created = 0
     live_count = 0
+    new_teams = 0
+    current_ext_ids = set()
+    affected_match_ids = set()
 
     for md in matches_data:
         ext_id = f"fd:{md['id']}"
-        existing = Match.query.filter_by(external_id=ext_id).first()
+        current_ext_ids.add(ext_id)
 
-        home_team_name = md["homeTeam"]["name"]
-        away_team_name = md["awayTeam"]["name"]
-        home_team = _resolve_team_by_name(home_team_name)
-        away_team = _resolve_team_by_name(away_team_name)
+        home_team_data = md.get("homeTeam", {})
+        away_team_data = md.get("awayTeam", {})
+        home_team_name = home_team_data.get("name", "")
+        away_team_name = away_team_data.get("name", "")
+        home_team, home_created = _resolve_or_create_team_from_fd(home_team_data)
+        away_team, away_created = _resolve_or_create_team_from_fd(away_team_data)
+        if home_created or away_created:
+            new_teams += int(bool(home_created)) + int(bool(away_created))
+            current_app.logger.info(
+                f"Neue Teams aus football-data.org angelegt: "
+                f"{home_team.name if home_created else ''} {away_team.name if away_created else ''}".strip()
+            )
         if not home_team or not away_team:
+            current_app.logger.warning(f"Sync: Team nicht erkannt: {home_team_name} / {away_team_name}")
             continue
+        _ensure_competition_team(comp_id, home_team)
+        _ensure_competition_team(comp_id, away_team)
 
         kickoff_str = md["utcDate"]
         try:
@@ -205,6 +491,7 @@ def _process_football_data(data, comp_id, source="football-data.org"):
             continue
 
         matchday_num = md.get("matchday") or 1
+        existing = _find_existing_match(comp_id, ext_id, matchday_num, home_team, away_team, source_prefix="fd")
         status = md.get("status", "SCHEDULED")
         status_map = {
             "SCHEDULED": "scheduled", "TIMED": "scheduled",
@@ -223,15 +510,21 @@ def _process_football_data(data, comp_id, source="football-data.org"):
         ht_away = half_time.get("away")
 
         if existing:
-            existing.status = our_status
-            existing.kickoff = kickoff
-            if home_score is not None:
-                existing.home_score = home_score
-                existing.away_score = away_score
-            if our_status == "live":
-                existing.is_live = True
-            else:
-                existing.is_live = False
+            old_status, old_h, old_a = existing.status, existing.home_score, existing.away_score
+            existing.external_id = ext_id
+            existing.matchday = matchday_num
+            existing.home_team_id = home_team.id
+            existing.away_team_id = away_team.id
+            apply_match_update(
+                existing,
+                home_score=home_score if home_score is not None else None,
+                away_score=away_score if home_score is not None else None,
+                status=our_status,
+                kickoff=kickoff,
+                is_live=(our_status == "live"),
+            )
+            if old_status != our_status or old_h != existing.home_score or old_a != existing.away_score:
+                affected_match_ids.add(existing.id)
             updated += 1
         else:
             existing = Match(
@@ -247,16 +540,28 @@ def _process_football_data(data, comp_id, source="football-data.org"):
                 is_live=(our_status == "live"),
             )
             db.session.add(existing)
+            db.session.flush()
+            if our_status == "finished":
+                affected_match_ids.add(existing.id)
             created += 1
 
         if our_status == "live":
             live_count += 1
 
+    purged_stale = 0
+    if source == "football-data.org" and current_ext_ids:
+        purged_stale = _purge_stale_matches_for_comp(comp_id, current_ext_ids)
+
     db.session.commit()
 
-    if updated > 0 or created > 0:
+    if purged_stale > 0:
         recalculate_all_points()
         check_and_award_badges()
+    elif affected_match_ids:
+        affected_users = recalculate_matches_points(affected_match_ids, commit=True)
+        if affected_users:
+            users = User.query.filter(User.id.in_(affected_users)).all()
+            check_and_award_badges(users=users)
 
     return {
         "ok": True,
@@ -264,12 +569,14 @@ def _process_football_data(data, comp_id, source="football-data.org"):
         "created": created,
         "updated": updated,
         "live": live_count,
+        "new_teams": new_teams,
+        "purged_stale": purged_stale,
     }
 
 
 def fetch_live_standings():
     """Holt die Live-Tabelle von football-data.org."""
-    season = current_app.config["SEASON"]
+    season = current_sync_season_code()
     comp = current_app.config["COMPETITION"]
 
     data, err = _fd_request(f"/competitions/{comp}/standings?season={season}", ttl_seconds=60)
@@ -283,9 +590,13 @@ def fetch_live_standings():
     table_data = standings[0].get("table", [])
     rows = []
     for entry in table_data:
-        team_name = entry.get("team", {}).get("name", "")
-        team_obj = _resolve_team_by_name(team_name)
+        team_data = entry.get("team", {})
+        team_name = team_data.get("name", "")
+        team_obj, created_team = _resolve_or_create_team_from_fd(team_data)
+        if created_team:
+            db.session.commit()
         if not team_obj:
+            current_app.logger.warning(f"Tabelle: Team nicht erkannt: {team_name}")
             continue
         rows.append({
             "rank": entry.get("position", 0),
@@ -305,7 +616,7 @@ def fetch_live_standings():
 
 def fetch_live_match_updates(matchday=None):
     """Holt aktuelle Spielstände von football-data.org für heute."""
-    season = current_app.config["SEASON"]
+    season = current_sync_season_code()
     comp = current_app.config["COMPETITION"]
 
     if matchday:
@@ -345,7 +656,7 @@ _OLB_TEAM_MAP = {
     "FC Augsburg": "FCA",
     "SV Werder Bremen": "SVW", "Werder Bremen": "SVW",
     "1. FC Heidenheim": "FCH", "FC Heidenheim": "FCH", "1. FC Heidenheim 1846": "FCH",
-    "FC St. Pauli": "STP", "St. Pauli": "STP",
+    "FC St. Pauli": "STP", "FC St Pauli": "STP", "FC St. Pauli 1910": "STP", "FC St Pauli 1910": "STP", "St. Pauli": "STP", "St Pauli": "STP", "Sankt Pauli": "STP",
     "Hamburger SV": "HSV",
     "1. FC Köln": "KOE", "FC Köln": "KOE", "1. FC Koeln": "KOE",
     "Darmstadt 98": "D98", "SV Darmstadt 98": "D98",
@@ -364,18 +675,47 @@ _OLB_TEAM_MAP = {
 }
 
 
+def _normalize_team_key(value):
+    if value is None:
+        return ""
+    import re
+    value = str(value).lower()
+    value = value.replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
+    return re.sub(r"[^a-z0-9]", "", value)
+
+
 def _resolve_team_by_name(api_name):
-    """Findet Team in DB per Name, short_name oder Mapping."""
+    """Findet Team in DB per Name, short_name, Mapping oder robuster Normalisierung."""
     short = _OLB_TEAM_MAP.get(api_name)
     if short:
         t = Team.query.filter_by(short_name=short).first()
         if t:
             return t
+
+    norm = _normalize_team_key(api_name)
+    # Spezielle haeufige API-Varianten, z.B. "FC St. Pauli 1910".
+    if "stpauli" in norm or "sanktpauli" in norm:
+        t = Team.query.filter_by(short_name="STP").first()
+        if t:
+            return t
+    if "hamburgersv" in norm or norm == "hsv":
+        t = Team.query.filter_by(short_name="HSV").first()
+        if t:
+            return t
+
     t = Team.query.filter_by(name=api_name).first()
     if t:
         return t
-    t = Team.query.filter(Team.name.ilike(f"%{api_name}%")).first()
-    return t
+
+    # Normalisierter Vergleich gegen lokale Teamnamen/Kuerzel.
+    for team in Team.query.all():
+        if norm and (norm == _normalize_team_key(team.name) or norm == _normalize_team_key(team.short_name)):
+            return team
+        if norm and (norm in _normalize_team_key(team.name) or _normalize_team_key(team.name) in norm):
+            return team
+
+    # Letzter Fallback: SQL ilike (nur fuer sehr aehnliche Namen).
+    return Team.query.filter(Team.name.ilike(f"%{api_name}%")).first()
 
 
 
@@ -449,7 +789,7 @@ def sync_with_openligadb():
     braucht keine Authentifizierung, liefert aber keine Live-Daten
     (nur Endergebnisse).
     """
-    season = current_app.config.get("SEASON", "2025")
+    season = current_sync_season_code()
 
     try:
         url = f"https://api.openligadb.de/getmatchdata/bl1/{season}"
@@ -466,55 +806,79 @@ def sync_with_openligadb():
     updated = 0
     created = 0
     skipped = 0
+    new_teams = 0
+    current_ext_ids = set()
+    affected_match_ids = set()
+
     for md in data:
         match_id_raw = _olb_match_id(md)
         if match_id_raw is None:
             skipped += 1
             continue
         ext_id = f"oldb:{match_id_raw}"
-        existing = Match.query.filter_by(external_id=ext_id).first()
+        current_ext_ids.add(ext_id)
 
-        home_name = _olb_team_name(_olb_get(md, "team1", "Team1"))
-        away_name = _olb_team_name(_olb_get(md, "team2", "Team2"))
+        home_obj = _olb_get(md, "team1", "Team1")
+        away_obj = _olb_get(md, "team2", "Team2")
+        home_name = _olb_team_name(home_obj)
+        away_name = _olb_team_name(away_obj)
         if not home_name or not away_name:
             skipped += 1
             continue
 
-        home_team = _resolve_team_by_name(home_name)
-        away_team = _resolve_team_by_name(away_name)
+        home_team, home_created = _resolve_or_create_team_from_olb(home_obj)
+        away_team, away_created = _resolve_or_create_team_from_olb(away_obj)
+        if home_created or away_created:
+            new_teams += int(bool(home_created)) + int(bool(away_created))
         if not home_team or not away_team:
+            skipped += 1
+            current_app.logger.warning(f"OpenLigaDB Sync: Team nicht erkannt: {home_name} / {away_name}")
             continue
+        _ensure_competition_team(comp_id, home_team)
+        _ensure_competition_team(comp_id, away_team)
 
         kickoff_str = _olb_kickoff(md)
         if not kickoff_str:
+            skipped += 1
             continue
         try:
             kickoff = datetime.fromisoformat(kickoff_str.replace("Z", "+00:00"))
         except Exception:
+            skipped += 1
             continue
 
         matchday_num = _olb_group_order_id(md, default=1)
+        existing = _find_existing_match(comp_id, ext_id, matchday_num, home_team, away_team, source_prefix="oldb")
         is_finished = _olb_is_finished(md)
         our_status = "finished" if is_finished else "scheduled"
 
         home_score = None
         away_score = None
         if is_finished:
-            # ResultTypeID 2 = Endergebnis (manchmal nur 1 = Halbzeit vorhanden)
             results = _olb_results(md)
             for res in results:
                 if _olb_result_type_id(res) == 2:
                     home_score, away_score = _olb_score(res)
                     break
-            # Fallback: falls kein ResultTypeID==2, nimm den letzten Eintrag
             if home_score is None and results:
                 home_score, away_score = _olb_score(results[-1])
 
         if existing:
-            existing.status = our_status
-            if home_score is not None:
-                existing.home_score = home_score
-                existing.away_score = away_score
+            old_status, old_h, old_a = existing.status, existing.home_score, existing.away_score
+            existing.external_id = ext_id
+            existing.matchday = matchday_num
+            existing.home_team_id = home_team.id
+            existing.away_team_id = away_team.id
+            apply_match_update(
+                existing,
+                home_score=home_score if home_score is not None else None,
+                away_score=away_score if home_score is not None else None,
+                status=our_status,
+                kickoff=kickoff,
+                is_live=False,
+            )
+            if old_status != our_status or old_h != existing.home_score or old_a != existing.away_score:
+                affected_match_ids.add(existing.id)
             updated += 1
         else:
             existing = Match(
@@ -527,19 +891,49 @@ def sync_with_openligadb():
                 away_score=away_score,
                 status=our_status,
                 external_id=ext_id,
+                is_live=False,
             )
             db.session.add(existing)
+            db.session.flush()
+            if our_status == "finished":
+                affected_match_ids.add(existing.id)
             created += 1
+
+    purged_stale = _purge_stale_matches_for_comp(comp_id, current_ext_ids) if current_ext_ids else 0
 
     db.session.commit()
 
-    if updated > 0 or created > 0:
+    if purged_stale > 0:
         from scoring import recalculate_all_points
         from badges import check_and_award_badges
         recalculate_all_points()
         check_and_award_badges()
+    elif affected_match_ids:
+        from scoring import recalculate_matches_points
+        from badges import check_and_award_badges
+        from models import User
+        affected_users = recalculate_matches_points(affected_match_ids, commit=True)
+        if affected_users:
+            users = User.query.filter(User.id.in_(affected_users)).all()
+            check_and_award_badges(users=users)
 
-    return {"ok": True, "source": "openligadb", "created": created, "updated": updated, "msg": f"OpenLigaDB: {created} neu, {updated} aktualisiert" + (f", {skipped} übersprungen" if skipped else "")}
+    msg = f"OpenLigaDB: {created} neu, {updated} aktualisiert"
+    if new_teams:
+        msg += f", {new_teams} Team(s) angelegt"
+    if purged_stale:
+        msg += f", {purged_stale} veraltete Spiele entfernt"
+    if skipped:
+        msg += f", {skipped} übersprungen"
+    return {
+        "ok": True,
+        "source": "openligadb",
+        "created": created,
+        "updated": updated,
+        "new_teams": new_teams,
+        "purged_stale": purged_stale,
+        "skipped": skipped,
+        "msg": msg,
+    }
 
 
 def _purge_external_other_than(source):
@@ -559,7 +953,7 @@ def _purge_external_other_than(source):
 
 def _fill_missing_from_openligadb():
     """Versucht, fehlende Ergebnisse von OpenLigaDB zu holen."""
-    season = current_app.config.get("SEASON", "2025")
+    season = current_sync_season_code()
     missing = Match.query.filter(
         Match.status == "scheduled",
         Match.kickoff < datetime.now(timezone.utc) - timedelta(hours=3),
@@ -579,6 +973,7 @@ def _fill_missing_from_openligadb():
         return 0
 
     filled = 0
+    affected_match_ids = set()
     for md in data:
         if not _olb_is_finished(md):
             continue
@@ -607,17 +1002,18 @@ def _fill_missing_from_openligadb():
             if h_score is None and results:
                 h_score, a_score = _olb_score(results[-1])
             if h_score is not None and a_score is not None:
-                match.home_score = h_score
-                match.away_score = a_score
-                match.status = "finished"
+                apply_match_update(match, home_score=h_score, away_score=a_score, status="finished", is_live=False)
+                affected_match_ids.add(match.id)
                 filled += 1
 
     if filled:
-        db.session.commit()
-        from scoring import recalculate_all_points
+        from scoring import recalculate_matches_points
         from badges import check_and_award_badges
-        recalculate_all_points()
-        check_and_award_badges()
+        from models import User
+        affected_users = recalculate_matches_points(affected_match_ids, commit=True)
+        if affected_users:
+            users = User.query.filter(User.id.in_(affected_users)).all()
+            check_and_award_badges(users=users)
     return filled
 
 
@@ -636,6 +1032,7 @@ def sync_results():
     res_fd = sync_with_football_data()
     if res_fd.get("ok"):
         current_app.logger.info(f"✅ Sync via football-data.org: {res_fd.get('msg')}")
+        store_sync_result(res_fd)
         return res_fd
 
     fd_reason = res_fd.get("msg", "unbekannter Fehler")
@@ -652,16 +1049,21 @@ def sync_results():
         hint = ""
         if "Token" in fd_reason or "token" in fd_reason:
             hint = " · Tipp: Setze einen football-data.org-Token in Admin → Einstellungen für Live-Daten."
-        return {
+        result = {
             "ok": True,
             "source": "openligadb",
             "created": res_olb.get("created", 0),
             "updated": res_olb.get("updated", 0),
+            "new_teams": res_olb.get("new_teams", 0),
+            "purged_stale": res_olb.get("purged_stale", 0),
+            "skipped": res_olb.get("skipped", 0),
             "msg": f"{res_olb['msg']} (Fallback – football-data.org: {fd_reason}){hint}",
         }
+        store_sync_result(result)
+        return result
 
     # --- 3. Beide fehlgeschlagen ---
-    return {
+    result = {
         "ok": False,
         "source": "none",
         "msg": (
@@ -670,6 +1072,91 @@ def sync_results():
             f"OpenLigaDB: {res_olb.get('msg')}"
         ),
     }
+    store_sync_result(result)
+    return result
+
+
+# ============================================================ Sync Diagnostics -
+def get_sync_diagnostics():
+    """Prueft API-/Sync-Konfiguration ohne Daten zu veraendern.
+
+    `teams_total` meint bewusst Teams im aktiven Wettbewerb/aktuellen Spielplan,
+    nicht alle historischen Teams in der globalen Team-Tabelle. Alte Absteiger
+    duerfen in der DB bleiben, sollen hier aber nicht als aktuelle Teams zählen.
+    """
+    token = get_setting("football_data_token", current_app.config["FOOTBALL_DATA_TOKEN"])
+    comp_code = current_app.config.get("COMPETITION", "BL1")
+    season = current_sync_season_code()
+    comp_obj = Competition.query.filter_by(code=comp_code, is_active=True).first()
+    comp_id = comp_obj.id if comp_obj else None
+
+    matches_q = Match.query
+    if comp_id:
+        matches_q = matches_q.filter(Match.competition_id == comp_id)
+    matches_total = matches_q.count()
+    team_pairs = matches_q.with_entities(Match.home_team_id, Match.away_team_id).all()
+    current_team_ids = {tid for row in team_pairs for tid in row if tid}
+    if not current_team_ids and comp_id:
+        current_team_ids = {ct.team_id for ct in CompetitionTeam.query.filter_by(competition_id=comp_id).all()}
+
+    all_teams_total = Team.query.count()
+    # Test-/Legacy-Fallback: sehr alte oder bewusst minimale Testdaten haben
+    # manchmal weder Matches noch CompetitionTeam-Zuordnungen. In echten
+    # Saison-Daten bleiben Match-/CompetitionTeam-IDs massgeblich, damit alte
+    # historische Teams nicht wieder als aktuelle Teams gezaehlt werden.
+    if not current_team_ids and current_app.config.get("TESTING"):
+        current_team_ids = {tid for (tid,) in Team.query.with_entities(Team.id).all()}
+
+    teams_total = len(current_team_ids)
+    remote_logos = Team.query.filter(Team.id.in_(current_team_ids), Team.logo.like("http%"), Team.logo.isnot(None)).count() if current_team_ids else 0
+    checks = {
+        "football_data_token": bool(token),
+        "openligadb_available": True,
+        "active_competition": bool(comp_obj),
+        "teams_seeded": teams_total >= 18,
+        "has_matches": matches_total > 0,
+    }
+    # OpenLigaDB Ping leichtgewichtig
+    try:
+        r = requests.get(f"{current_app.config['OPENLIGADB_BASE']}/getavailableleagues", timeout=5)
+        checks["openligadb_available"] = r.ok
+    except Exception:
+        checks["openligadb_available"] = False
+    warnings = []
+    if not checks["football_data_token"]:
+        warnings.append("football-data.org Token fehlt – Live-Daten nur via Fallback/OLB.")
+    if not checks["active_competition"]:
+        warnings.append(f"Aktive Competition {comp_code} nicht gefunden.")
+    if not checks["teams_seeded"]:
+        warnings.append(f"Aktiver Wettbewerb hat nur {teams_total} erkannte Teams (erwartet: 18).")
+    if teams_total > 18:
+        warnings.append(f"Aktiver Wettbewerb hat {teams_total} Teams. Alte Matches/Teams prüfen und ggf. Spielplan bereinigen.")
+    if remote_logos:
+        warnings.append(f"{remote_logos} Teamlogos sind noch extern verlinkt.")
+    last_sync = get_setting("last_sync_result", None)
+    return {
+        "competition": comp_obj,
+        "competition_code": comp_code,
+        "season": season,
+        "teams_total": teams_total,
+        "all_teams_total": all_teams_total,
+        "matches_total": matches_total,
+        "remote_logos": remote_logos,
+        "checks": checks,
+        "warnings": warnings,
+        "last_sync": last_sync,
+    }
+
+
+def store_sync_result(result):
+    """Speichert das letzte Sync-Ergebnis fuer Admin-Diagnose."""
+    payload = dict(result or {})
+    payload["at"] = datetime.now(timezone.utc).isoformat()
+    try:
+        set_setting("last_sync_result", payload)
+    except Exception:
+        pass
+    return payload
 
 
 # ============================================================ Schema-Migration -
@@ -682,6 +1169,14 @@ def auto_migrate_schema():
     insp = inspect(engine)
     existing_tables = set(insp.get_table_names())
 
+    if "invitation_codes" not in existing_tables:
+        try:
+            InvitationCode.__table__.create(bind=engine, checkfirst=True)
+            existing_tables.add("invitation_codes")
+            current_app.logger.info("✅ Auto-Migration: Tabelle invitation_codes erstellt")
+        except Exception as e:
+            current_app.logger.warning(f"Auto-Migration: Tabelle invitation_codes konnte nicht erstellt werden: {e}")
+
     schema_updates = {
         "users": [
             ("full_name",       "VARCHAR(120)",       "NULL"),
@@ -692,6 +1187,14 @@ def auto_migrate_schema():
             ("paid_at",         "DATETIME",           "NULL"),
             ("paid_note",       "VARCHAR(200)",       "NULL"),
             ("push_subscription","TEXT",              "NULL"),
+            ("notify_enabled",  "BOOLEAN",            "1"),
+            ("notify_email",    "BOOLEAN",            "1"),
+            ("notify_push",     "BOOLEAN",            "1"),
+            ("notify_telegram", "BOOLEAN",            "1"),
+            ("notify_whatsapp", "BOOLEAN",            "1"),
+            ("notify_hours_before", "INTEGER",        "1"),
+            ("notify_only_favorite", "BOOLEAN",       "0"),
+            ("default_tip_view", "VARCHAR(20)",       "'normal'"),
             ("whatsapp_phone",  "VARCHAR(30)",        "NULL"),
             ("whatsapp_apikey", "VARCHAR(20)",        "NULL"),
         ],
@@ -713,6 +1216,7 @@ def auto_migrate_schema():
             ("created_at",      "DATETIME",           "NULL"),
         ],
         "special_questions": [
+            ("competition_id",  "INTEGER",            "NULL"),
             ("description",     "VARCHAR(500)",       "NULL"),
             ("answer_type",     "VARCHAR(20)",        "'text'"),
             ("number_min",      "INTEGER",            "NULL"),
@@ -722,8 +1226,40 @@ def auto_migrate_schema():
             ("created_at",      "DATETIME",           "NULL"),
         ],
         "special_predictions": [
+            ("competition_id",  "INTEGER",            "NULL"),
             ("created_at",      "DATETIME",           "NULL"),
             ("updated_at",      "DATETIME",           "NULL"),
+        ],
+        "prizes": [
+            ("competition_id",  "INTEGER",            "NULL"),
+        ],
+        "matchday_winners": [
+            ("competition_id",  "INTEGER",            "NULL"),
+        ],
+        "season_archive": [
+            ("competition_id",  "INTEGER",            "NULL"),
+        ],
+        "admin_activity_log": [
+            ("admin_user_id",   "INTEGER",            "NULL"),
+            ("action",          "VARCHAR(80)",        "'unknown'"),
+            ("entity_type",     "VARCHAR(80)",        "NULL"),
+            ("entity_id",       "VARCHAR(80)",        "NULL"),
+            ("message",         "VARCHAR(500)",       "NULL"),
+            ("metadata_json",   "TEXT",               "NULL"),
+            ("ip_address",      "VARCHAR(64)",        "NULL"),
+            ("user_agent",      "VARCHAR(300)",       "NULL"),
+            ("created_at",      "DATETIME",           "NULL"),
+        ],
+        "invitation_codes": [
+            ("code",               "VARCHAR(80)",    "NULL"),
+            ("invited_by_user_id", "INTEGER",         "NULL"),
+            ("email",              "VARCHAR(120)",    "NULL"),
+            ("max_uses",           "INTEGER",         "1"),
+            ("uses",               "INTEGER",         "0"),
+            ("used_by_user_id",    "INTEGER",         "NULL"),
+            ("created_at",         "DATETIME",        "NULL"),
+            ("expires_at",         "DATETIME",        "NULL"),
+            ("used_at",            "DATETIME",        "NULL"),
         ],
     }
 
@@ -747,9 +1283,39 @@ def auto_migrate_schema():
     if added:
         current_app.logger.info(f"✅ Auto-Migration: {len(added)} Spalten ergänzt: {', '.join(added)}")
 
+    # Backfill: neue Competition-Spalten in Bestandsdaten auf den ersten aktiven Wettbewerb setzen.
+    # So bleiben bestehende BL1-Daten nach der Migration sichtbar und werden nicht als "global" behandelt.
+    try:
+        default_comp = (
+            Competition.query.filter_by(is_active=True).order_by(Competition.id.asc()).first()
+            or Competition.query.order_by(Competition.id.asc()).first()
+        )
+        if default_comp:
+            scoped_tables = ["special_questions", "special_predictions", "prizes", "matchday_winners", "season_archive"]
+            with engine.begin() as conn:
+                for tbl in scoped_tables:
+                    if tbl in existing_tables:
+                        try:
+                            conn.execute(text(
+                                f'UPDATE "{tbl}" SET "competition_id" = :cid WHERE "competition_id" IS NULL'
+                            ), {"cid": default_comp.id})
+                        except Exception:
+                            # Tabelle existiert, aber Spalte ggf. in sehr alten/abweichenden Schemas nicht.
+                            pass
+    except Exception as e:
+        current_app.logger.warning(f"Auto-Migration: Competition-Backfill fehlgeschlagen: {e}")
+
     null_fixes = [
         ("users", "show_full_name", 1),
         ("users", "has_paid", 0),
+        ("users", "notify_enabled", 1),
+        ("users", "notify_email", 1),
+        ("users", "notify_push", 1),
+        ("users", "notify_telegram", 1),
+        ("users", "notify_whatsapp", 1),
+        ("users", "notify_hours_before", 1),
+        ("users", "notify_only_favorite", 0),
+        ("users", "default_tip_view", "normal"),
         ("badges", "active", 1),
         ("predictions", "joker", 0),
     ]

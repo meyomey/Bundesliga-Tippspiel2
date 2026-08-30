@@ -9,57 +9,24 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from app import app
 from extensions import db
 from models import Match, User, Prediction
+from competition_helpers import filter_matches_for_active_competition
 from utils import send_kickoff_reminder, sync_results
 
 
 def reminder_job():
-    """Erinnert User 1h vor Anpfiff, wenn sie noch nicht getippt haben."""
+    """Zentraler Reminder-Lauf fuer E-Mail/Push/Telegram/WhatsApp."""
     with app.app_context():
-        now = datetime.now(timezone.utc)
-        upcoming = Match.query.filter(
-            Match.kickoff > now,
-            Match.kickoff <= now + timedelta(hours=1, minutes=5),
-            Match.status == "scheduled",
-        ).all()
-
-        if not upcoming:
-            return
-
-        reminders_enabled = False
         try:
             from scoring import get_setting
             reminders_on = get_setting("reminders_enabled", True)
-            if isinstance(reminders_on, bool):
-                reminders_enabled = reminders_on
-            else:
-                reminders_enabled = str(reminders_on).lower() not in ("0", "false", "no")
+            if str(reminders_on).lower() in ("0", "false", "no", "nein", "off"):
+                return
         except Exception:
-            reminders_enabled = True
-
-        if not reminders_enabled:
-            return
-
-        for match in upcoming:
-            for user in User.query.all():
-                pred = Prediction.query.filter_by(
-                    user_id=user.id, match_id=match.id
-                ).first()
-                if not pred:
-                    # E-Mail-Reminder
-                    send_kickoff_reminder(user, match)
-                    print(f"Reminder per E-Mail an {user.email} fuer {match.id}")
-
-                    # Telegram-Reminder (falls verknuepft)
-                    if user.phone and user.phone.startswith("tg:"):
-                        try:
-                            from telegram_bot import notify_user_telegram
-                            match_info = f"{match.home_team.short_name} vs {match.away_team.short_name}"
-                            ko = match.kickoff.strftime("%d.%m. %H:%M") if match.kickoff else "?"
-                            msg = f"Anpfiff in 1h: {match_info} um {ko}"
-                            notify_user_telegram(user, msg)
-                            print(f"Reminder per Telegram an {user.username}")
-                        except Exception:
-                            pass
+            pass
+        from notification_center import run_reminder_cycle
+        res = run_reminder_cycle()
+        if res.get("users"):
+            print(f"[{datetime.now(timezone.utc)}] Reminder: {res}")
 
 
 def sync_job():
@@ -83,14 +50,21 @@ def season_archive_job():
 
             # Pruefen ob bereits archiviert
             from models import SeasonArchive
+            from competition_helpers import get_active_competition
             current_season = get_setting("current_season", "2025/26")
-            already_archived = SeasonArchive.query.filter_by(season=current_season).first()
+            comp = get_active_competition()
+            archived_q = SeasonArchive.query.filter_by(season=current_season)
+            if comp:
+                archived_q = archived_q.filter(SeasonArchive.competition_id == comp.id)
+            already_archived = archived_q.first()
             if already_archived:
                 return
 
             # Alle Spieltage durch? (34. Spieltag finished)
             from models import Match
-            max_md = Match.query.filter_by(status="finished").order_by(Match.matchday.desc()).first()
+            max_md_q = Match.query.filter_by(status="finished")
+            max_md_q = filter_matches_for_active_competition(max_md_q)
+            max_md = max_md_q.order_by(Match.matchday.desc()).first()
             if not max_md:
                 return
 

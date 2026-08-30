@@ -1,5 +1,4 @@
 """Punkteberechnung, Klassifikation, Ranglisten, Statistiken."""
-from flask import session
 from sqlalchemy import func
 
 from extensions import db
@@ -7,6 +6,7 @@ from models import (
     User, Team, Match, Prediction, Setting, SpecialPrediction, MatchdayWinner,
     Competition,
 )
+from competition_helpers import get_active_competition
 
 
 # ---------------------------------------------------------------- Settings -
@@ -66,21 +66,41 @@ def _truthy_setting(value, default=True):
 def is_bot_active(bot_user):
     """True, wenn der Bot in den Einstellungen aktiviert ist.
 
-    Default: aktiv (True). Wird ``bot_active_<username>`` als ``"0"``/``False``
-    gespeichert, ist der Bot deaktiviert.
+    Default: inaktiv (False). Bots erscheinen/ tippen nur, wenn sie im Adminbereich
+    explizit aktiviert wurden.
     """
     if not is_bot_user(bot_user):
         return True
-    raw = get_setting(f"bot_active_{bot_user.username}", True)
-    return _truthy_setting(raw, default=True)
+    raw = get_setting(f"bot_active_{bot_user.username}", False)
+    return _truthy_setting(raw, default=False)
+
+
+def is_admin_only_user(user):
+    """Admin-Konten ohne Spielaktivitaet aus Spielerlisten ausblenden.
+
+    So bleibt ein technisches Admin-Konto fuer Verwaltung moeglich, erscheint
+    aber nicht als Spieler. Admins, die selbst Tipps/Sonderfragen abgeben,
+    bleiben normale Mitspieler.
+    """
+    if not getattr(user, "is_admin", False):
+        return False
+    if Prediction.query.filter_by(user_id=user.id).first():
+        return False
+    if SpecialPrediction.query.filter_by(user_id=user.id).first():
+        return False
+    return True
 
 
 def filter_active_users(users):
-    """Filtert deaktivierte Bots aus einer User-Liste raus.
+    """Filtert deaktivierte Bots und reine Admin-Konten aus Spielerlisten.
 
-    Echte User werden nie gefiltert.
+    Echte User bleiben sichtbar. Admins bleiben sichtbar, sobald sie selbst
+    Spielaktivitaet haben (Tipp oder Sonderfrage).
     """
-    return [u for u in users if (not is_bot_user(u)) or is_bot_active(u)]
+    return [
+        u for u in users
+        if not is_admin_only_user(u) and ((not is_bot_user(u)) or is_bot_active(u))
+    ]
 
 
 # ----------------------------------------------------------- Punkte-Logik -
@@ -146,7 +166,7 @@ def classify_prediction(prediction, match):
     rh, ra = match.home_score, match.away_score
     if h == rh and a == ra:
         return "exact"
-    if (h - a) == (rh - ra):
+    if (h - a) == (rh - ra) and (rh != ra or h != a):
         return "diff"
     if (h > a and rh > ra) or (h < a and rh < ra) or (h == a and rh == ra):
         return "tendency"
@@ -184,18 +204,112 @@ def recalculate_all_points():
         current_app.logger.warning(f"recompute_matchday_winners failed: {e}")
 
 
+def is_pot_participant(user):
+    """True, wenn der User als zahlender Mitspieler im Pott zaehlt."""
+    return (not is_bot_user(user)) and (not is_admin_only_user(user))
+
+
+# ----------------------------------------------------------- Joker-Integritaet -
+def locked_joker_conflict(user_id, matchday, competition_id, target_match_id=None):
+    """Liefert einen bereits festgelegten Joker, der nicht mehr verschoben werden darf.
+
+    Sobald das bisherige Joker-Spiel nicht mehr offen ist, darf der Joker nicht
+    auf ein anderes Spiel verschoben werden.
+    """
+    q = Prediction.query.join(Match).filter(
+        Prediction.user_id == user_id,
+        Prediction.joker.is_(True),
+        Match.matchday == matchday,
+    )
+    if competition_id is not None:
+        q = q.filter(Match.competition_id == competition_id)
+    if target_match_id is not None:
+        q = q.filter(Prediction.match_id != target_match_id)
+    for pred in q.all():
+        if pred.match and not pred.match.is_open():
+            return pred
+    return None
+
+
+def keep_single_joker(user_id, matchday, competition_id, keep_match_id):
+    """Bereinigt Mehrfachjoker fuer User/Spieltag/Wettbewerb auf genau ein Zielspiel."""
+    q = Prediction.query.join(Match).filter(
+        Prediction.user_id == user_id,
+        Prediction.joker.is_(True),
+        Match.matchday == matchday,
+    )
+    if competition_id is not None:
+        q = q.filter(Match.competition_id == competition_id)
+    changed = 0
+    for pred in q.all():
+        if pred.match_id != keep_match_id:
+            pred.joker = False
+            changed += 1
+    return changed
+
+
+def recalculate_match_points(match_or_id, commit=True):
+    """Berechnet Punkte nur fuer ein einzelnes Match neu.
+
+    Deutlich schneller als `recalculate_all_points()` bei manueller Ergebnis-
+    aenderung oder Sync-Updates eines einzelnen Spiels. Gibt die betroffenen
+    User-IDs zurueck, damit Badges gezielt geprueft werden koennen.
+    """
+    match = match_or_id if hasattr(match_or_id, "predictions") else db.session.get(Match, match_or_id)
+    if not match:
+        return set()
+    affected_users = set()
+    for p in match.predictions:
+        p.points = calculate_points(p, match)
+        affected_users.add(p.user_id)
+    if commit:
+        db.session.commit()
+        try:
+            recompute_matchday_winners()
+        except Exception as e:
+            from flask import current_app
+            current_app.logger.warning(f"recompute_matchday_winners failed: {e}")
+    return affected_users
+
+
+def recalculate_matches_points(match_ids, commit=True):
+    """Berechnet Punkte fuer mehrere Matches neu und gibt betroffene User-IDs zurueck."""
+    ids = [mid for mid in set(match_ids or []) if mid]
+    if not ids:
+        return set()
+    affected_users = set()
+    matches = Match.query.filter(Match.id.in_(ids)).all()
+    for match in matches:
+        affected_users.update(recalculate_match_points(match, commit=False))
+    if commit:
+        db.session.commit()
+        try:
+            recompute_matchday_winners()
+        except Exception as e:
+            from flask import current_app
+            current_app.logger.warning(f"recompute_matchday_winners failed: {e}")
+    return affected_users
+
+
 # ----------------------------------------------------------- Pot & Winners -
 def compute_pot_summary():
     """Berechnet die aktuelle Pott-Übersicht."""
     amount = int(get_setting("pot_amount", 5))
     currency = get_setting("pot_currency", "€")
     intro = get_setting("pot_intro", "")
-    paid = User.query.filter_by(has_paid=True).count()
-    total = User.query.count()
+    payment_title = get_setting("payment_info_title", "Zahlung an den Spielleiter")
+    payment_text = get_setting("payment_info_text", "")
+    prize_notes = get_setting("prize_notes", "")
+    participants = [u for u in User.query.filter(~User.email.like("%@bot.local")).all() if is_pot_participant(u)]
+    paid = sum(1 for u in participants if u.has_paid)
+    total = len(participants)
     return {
         "amount_per": amount,
         "currency": currency,
         "intro": intro,
+        "payment_title": payment_title,
+        "payment_text": payment_text,
+        "prize_notes": prize_notes,
         "paid_count": paid,
         "total_count": total,
         "pot_total": amount * paid,
@@ -209,19 +323,27 @@ def recompute_matchday_winners():
     season = get_setting("current_season", "2025/26")
     points_exact = get_setting("points_exact", 4)
 
-    finished_mds = db.session.query(Match.matchday).filter_by(status="finished").distinct().all()
+    comp = get_active_competition()
+    finished_q = db.session.query(Match.matchday).filter(Match.status == "finished")
+    if comp:
+        finished_q = finished_q.filter(Match.competition_id == comp.id)
+    finished_mds = finished_q.distinct().all()
     finished_md_set = {md for (md,) in finished_mds}
 
-    MatchdayWinner.query.filter_by(season=season).delete()
+    mdw_delete_q = MatchdayWinner.query.filter_by(season=season)
+    if comp:
+        mdw_delete_q = mdw_delete_q.filter(MatchdayWinner.competition_id == comp.id)
+    mdw_delete_q.delete()
 
     for md in sorted(finished_md_set):
-        results = db.session.query(
+        results_q = db.session.query(
             Prediction.user_id,
             func.coalesce(func.sum(Prediction.points), 0).label("pts"),
         ).join(Match, Prediction.match_id == Match.id) \
-         .filter(Match.matchday == md, Match.status == "finished") \
-         .group_by(Prediction.user_id) \
-         .all()
+         .filter(Match.matchday == md, Match.status == "finished")
+        if comp:
+            results_q = results_q.filter(Match.competition_id == comp.id)
+        results = results_q.group_by(Prediction.user_id).all()
 
         if not results:
             continue
@@ -234,13 +356,16 @@ def recompute_matchday_winners():
         if len(top_user_ids) > 1:
             exact_counts = {}
             for uid in top_user_ids:
-                n_exact = db.session.query(func.count(Prediction.id)) \
+                exact_q = db.session.query(func.count(Prediction.id)) \
                     .join(Match, Prediction.match_id == Match.id) \
                     .filter(
                         Prediction.user_id == uid,
                         Match.matchday == md, Match.status == "finished",
                         Prediction.points >= points_exact,
-                    ).scalar() or 0
+                    )
+                if comp:
+                    exact_q = exact_q.filter(Match.competition_id == comp.id)
+                n_exact = exact_q.scalar() or 0
                 exact_counts[uid] = n_exact
             max_exact = max(exact_counts.values())
             top_user_ids = [uid for uid, n in exact_counts.items() if n == max_exact]
@@ -248,14 +373,18 @@ def recompute_matchday_winners():
         is_shared = len(top_user_ids) > 1
 
         for uid in top_user_ids:
-            n_exact = db.session.query(func.count(Prediction.id)) \
+            exact_q = db.session.query(func.count(Prediction.id)) \
                 .join(Match, Prediction.match_id == Match.id) \
                 .filter(
                     Prediction.user_id == uid,
                     Match.matchday == md, Match.status == "finished",
                     Prediction.points >= points_exact,
-                ).scalar() or 0
+                )
+            if comp:
+                exact_q = exact_q.filter(Match.competition_id == comp.id)
+            n_exact = exact_q.scalar() or 0
             db.session.add(MatchdayWinner(
+                competition_id=comp.id if comp else None,
                 matchday=md, user_id=uid, points=max_pts,
                 exact_count=n_exact, is_shared=is_shared, season=season,
             ))
@@ -265,13 +394,7 @@ def recompute_matchday_winners():
 # ----------------------------------------------------------- User-Stats (optimized) -
 def get_user_stats(user, matchday=None):
     """Detaillierte Statistik mit exact/diff/tendency/wrong + Punkten."""
-    # Validierte Competition aus Session
-    active_code = session.get("competition_code") if session else None
-    comp = None
-    if active_code:
-        comp = Competition.query.filter_by(code=active_code, is_active=True).first()
-    if not comp:
-        comp = Competition.query.filter_by(is_active=True).first()
+    comp = get_active_competition()
 
     q = Prediction.query.filter_by(user_id=user.id)
     if comp:
@@ -302,7 +425,10 @@ def get_user_stats(user, matchday=None):
             joker_used += 1
 
     if not matchday:
-        sp = SpecialPrediction.query.filter_by(user_id=user.id).all()
+        sp_q = SpecialPrediction.query.filter_by(user_id=user.id)
+        if comp:
+            sp_q = sp_q.filter(SpecialPrediction.competition_id == comp.id)
+        sp = sp_q.all()
         sp_pts = sum(s.points or 0 for s in sp)
 
     finished = counters["exact"] + counters["diff"] + counters["tendency"] + counters["wrong"]
@@ -326,13 +452,7 @@ def get_user_stats(user, matchday=None):
 
 def get_live_user_stats(user, matchday=None):
     """Wie get_user_stats, aber beruecksichtigt LIVE-Scores."""
-    # Validierte Competition aus Session
-    active_code = session.get("competition_code") if session else None
-    comp = None
-    if active_code:
-        comp = Competition.query.filter_by(code=active_code, is_active=True).first()
-    if not comp:
-        comp = Competition.query.filter_by(is_active=True).first()
+    comp = get_active_competition()
 
     q = Prediction.query.filter_by(user_id=user.id)
     if comp:
@@ -366,7 +486,10 @@ def get_live_user_stats(user, matchday=None):
 
     sp_pts = 0
     if not matchday:
-        sp = SpecialPrediction.query.filter_by(user_id=user.id).all()
+        sp_q = SpecialPrediction.query.filter_by(user_id=user.id)
+        if comp:
+            sp_q = sp_q.filter(SpecialPrediction.competition_id == comp.id)
+        sp = sp_q.all()
         sp_pts = sum(s.points or 0 for s in sp)
 
     finished = counters["exact"] + counters["diff"] + counters["tendency"] + counters["wrong"]
@@ -395,9 +518,12 @@ def get_leaderboard(matchday=None):
     - Eager loading von Predictions + Matches + Teams
     - Bulk-Berechnung statt N+1 Queries pro User
     """
-    from cache import cache
+    from cache import cache, cache_key_leaderboard
 
-    cache_key = f"leaderboard:{matchday or 'total'}"
+    comp = get_active_competition()
+    comp_key = comp.code if comp else "all"
+    season_key = comp.season if comp else get_setting("current_season", "current")
+    cache_key = cache_key_leaderboard(matchday=matchday, season=season_key, competition=comp_key)
     cached_result = cache.get(cache_key)
     if cached_result is not None:
         return cached_result
@@ -411,9 +537,11 @@ def get_leaderboard(matchday=None):
     user_ids = [u.id for u in active_users]
     user_map = {u.id: u for u in active_users}
     
-    base_q = db.session.query(Prediction).filter(Prediction.user_id.in_(user_ids))
+    base_q = db.session.query(Prediction).filter(Prediction.user_id.in_(user_ids)).join(Match)
+    if comp:
+        base_q = base_q.filter(Match.competition_id == comp.id)
     if matchday:
-        base_q = base_q.join(Match).filter(Match.matchday == matchday)
+        base_q = base_q.filter(Match.matchday == matchday)
 
     all_preds = base_q.options(
         db.joinedload(Prediction.match).joinedload(Match.home_team),
@@ -428,11 +556,13 @@ def get_leaderboard(matchday=None):
     # Sonderpunkte (nur bei Gesamttabelle)
     sp_points = {}
     if not matchday:
-        sp_rows = db.session.query(
+        sp_q = db.session.query(
             SpecialPrediction.user_id,
             func.coalesce(func.sum(SpecialPrediction.points), 0),
-        ).filter(SpecialPrediction.user_id.in_(user_ids)) \
-         .group_by(SpecialPrediction.user_id).all()
+        ).filter(SpecialPrediction.user_id.in_(user_ids))
+        if comp:
+            sp_q = sp_q.filter(SpecialPrediction.competition_id == comp.id)
+        sp_rows = sp_q.group_by(SpecialPrediction.user_id).all()
         sp_points = {uid: pts for uid, pts in sp_rows}
 
     rows = []
@@ -481,12 +611,84 @@ def get_leaderboard(matchday=None):
 def get_live_leaderboard(matchday=None):
     """Live-Rangliste: Punkte werden fuer laufende Spiele DYNAMISCH berechnet.
 
-    Deaktivierte Bots werden komplett ausgeschlossen.
+    PERFORMANCE-OPTIMIZED:
+    - keine N+1-Queries pro User mehr
+    - alle Predictions inkl. Match/Teams in einer Bulk-Query
+    - Sonderpunkte in einer GROUP-BY-Query
+    - deaktivierte Bots werden ausgeschlossen
     """
+    comp = get_active_competition()
+
     all_users = User.query.all()
     active_users = filter_active_users(all_users)
+    if not active_users:
+        return []
 
-    rows = [get_live_user_stats(u, matchday=matchday) for u in active_users]
+    user_ids = [u.id for u in active_users]
+
+    base_q = db.session.query(Prediction).filter(Prediction.user_id.in_(user_ids)).join(Match)
+    if comp:
+        base_q = base_q.filter(Match.competition_id == comp.id)
+    if matchday:
+        base_q = base_q.filter(Match.matchday == matchday)
+
+    all_preds = base_q.options(
+        db.joinedload(Prediction.match).joinedload(Match.home_team),
+        db.joinedload(Prediction.match).joinedload(Match.away_team),
+    ).all()
+
+    preds_by_user = {}
+    for p in all_preds:
+        preds_by_user.setdefault(p.user_id, []).append(p)
+
+    sp_points = {}
+    if not matchday:
+        sp_q = db.session.query(
+            SpecialPrediction.user_id,
+            func.coalesce(func.sum(SpecialPrediction.points), 0),
+        ).filter(SpecialPrediction.user_id.in_(user_ids))
+        if comp:
+            sp_q = sp_q.filter(SpecialPrediction.competition_id == comp.id)
+        sp_rows = sp_q.group_by(SpecialPrediction.user_id).all()
+        sp_points = {uid: pts for uid, pts in sp_rows}
+
+    rows = []
+    for u in active_users:
+        preds = preds_by_user.get(u.id, [])
+        counters = {"exact": 0, "diff": 0, "tendency": 0, "wrong": 0, "pending": 0}
+        total_pts = 0
+        joker_used = 0
+
+        for p in preds:
+            m = p.match
+            kind = classify_prediction_live(p, m)
+            counters[kind] += 1
+            if m.status == "finished":
+                total_pts += (p.points or 0)
+            elif m.status == "live":
+                total_pts += calculate_points_for_score(p, m.home_score, m.away_score)
+            if p.joker:
+                joker_used += 1
+
+        sp_pts = sp_points.get(u.id, 0)
+        finished = counters["exact"] + counters["diff"] + counters["tendency"] + counters["wrong"]
+        quote = round((counters["exact"] / finished) * 100) if finished else 0
+
+        rows.append({
+            "user": u,
+            "points": total_pts + sp_pts,
+            "match_points": total_pts,
+            "special_points": sp_pts,
+            "tips": len(preds),
+            "exact": counters["exact"],
+            "diff": counters["diff"],
+            "tendency": counters["tendency"],
+            "wrong": counters["wrong"],
+            "pending": counters["pending"],
+            "joker_used": joker_used,
+            "exact_quote": quote,
+        })
+
     rows.sort(key=lambda r: (
         -r["points"], -r["exact"], -r["diff"], -r["tendency"], -r["tips"], r["user"].username
     ))

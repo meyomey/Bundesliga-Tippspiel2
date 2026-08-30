@@ -15,6 +15,7 @@ import urllib.parse
 from datetime import datetime, timedelta, timezone
 import requests
 from flask import current_app
+from competition_helpers import filter_matches_for_active_competition
 
 
 def send_whatsapp_message(phone: str, apikey: str, message: str) -> bool:
@@ -80,11 +81,12 @@ def whatsapp_reminder_job(app):
     with app.app_context():
         from models import Match
         now = datetime.now(timezone.utc)
-        upcoming = Match.query.filter(
+        upcoming_q = Match.query.filter(
             Match.kickoff > now,
             Match.kickoff <= now + timedelta(hours=1, minutes=5),
             Match.status == "scheduled",
-        ).all()
+        )
+        upcoming = filter_matches_for_active_competition(upcoming_q).all()
         for match in upcoming:
             sent, failed = send_whatsapp_reminder_for_match(match, app)
             if sent > 0 or failed > 0:

@@ -86,6 +86,19 @@ class ProfileForm(FlaskForm):
         validators=[Optional(), Length(max=20)],
         description="Du erhältst diesen Key von CallMeBot (einmalige Registrierung nötig)",
     )
+    notify_enabled = BooleanField("Benachrichtigungen aktiv", default=True)
+    notify_email = BooleanField("E-Mail", default=True)
+    notify_push = BooleanField("Push", default=True)
+    notify_telegram = BooleanField("Telegram", default=True)
+    notify_whatsapp = BooleanField("WhatsApp", default=True)
+    notify_hours_before = IntegerField("Erinnerung Stunden vor Anpfiff", default=1, validators=[Optional(), NumberRange(0, 24)])
+    notify_only_favorite = BooleanField("Nur Spiele meines Lieblingsvereins", default=False)
+    default_tip_view = SelectField(
+        "Standard-Tippansicht",
+        choices=[("normal", "Normale Tippansicht"), ("quick", "Schnelltipp")],
+        default="normal",
+        validators=[Optional()],
+    )
     favorite_team_id = SelectField("Lieblingsverein", coerce=int, validators=[Optional()])
     avatar = FileField("Avatar (max. 4MB)", validators=[FileAllowed(["png", "jpg", "jpeg", "gif", "webp"])])
     submit = SubmitField("Speichern")
@@ -142,7 +155,7 @@ class SpecialQuestionForm(FlaskForm):
     )
 
     options = TextAreaField(
-        "Antwortoptionen (nur bei Multiple-Choice, eine pro Zeile)",
+        "Antwortoptionen / eingeschränkte Teams (eine pro Zeile)",
         validators=[Optional()],
     )
 
@@ -219,7 +232,18 @@ class SettingsForm(FlaskForm):
                                 validators=[Optional(), Length(0, 5)])
     pot_intro = TextAreaField("Erläuterung zum Pott (für Spieler)",
                                validators=[Optional(), Length(0, 500)])
+    payment_info_title = StringField("Zahlungsinfo Titel", default="Zahlung an den Spielleiter",
+                                     validators=[Optional(), Length(0, 120)])
+    payment_info_text = TextAreaField("Zahlungsinformationen",
+                                      validators=[Optional(), Length(0, 1000)])
+    prize_notes = TextAreaField("Hinweis zu Gewinnen / Preisgeldern",
+                                validators=[Optional(), Length(0, 1000)])
     football_data_token = PasswordField("football-data.org Token", validators=[Optional()])
+    public_base_url = StringField(
+        "Öffentliche Basis-URL",
+        validators=[Optional(), Length(0, 200)],
+        description="z.B. https://tippspiel.example.de – fuer Links in E-Mails/Push.",
+    )
 
     mail_server = StringField("SMTP-Server", validators=[Optional(), Length(0, 120)])
     mail_port = IntegerField("SMTP-Port", default=587, validators=[Optional(), NumberRange(1, 65535)])
@@ -243,10 +267,27 @@ class SettingsForm(FlaskForm):
         validators=[Optional(), Length(0, 100)],
         description="Username des Bots (z.B. @MeinTippspielBot)",
     )
+    telegram_webhook_secret = PasswordField(
+        "Telegram Webhook Secret",
+        validators=[Optional(), Length(0, 200)],
+        description="Geheimer Wert fuer /telegram/webhook/<secret> oder Header X-Telegram-Bot-Api-Secret-Token.",
+    )
     reminders_enabled = BooleanField(
-        "E-Mail-Reminder aktivieren",
+        "Automatische Erinnerungen bei fehlenden Tipps aktivieren",
         default=True,
-        description="Erinnert Spieler 1h vor Anpfiff per E-Mail und Telegram (falls verknuepft)",
+        description="Erinnert Spieler vor Anpfiff ueber ihre aktivierten Kanaele: E-Mail, Push, Telegram oder WhatsApp.",
+    )
+
+    registration_mode = SelectField(
+        "Registrierung",
+        choices=[
+            ("open", "Offen – jeder kann sich registrieren"),
+            ("invite", "Nur mit Einladungscode"),
+            ("closed", "Geschlossen – keine Registrierung"),
+        ],
+        default="invite",
+        validators=[DataRequired()],
+        description="Steuert, ob neue Benutzer sich frei, nur per Einladung oder gar nicht registrieren koennen.",
     )
 
     submit = SubmitField("Einstellungen speichern")

@@ -84,6 +84,8 @@ def send_password_reset(user):
 def send_kickoff_reminder(user, match):
     """Sendet eine Anpfiff-Erinnerung per E-Mail."""
     kickoff_str = match.kickoff.strftime("%d.%m.%Y %H:%M")
+    base = get_setting("public_base_url", current_app.config.get("PUBLIC_BASE_URL", "")).rstrip("/")
+    tip_url = (base + f"/match/{match.id}") if base else f"/match/{match.id}"
     send_email(
         f"⚽ Anpfiff-Erinnerung: {match.home_team.name} vs {match.away_team.name}",
         [user.email],
@@ -91,7 +93,7 @@ def send_kickoff_reminder(user, match):
         f"das Spiel {match.home_team.name} vs {match.away_team.name} "
         f"beginnt um {kickoff_str} Uhr.\n"
         f"Du hast noch keinen Tipp abgegeben!\n\n"
-        f"Jetzt tippen: https://tippspiel.example.com/spielplan",
+        f"Jetzt tippen: {tip_url}",
     )
 
 

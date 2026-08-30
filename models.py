@@ -17,11 +17,48 @@ class Competition(db.Model):
     teams_count = db.Column(db.Integer, default=18)  # Anzahl Mannschaften
     is_active = db.Column(db.Boolean, default=True)
     external_id = db.Column(db.String(50), nullable=True)  # football-data.org ID
-    created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     
     # Beziehungen
     matches = db.relationship("Match", backref="competition", lazy="dynamic")
     teams = db.relationship("CompetitionTeam", backref="competition", lazy="dynamic")
+
+
+class InvitationCode(db.Model):
+    """Einladungscode fuer kontrollierte Registrierung.
+
+    Codes koennen per E-Mail einmalig oder als teilbarer Link mehrfach genutzt
+    werden. Registrierung ohne gueltigen Code ist gesperrt.
+    """
+    __tablename__ = "invitation_codes"
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(80), unique=True, nullable=False, index=True)
+    invited_by_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    email = db.Column(db.String(120), nullable=True, index=True)
+    max_uses = db.Column(db.Integer, default=1)
+    uses = db.Column(db.Integer, default=0)
+    used_by_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    expires_at = db.Column(db.DateTime, nullable=True)
+    used_at = db.Column(db.DateTime, nullable=True)
+
+    invited_by = db.relationship("User", foreign_keys=[invited_by_user_id])
+    used_by = db.relationship("User", foreign_keys=[used_by_user_id])
+
+    def is_valid_for_email(self, email=None):
+        now = datetime.now(timezone.utc)
+        exp = self.expires_at
+        if exp is not None and exp.tzinfo is None:
+            now_cmp = now.replace(tzinfo=None)
+        else:
+            now_cmp = now
+        if exp is not None and now_cmp > exp:
+            return False
+        if self.max_uses is not None and self.uses >= self.max_uses:
+            return False
+        if self.email and email and self.email.lower() != email.lower():
+            return False
+        return True
 
 
 class User(UserMixin, db.Model):
@@ -33,8 +70,21 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(256), nullable=False)
     avatar = db.Column(db.String(200), default="default.png")
     is_admin = db.Column(db.Boolean, default=False)
-    created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     push_subscription = db.Column(db.Text, nullable=True)
+
+    # Benachrichtigungszentrale
+    notify_enabled = db.Column(db.Boolean, default=True)
+    notify_email = db.Column(db.Boolean, default=True)
+    notify_push = db.Column(db.Boolean, default=True)
+    notify_telegram = db.Column(db.Boolean, default=True)
+    notify_whatsapp = db.Column(db.Boolean, default=True)
+    notify_hours_before = db.Column(db.Integer, default=1)
+    notify_only_favorite = db.Column(db.Boolean, default=False)
+
+    # Persoenliche Standardansicht beim Klick auf „Tippen"
+    # normal = offene/normale Tippansicht, quick = Schnelltipp
+    default_tip_view = db.Column(db.String(20), default="normal")
 
     # Lieblingsverein (verlinkt mit Team)
     favorite_team_id = db.Column(db.Integer, db.ForeignKey("teams.id"), nullable=True)
@@ -67,12 +117,15 @@ class User(UserMixin, db.Model):
     def total_points(self):
         return sum(p.points or 0 for p in self.predictions)
 
-    def joker_used_for_matchday(self, matchday):
-        return Prediction.query.join(Match).filter(
+    def joker_used_for_matchday(self, matchday, competition_id=None):
+        q = Prediction.query.join(Match).filter(
             Prediction.user_id == self.id,
             Prediction.joker.is_(True),
             Match.matchday == matchday,
-        ).first() is not None
+        )
+        if competition_id is not None:
+            q = q.filter(Match.competition_id == competition_id)
+        return q.first() is not None
 
 
 class CompetitionTeam(db.Model):
@@ -154,8 +207,8 @@ class Prediction(db.Model):
     away_tip = db.Column(db.Integer, nullable=False)
     joker = db.Column(db.Boolean, default=False)
     points = db.Column(db.Integer, default=0)
-    created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
-    updated_at = db.Column(db.DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (db.UniqueConstraint("user_id", "match_id", name="uq_user_match"),)
 
@@ -172,7 +225,7 @@ class Comment(db.Model):
     match_id = db.Column(db.Integer, db.ForeignKey("matches.id"), nullable=False, index=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
     text = db.Column(db.String(500), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     user = db.relationship("User")
 
@@ -197,7 +250,7 @@ class Badge(db.Model):
     trigger_type = db.Column(db.String(30), default="manual")
     threshold = db.Column(db.Integer, default=0)
     active = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class UserBadge(db.Model):
@@ -205,7 +258,7 @@ class UserBadge(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
     badge_id = db.Column(db.Integer, db.ForeignKey("badges.id"), nullable=False, index=True)
-    awarded_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
+    awarded_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     badge = db.relationship("Badge")
 
@@ -215,19 +268,22 @@ class SpecialPrediction(db.Model):
     Bei multi_team: answer ist JSON-Liste mit Team-Namen."""
     __tablename__ = "special_predictions"
     id = db.Column(db.Integer, primary_key=True)
+    competition_id = db.Column(db.Integer, db.ForeignKey("competitions.id"), nullable=True, index=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
     question_id = db.Column(db.Integer, db.ForeignKey("special_questions.id"), nullable=False, index=True)
     answer = db.Column(db.Text, nullable=False)
     points = db.Column(db.Integer, default=0)
-    created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
-    updated_at = db.Column(db.DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
+    competition = db.relationship("Competition")
     __table_args__ = (db.UniqueConstraint("user_id", "question_id", name="uq_user_question"),)
 
 
 class SpecialQuestion(db.Model):
     __tablename__ = "special_questions"
     id = db.Column(db.Integer, primary_key=True)
+    competition_id = db.Column(db.Integer, db.ForeignKey("competitions.id"), nullable=True, index=True)
     text = db.Column(db.String(300), nullable=False)
     description = db.Column(db.String(500), nullable=True)
 
@@ -259,13 +315,16 @@ class SpecialQuestion(db.Model):
     deadline = db.Column(db.DateTime, nullable=False)
     points_value = db.Column(db.Integer, default=10)
     season = db.Column(db.String(20), default="2025/26")
-    created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    competition = db.relationship("Competition")
 
 
 class Prize(db.Model):
     """Frei konfigurierbare Gewinne. Werden auf der /preise-Seite angezeigt."""
     __tablename__ = "prizes"
     id = db.Column(db.Integer, primary_key=True)
+    competition_id = db.Column(db.Integer, db.ForeignKey("competitions.id"), nullable=True, index=True)
     rank = db.Column(db.Integer, nullable=False)            # Platz: 1, 2, 3, ... oder 0 für Sonderpreis
     title = db.Column(db.String(120), nullable=False)       # z.B. "1. Platz", "Schlechtester Tipper"
     description = db.Column(db.String(500), nullable=True)  # Kategorie-Beschreibung
@@ -275,7 +334,9 @@ class Prize(db.Model):
     detail = db.Column(db.String(500), nullable=True)       # zusätzliche Beschreibung
     active = db.Column(db.Boolean, default=True)
     sort_order = db.Column(db.Integer, default=0)           # für eigene Sortierung
-    created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    competition = db.relationship("Competition")
 
 
 class MatchdayWinner(db.Model):
@@ -284,17 +345,19 @@ class MatchdayWinner(db.Model):
     (geteilter Sieg). Wird nach jedem Sync automatisch neu berechnet."""
     __tablename__ = "matchday_winners"
     id = db.Column(db.Integer, primary_key=True)
+    competition_id = db.Column(db.Integer, db.ForeignKey("competitions.id"), nullable=True, index=True)
     matchday = db.Column(db.Integer, nullable=False, index=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
     points = db.Column(db.Integer, default=0)            # erzielte Punkte
     exact_count = db.Column(db.Integer, default=0)       # # exakte Tipps
     is_shared = db.Column(db.Boolean, default=False)     # geteilter Sieg
     season = db.Column(db.String(20), default="2025/26")
-    created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     user = db.relationship("User")
+    competition = db.relationship("Competition")
     __table_args__ = (
-        db.UniqueConstraint("matchday", "user_id", "season", name="uq_md_user_season"),
+        db.UniqueConstraint("competition_id", "matchday", "user_id", "season", name="uq_comp_md_user_season"),
     )
 
 
@@ -302,6 +365,7 @@ class SeasonArchive(db.Model):
     """Ewige Tabelle: Saisonergebnisse werden hier persistent abgelegt."""
     __tablename__ = "season_archive"
     id = db.Column(db.Integer, primary_key=True)
+    competition_id = db.Column(db.Integer, db.ForeignKey("competitions.id"), nullable=True, index=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     season = db.Column(db.String(20), nullable=False)
     rank = db.Column(db.Integer, nullable=False)
@@ -310,7 +374,53 @@ class SeasonArchive(db.Model):
     diff_count = db.Column(db.Integer, default=0)
     tendency_count = db.Column(db.Integer, default=0)
     wrong_count = db.Column(db.Integer, default=0)
-    archived_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
+    archived_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     user = db.relationship("User")
-    __table_args__ = (db.UniqueConstraint("user_id", "season", name="uq_user_season"),)
+    competition = db.relationship("Competition")
+    __table_args__ = (db.UniqueConstraint("competition_id", "user_id", "season", name="uq_comp_user_season"),)
+
+
+class NotificationLog(db.Model):
+    """Merkt sich versendete Benachrichtigungen, damit Scheduler/Cron nicht spammt."""
+    __tablename__ = "notification_log"
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    match_id = db.Column(db.Integer, db.ForeignKey("matches.id"), nullable=False, index=True)
+    channel = db.Column(db.String(20), nullable=False, index=True)  # email/push/telegram/whatsapp
+    kind = db.Column(db.String(30), default="match_reminder", nullable=False, index=True)
+    sent_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    user = db.relationship("User")
+    match = db.relationship("Match")
+    __table_args__ = (
+        db.UniqueConstraint("user_id", "match_id", "channel", "kind", name="uq_notification_once"),
+    )
+
+
+class AdminActivityLog(db.Model):
+    """Audit-Trail fuer wichtige Admin-Aktionen."""
+    __tablename__ = "admin_activity_log"
+    id = db.Column(db.Integer, primary_key=True)
+    admin_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    action = db.Column(db.String(80), nullable=False, index=True)
+    entity_type = db.Column(db.String(80), nullable=True, index=True)
+    entity_id = db.Column(db.String(80), nullable=True, index=True)
+    message = db.Column(db.String(500), nullable=True)
+    metadata_json = db.Column(db.Text, nullable=True)
+    ip_address = db.Column(db.String(64), nullable=True)
+    user_agent = db.Column(db.String(300), nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+
+    admin = db.relationship("User")
+
+
+class SchemaMigration(db.Model):
+    """Versionierte, app-interne DB-Migrationen fuer Hosting ohne SSH."""
+    __tablename__ = "schema_migrations"
+    id = db.Column(db.Integer, primary_key=True)
+    version = db.Column(db.String(80), unique=True, nullable=False, index=True)
+    description = db.Column(db.String(300), nullable=True)
+    success = db.Column(db.Boolean, default=True)
+    message = db.Column(db.Text, nullable=True)
+    applied_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), index=True)
