@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Spiele &amp; Tipps{% endblock %}
+{% block title %}Spiele & Tipps{% endblock %}
 
 {% macro form_dots(form_list) %}
   <span class="form-stripe small">
@@ -19,17 +19,23 @@
   <div>
     <h1>📅 Spiele &amp; Tipps</h1>
     <p class="muted small">
-      Spieltag {{ current_md }}
-      {% if joker_used %} · <span class="joker">⚡ Joker bereits eingesetzt</span>{% endif %}
+      Spieltag {{ current_md }} · alle Spiele, deine Tipps und Ergebnisse
+      {% if joker_match %}
+        · <span class="joker" title="{{ joker_match.home_team.name }} – {{ joker_match.away_team.name }}">⚡ Joker auf {{ joker_match.home_team.name }} – {{ joker_match.away_team.name }} gesetzt</span>
+      {% elif joker_used %}
+        · <span class="joker">⚡ Joker bereits eingesetzt</span>
+      {% endif %}
     </p>
   </div>
-  <div class="header-actions md-switcher">
+  <div class="header-actions md-switcher schedule-actions">
     <select onchange="location.href='{{ url_for('main.schedule') }}/'+this.value">
       {% for md in matchdays %}
         <option value="{{ md }}" {{ 'selected' if md == current_md }}>Spieltag {{ md }}</option>
       {% endfor %}
     </select>
-    <a href="{{ url_for('main.quick_tip', matchday=current_md) }}" class="btn-primary btn-sm">⚡ Schnelltipp</a>
+    <a href="{{ url_for('main.matchday_preview', matchday=current_md) }}" class="btn-ghost btn-sm schedule-action">🔮 <span class="full">Preview</span><span class="short">Vor</span></a>
+    <a href="{{ url_for('main.tip_overview', matchday=current_md) }}" class="btn-ghost btn-sm schedule-action">👀 <span class="full">Tippübersicht</span><span class="short">Tipps</span></a>
+    <a href="{{ url_for('main.quick_tip', matchday=current_md) }}" class="btn-primary btn-sm schedule-action quicktip-cta">⚡ <span class="full">Schnelltipp</span><span class="short">Schnell</span></a>
   </div>
 </div>
 
@@ -42,11 +48,12 @@
       <!-- 🌍 UTC-Zeit wird per JS in lokale Zeit umgerechnet -->
       <div class="match-time" data-utc="{{ m.kickoff.strftime('%Y-%m-%dT%H:%M:%SZ') }}">
         <small class="match-date">--</small>
-        <strong class="match-hour">--:--</strong>
+        <strong class="match-hour">--:-- Uhr</strong>
         <span class="status status-{{ m.status }}">
           {% if m.status == 'finished' %}beendet
           {% elif m.status == 'live' %}LIVE
-          {% else %}geplant{% endif %}
+          {% elif m.is_open() %}Tipp noch änderbar
+          {% else %}nicht mehr änderbar{% endif %}
         </span>
       </div>
 
@@ -60,7 +67,7 @@
               <span class="hidden-desktop">{{ m.home_team.short_name }}</span>
             </strong>
             <div class="team-meta-line">
-              {% if hpos %}<span class="pos-badge">#{{ hpos.rank }}</span>{% endif %}
+              {% if hpos %}<span class="pos-badge">{{ hpos.rank }}. Platz</span>{% endif %}
               {% if form_map and form_map.get(m.home_team_id) %}
                 {{ form_dots(form_map[m.home_team_id]) }}
               {% endif %}
@@ -99,7 +106,7 @@
               <span class="hidden-desktop">{{ m.away_team.short_name }}</span>
             </strong>
             <div class="team-meta-line">
-              {% if apos %}<span class="pos-badge">#{{ apos.rank }}</span>{% endif %}
+              {% if apos %}<span class="pos-badge">{{ apos.rank }}. Platz</span>{% endif %}
               {% if form_map and form_map.get(m.away_team_id) %}
                 {{ form_dots(form_map[m.away_team_id]) }}
               {% endif %}
@@ -119,7 +126,10 @@
       </div>
     </div>
   {% else %}
-    <p class="muted center pad">Keine Spiele für diesen Spieltag.</p>
+    <div class="empty-state compact">
+      <strong>Keine Spiele für diesen Spieltag.</strong>
+      <p class="muted">Wähle einen anderen Spieltag oder starte später erneut.</p>
+    </div>
   {% endfor %}
 </div>
 
@@ -127,7 +137,7 @@
 
 {% block scripts %}
 <script>
-// Live-Polling fuer den Spielplan, wenn aktuell Spiele laufen oder bald starten
+// Live-Polling fuer die Spieleuebersicht, wenn aktuell Spiele laufen oder bald starten
 (function() {
   const card = document.getElementById('scheduleCard');
   if (!card) return;

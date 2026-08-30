@@ -6,7 +6,7 @@
   <div>
     <h1>⚽ Bundesliga</h1>
     <p class="muted small">
-      {% if source == 'football-data.org (live)' %}
+      {{ active_competition_name }} · Saison {{ active_competition_season }} · {% if source == 'football-data.org (live)' %}
         🟢 Live von <strong>football-data.org</strong>
         <span class="muted small">· auto-refresh alle 60s</span>
       {% else %}
@@ -28,12 +28,12 @@
           <th>#</th>
           <th>Verein</th>
           <th class="center">Sp</th>
-          <th class="center hidden-mobile">S</th>
-          <th class="center hidden-mobile">U</th>
-          <th class="center hidden-mobile">N</th>
-          <th class="center">Tore</th>
+          <th class="center sun-col">S</th>
+          <th class="center sun-col">U</th>
+          <th class="center sun-col">N</th>
+          <th class="center optional-mobile">Tore</th>
           <th class="center">±</th>
-          <th class="center hidden-mobile">Form</th>
+          <th class="center sun-col">Form</th>
           <th class="right">Pkt</th>
         </tr>
       </thead>
@@ -42,19 +42,21 @@
         <tr class="{{ 'cl' if r.rank <= 4 }} {{ 'el' if r.rank == 5 or r.rank == 6 }} {{ 'rel' if r.rank >= 16 }}">
           <td class="rank-cell"><span class="rank-num">{{ r.rank }}</span></td>
           <td>
-            <div class="user-cell">
+            <div class="user-cell bl-team-cell">
               <img src="{{ r.team.logo }}" class="mini-logo" alt="" />
-              <strong class="hidden-mobile">{{ r.team.name }}</strong>
-              <strong class="hidden-desktop">{{ r.team.short_name }}</strong>
+              <span class="bl-team-text">
+                <strong class="bl-team-full">{{ r.team.name }}</strong>
+                <small class="bl-team-short hidden-desktop">{{ r.team.short_name }}</small>
+              </span>
             </div>
           </td>
           <td class="center">{{ r.played }}</td>
-          <td class="center hidden-mobile">{{ r.won }}</td>
-          <td class="center hidden-mobile">{{ r.drawn }}</td>
-          <td class="center hidden-mobile">{{ r.lost }}</td>
-          <td class="center">{{ r.goals_for }}:{{ r.goals_against }}</td>
+          <td class="center sun-col">{{ r.won }}</td>
+          <td class="center sun-col">{{ r.drawn }}</td>
+          <td class="center sun-col">{{ r.lost }}</td>
+          <td class="center optional-mobile">{{ r.goals_for }}:{{ r.goals_against }}</td>
           <td class="center">{{ '+' if r.goal_diff > 0 }}{{ r.goal_diff }}</td>
-          <td class="center hidden-mobile">
+          <td class="center sun-col">
             {% if r.form %}
               <span class="form-stripe small">
               {% for letter in r.form.split(',') %}
@@ -78,7 +80,7 @@
   <span><span class="legend-box cl"></span> Champions League</span>
   <span><span class="legend-box el"></span> Europa League</span>
   <span><span class="legend-box rel"></span> Abstieg</span>
-  {% if source == 'football-data.org (live)' %}
+  {{ active_competition_name }} · Saison {{ active_competition_season }} · {% if source == 'football-data.org (live)' %}
   <span style="margin-left:auto"><span class="live-dot"></span> Live-Daten · letzter Refresh: <span id="lastRefresh">jetzt</span></span>
   {% endif %}
 </div>
@@ -86,7 +88,7 @@
 {% endblock %}
 
 {% block scripts %}
-{% if source == 'football-data.org (live)' %}
+{{ active_competition_name }} · Saison {{ active_competition_season }} · {% if source == 'football-data.org (live)' %}
 <script>
 (function() {
   const POLL_INTERVAL = 60_000; // 60s
@@ -113,18 +115,20 @@
       .map(l => `<span class="form-dot form-${l}">${l}</span>`).join('');
     return `<tr class="${cls}">
       <td class="rank-cell"><span class="rank-num">${r.rank}</span></td>
-      <td><div class="user-cell">
+      <td><div class="user-cell bl-team-cell">
         <img src="${r.team_logo}" class="mini-logo" alt="" />
-        <strong class="hidden-mobile">${r.team_name}</strong>
-        <strong class="hidden-desktop">${r.team_short}</strong>
+        <span class="bl-team-text">
+          <strong class="bl-team-full">${r.team_name}</strong>
+          <small class="bl-team-short hidden-desktop">${r.team_short}</small>
+        </span>
       </div></td>
       <td class="center">${r.played}</td>
-      <td class="center hidden-mobile">${r.won}</td>
-      <td class="center hidden-mobile">${r.drawn}</td>
-      <td class="center hidden-mobile">${r.lost}</td>
-      <td class="center">${r.goals_for}:${r.goals_against}</td>
+      <td class="center sun-col">${r.won}</td>
+      <td class="center sun-col">${r.drawn}</td>
+      <td class="center sun-col">${r.lost}</td>
+      <td class="center optional-mobile">${r.goals_for}:${r.goals_against}</td>
       <td class="center">${r.goal_diff > 0 ? '+' : ''}${r.goal_diff}</td>
-      <td class="center hidden-mobile">${form ? `<span class="form-stripe small">${form}</span>` : ''}</td>
+      <td class="center sun-col">${form ? `<span class="form-stripe small">${form}</span>` : ''}</td>
       <td class="right pts-num">${r.points}</td>
     </tr>`;
   }

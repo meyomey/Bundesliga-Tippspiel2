@@ -6,9 +6,9 @@
 
 <div class="page-header">
   <div>
-    <span class="overline">📊 SAISON {{ current_md }}.</span>
+    <span class="overline">📊 {{ active_competition_name }} · Saison {{ active_competition_season }}</span>
     <h1>Statistik-Dashboard</h1>
-    <p class="muted small">{{ user.username }} · {{ total_points }} Punkte · {{ total_tips }} Tipps</p>
+    <p class="muted small">{{ user.username }} · {{ total_points }} Punkte · {{ total_tips }} gewertete Tipps · Stand: Spieltag {{ current_md }}</p>
   </div>
 </div>
 
@@ -28,6 +28,21 @@
   <div class="card stat-kpi"><div class="kpi-num">{{ joker_avg }}</div><div class="kpi-lbl">Ø Joker-Punkte</div></div>
 </div>
 
+
+<div class="card wide" style="margin-top:16px;">
+  <h3>✨ Stats 2.0 — Fun Facts</h3>
+  <div class="stats-grid">
+    <div class="stat-kpi"><div class="kpi-num">{{ stats20.best_point_streak }}</div><div class="kpi-lbl">Beste Punkte-Serie</div></div>
+    <div class="stat-kpi"><div class="kpi-num">{{ stats20.current_point_streak }}</div><div class="kpi-lbl">Aktuelle Serie</div></div>
+    <div class="stat-kpi"><div class="kpi-num">{{ stats20.longest_dry_run }}</div><div class="kpi-lbl">Längste Durststrecke</div></div>
+    <div class="stat-kpi"><div class="kpi-num">{{ stats20.upset_hits }}</div><div class="kpi-lbl">Mutige Treffer</div></div>
+  </div>
+  <p class="muted small" style="margin-top:10px;">
+    Tipp-Neigung: 🏠 {{ stats20.home_bias }}% Heimsieg · ⚖ {{ stats20.draw_bias }}% Remis · ✈ {{ stats20.away_bias }}% Auswärtssieg
+    {% if stats20.favorite_score_team %}<br>Dein Punkte-Liebling: <strong>{{ stats20.favorite_score_team[0] }}</strong> mit {{ stats20.favorite_score_team[1] }} Punkten in beteiligten Spielen.{% endif %}
+  </p>
+</div>
+
 <div class="stats-charts">
 
   <!-- 1. Punkte-Verlauf -->
@@ -36,7 +51,40 @@
     <canvas id="pointsChart" height="80"></canvas>
   </div>
 
-  <!-- 2. Tipp-Qualität pro Spieltag (gestapeltes Balken) -->
+  <!-- 2. Ranglistenverlauf aller Spieler -->
+  <div class="card chart-card wide rank-progress-card">
+    <div class="card-header">
+      <div>
+        <h3>📉 Ranglistenverlauf aller Spieler</h3>
+        <p class="muted small">Platzierung nach jedem beendeten Spieltag. Einzelne Spieler kannst du unten ein- und ausblenden. Sonderfragen sind hier nicht eingerechnet.</p>
+      </div>
+      <div class="rank-chart-actions">
+        <button type="button" class="btn-ghost btn-xs" id="rankSelectTop">Top 5</button>
+        <button type="button" class="btn-ghost btn-xs" id="rankSelectMe">Nur ich</button>
+        <button type="button" class="btn-ghost btn-xs" id="rankSelectAll">Alle</button>
+      </div>
+    </div>
+    {% if rank_chart_labels %}
+      <div class="rank-chart-wrap">
+        <div class="rank-chart-inner">
+          <canvas id="rankProgressChart"></canvas>
+        </div>
+      </div>
+      <div class="rank-player-toggle-list" aria-label="Spieler im Ranglistenverlauf auswählen">
+        {% for ds in rank_chart_datasets %}
+        <label class="rank-player-toggle {{ 'is-me' if ds.isMe }}">
+          <input type="checkbox" data-rank-player="{{ loop.index0 }}" {% if not ds.hidden %}checked{% endif %}>
+          <span class="rank-color-dot" style="background: {{ ds.borderColor }}"></span>
+          <span>{{ ds.label }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="muted small">Noch kein Ranglistenverlauf verfügbar, weil noch kein Spieltag beendet wurde.</p>
+    {% endif %}
+  </div>
+
+  <!-- 3. Tipp-Qualität pro Spieltag (gestapeltes Balken) -->
   <div class="card chart-card wide">
     <h3>📊 Tipp-Qualität pro Spieltag</h3>
     <canvas id="accuracyChart" height="80"></canvas>
@@ -64,7 +112,7 @@
 
   <!-- 6. Vergleich mit KI-Bots -->
   <div class="card chart-card">
-    <h3>🤖 vs KI-Bots</h3>
+    <h3>🤖 vs aktive KI-Bots</h3>
     <canvas id="botChart" height="80"></canvas>
   </div>
 
@@ -83,7 +131,8 @@
 
   <!-- 8. Rangliste vs Bots -->
   <div class="card chart-card wide">
-    <h3>🏆 Rangliste — Du vs Bots</h3>
+    <h3>🏆 Rangliste — Du vs aktive Bots</h3>
+    {% if bot_comparison|length == 1 %}<p class="muted small">Aktuell ist kein KI-Bot aktiviert oder gewertet.</p>{% endif %}
     <table class="mini-table">
       {% for b in bot_comparison %}
       <tr class="{% if b.is_me %}highlight-row{% endif %}">
@@ -102,6 +151,10 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+  if (typeof Chart === 'undefined') {
+    console.warn('Chart.js ist nicht geladen; Statistikdiagramme werden uebersprungen.');
+    return;
+  }
   const teal = '#14b8a6';
   const blue = '#3b82f6';
   const green = '#10b981';
@@ -109,16 +162,87 @@ document.addEventListener('DOMContentLoaded', function() {
   const red = '#ef4444';
   const purple = '#8b5cf6';
 
+  // Ranglistenverlauf aller Spieler
+  const rankCtx = document.getElementById('rankProgressChart');
+  let rankChart = null;
+  const rankDatasets = {{ rank_chart_datasets|tojson }};
+  if (rankCtx && rankDatasets.length) {
+    rankChart = new Chart(rankCtx, {
+      type: 'line',
+      data: {
+        labels: {{ rank_chart_labels|tojson }},
+        datasets: rankDatasets
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'nearest', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function(ctx) { return `${ctx.dataset.label}: Platz ${ctx.parsed.y}`; }
+            }
+          }
+        },
+        scales: {
+          y: {
+            reverse: true,
+            min: 1,
+            max: {{ rank_chart_max or 1 }},
+            ticks: { stepSize: 1, precision: 0 },
+            title: { display: true, text: 'Platz' }
+          },
+          x: { title: { display: true, text: 'Spieltag' } }
+        }
+      }
+    });
+  }
+
+  function syncRankCheckboxes() {
+    if (!rankChart) return;
+    document.querySelectorAll('[data-rank-player]').forEach(cb => {
+      const idx = Number(cb.dataset.rankPlayer);
+      cb.checked = rankChart.isDatasetVisible(idx);
+    });
+  }
+
+  function setRankVisibility(mode) {
+    if (!rankChart) return;
+    rankChart.data.datasets.forEach((ds, idx) => {
+      let visible = false;
+      if (mode === 'all') visible = true;
+      if (mode === 'me') visible = !!ds.isMe;
+      if (mode === 'top') visible = idx < 5 || !!ds.isMe;
+      rankChart.setDatasetVisibility(idx, visible);
+    });
+    rankChart.update();
+    syncRankCheckboxes();
+  }
+
+  document.querySelectorAll('[data-rank-player]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      if (!rankChart) return;
+      const idx = Number(cb.dataset.rankPlayer);
+      rankChart.setDatasetVisibility(idx, cb.checked);
+      rankChart.update();
+    });
+  });
+  document.getElementById('rankSelectTop')?.addEventListener('click', () => setRankVisibility('top'));
+  document.getElementById('rankSelectMe')?.addEventListener('click', () => setRankVisibility('me'));
+  document.getElementById('rankSelectAll')?.addEventListener('click', () => setRankVisibility('all'));
+  syncRankCheckboxes();
+
   // 1. Punkte-Verlauf
   const ptsCtx = document.getElementById('pointsChart');
   if (ptsCtx) {
     new Chart(ptsCtx, {
       type: 'line',
       data: {
-        labels: [{{ md_labels_all|safe }}],
+        labels: {{ md_labels_all|tojson }},
         datasets: [{
           label: 'Punkte',
-          data: [{{ md_data_all|safe }}],
+          data: {{ md_data_all|tojson }},
           borderColor: teal,
           backgroundColor: teal + '20',
           fill: true,
@@ -143,12 +267,12 @@ document.addEventListener('DOMContentLoaded', function() {
     new Chart(accCtx, {
       type: 'bar',
       data: {
-        labels: [{{ acc_labels|safe }}],
+        labels: {{ acc_labels|tojson }},
         datasets: [
-          { label: 'Exakt %', data: [{{ acc_exact|safe }}], backgroundColor: green },
-          { label: 'Differenz %', data: [{{ acc_diff|safe }}], backgroundColor: blue },
-          { label: 'Tendenz %', data: [{{ acc_tendency|safe }}], backgroundColor: yellow },
-          { label: 'Daneben %', data: [{{ acc_wrong|safe }}], backgroundColor: red },
+          { label: 'Exakt %', data: {{ acc_exact|tojson }}, backgroundColor: green },
+          { label: 'Differenz %', data: {{ acc_diff|tojson }}, backgroundColor: blue },
+          { label: 'Tendenz %', data: {{ acc_tendency|tojson }}, backgroundColor: yellow },
+          { label: 'Daneben %', data: {{ acc_wrong|tojson }}, backgroundColor: red },
         ]
       },
       options: {
@@ -192,10 +316,10 @@ document.addEventListener('DOMContentLoaded', function() {
     new Chart(tipsCtx, {
       type: 'bar',
       data: {
-        labels: [{{ top_tip_labels|safe }}],
+        labels: {{ top_tip_labels|tojson }},
         datasets: [{
           label: 'Anzahl',
-          data: [{{ top_tip_data|safe }}],
+          data: {{ top_tip_data|tojson }},
           backgroundColor: purple,
         }]
       },
@@ -229,11 +353,11 @@ document.addEventListener('DOMContentLoaded', function() {
     new Chart(botCtx, {
       type: 'bar',
       data: {
-        labels: [{% for b in bot_comparison %}'{{ b.name }}'{% if not loop.last %},{% endif %}{% endfor %}],
+        labels: {{ bot_chart_labels|tojson }},
         datasets: [{
           label: 'Punkte',
-          data: [{% for b in bot_comparison %}{{ b.points }}{% if not loop.last %},{% endif %}{% endfor %}],
-          backgroundColor: [{% for b in bot_comparison %}'{{ teal if b.is_me else blue }}'{% if not loop.last %},{% endif %}{% endfor %}],
+          data: {{ bot_chart_data|tojson }},
+          backgroundColor: {{ bot_chart_colors|tojson }},
         }]
       },
       options: {
