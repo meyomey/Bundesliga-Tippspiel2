@@ -1,6 +1,7 @@
 """Ausgelagerte Main-Route-Logik: Profil."""
 from flask import current_app, flash, redirect, render_template, request, url_for
-from flask_login import current_user
+from flask_login import current_user, login_required
+from routes_main import main_bp  # Blueprint-Registrierung statt Lazy-Wrapper in routes_main.py
 
 from extensions import db
 from models import Match, MatchdayWinner, Prediction, Team, User, UserBadge
@@ -39,6 +40,8 @@ def _compute_form_curve(user):
             md_points[p.match.matchday] += p.points or 0
     return sorted(md_points.items())
 
+@main_bp.route("/profil", methods=["GET", "POST"], endpoint="profile")
+@login_required
 def _profile():
     form = ProfileForm(obj=current_user)
     teams = Team.query.order_by(Team.name).all()

@@ -988,14 +988,20 @@ def new_season():
 
             # Aktive Competition aktualisieren (nicht blind alle anderen deaktivieren)
             target = comp or Competition.query.filter_by(code=current_app.config.get("COMPETITION", "BL1")).first()
+            import re as _re
+            def _base_competition_name(existing, code):
+                # Name soll die Saison NICHT mehr enthalten (erzeugte zuvor
+                # Doppel-Labels wie 'Bundesliga 2026 2026'); Altbestand bereinigen.
+                base = _re.sub(r"\s+20\d{2}(/\d{2})?$", "", (existing or "").strip())
+                return base or ("Bundesliga" if code == "BL1" else code)
             if target:
-                target.name = f"Bundesliga {new_season_label}" if target.code == "BL1" else f"{target.name.split(' ')[0]} {new_season_label}"
+                target.name = _base_competition_name(target.name, target.code)
                 target.season = new_season_label
                 target.is_active = True
                 target.external_id = None
             else:
                 target = Competition(
-                    code="BL1", name=f"Bundesliga {new_season_label}",
+                    code="BL1", name="Bundesliga",
                     season=new_season_label, matchdays=34, teams_count=18,
                     is_active=True, external_id=None,
                 )

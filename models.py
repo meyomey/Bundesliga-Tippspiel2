@@ -414,6 +414,31 @@ class AdminActivityLog(db.Model):
 
     admin = db.relationship("User")
 
+    @property
+    def meta(self):
+        """Geparste Metadaten (dict) oder None bei leerem/ungueltigem JSON.
+
+        Achtung: Nicht ``metadata`` nennen — das ueberschreibt das
+        SQLAlchemy-Decl-MetaData-Attribut und bricht den Boot.
+        """
+        if not self.metadata_json:
+            return None
+        try:
+            import json
+            data = json.loads(self.metadata_json)
+            return data if isinstance(data, dict) else None
+        except Exception:
+            return None
+
+    @property
+    def diff(self):
+        """before/after-Diff aus den Metadaten (falls vorhanden)."""
+        meta = self.meta
+        if not meta:
+            return None
+        diff = meta.get("diff")
+        return diff if isinstance(diff, dict) and diff else None
+
 
 class SchemaMigration(db.Model):
     """Versionierte, app-interne DB-Migrationen fuer Hosting ohne SSH."""

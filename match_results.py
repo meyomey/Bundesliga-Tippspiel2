@@ -7,12 +7,39 @@ from extensions import db
 from badges import check_and_award_badges
 from scoring import recalculate_all_points, recalculate_match_points, recalculate_matches_points
 
+# End-/Laufzustaende, die automatische Quellen (API-Sync) nicht zurueckdrehen
+# duerfen. Hintergrund: Einzelne APIs melden zwischenzeitlich veraltete Stati
+# (Rate-Limit-Cache, Fallback-Lag, Saisonwechsel-Effekte). Ohne diese Sperre
+# wurde ein bereits beendetes Spiel wieder auf "scheduled" gestellt - Ergebnis
+# und Punkte verschwanden dann in den Anzeigen, bis ein spaeterer Lauf den
+# Status erneut setzte. Nur explizite Admin-Aktionen duerfen zuruecksetzen.
+_LOCKED_STATES = ("finished", "live")
 
-def apply_match_update(match, *, home_score=None, away_score=None, status=None, kickoff=None, is_live=None):
+
+def apply_match_update(match, *, home_score=None, away_score=None, status=None, kickoff=None, is_live=None, allow_status_reset=False):
     """Aendert Match-Felder ohne Commit/Recalc.
 
     Gedacht fuer Bulk-Syncs. Danach `finalize_match_updates()` aufrufen.
+
+    Status-Monotonie: "finished" und "live" sind fuer automatische Updates
+    geschuetzt und werden nicht auf "scheduled" (bzw. finished -> live)
+    zurueckgedreht. Erlaubte automatische Uebergaenge: scheduled -> live,
+    scheduled -> finished, live -> finished, finished -> finished
+    (Score-Korrektur). Nur mit `allow_status_reset=True` (explizite
+    Admin-Aktionen) darf zurueckgesetzt werden.
     """
+    if (
+        status is not None
+        and not allow_status_reset
+        and match.status in _LOCKED_STATES
+        and status != match.status
+        and not (match.status == "live" and status == "finished")
+    ):
+        # Downgrade verwerfen - is_live ebenfalls unveraendert lassen,
+        # damit Status und Live-Flag konsistent bleiben.
+        status = None
+        is_live = None
+
     changed = False
     if kickoff is not None and match.kickoff != kickoff:
         match.kickoff = kickoff

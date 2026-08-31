@@ -132,3 +132,29 @@ def active_competition_teams(order_by_name=True):
     if order_by_name:
         q = q.order_by(Team.name.asc())
     return q.all()
+
+
+def competition_label(name, season):
+    """Anzeige-Label 'Name · Saison' ohne Jahres-Doppelungen.
+
+    Historisch schrieb der Saisonwechsel die Saison auch in den Namen
+    (z. B. name='Bundesliga 2026', season='2026' -> 'Bundesliga 2026 2026').
+    Diese Funktion dedupliziert robust:
+      ('Bundesliga', '2025/26')         -> 'Bundesliga · 2025/26'
+      ('Bundesliga 2026', '2026')       -> 'Bundesliga 2026'
+      ('Bundesliga 2026', '2026/27')    -> 'Bundesliga 2026/27'
+      ('Bundesliga 2025/26', '2025/26') -> 'Bundesliga 2025/26'
+    """
+    name = (str(name) if name is not None else "").strip()
+    season = (str(season) if season is not None else "").strip()
+    if not name:
+        return season
+    if not season:
+        return name
+    if season in name:
+        return name
+    first_year = season.split("/")[0]
+    if first_year and name.endswith(" " + first_year):
+        # 'Bundesliga 2026' + '2026/27' -> 'Bundesliga 2026/27'
+        return name + season[len(first_year):]
+    return f"{name} · {season}"

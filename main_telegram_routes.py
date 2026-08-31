@@ -1,14 +1,16 @@
 """Ausgelagerte Main-Route-Logik: Telegram und Competition-Wechsel."""
 from flask import abort, current_app, flash, jsonify, redirect, request, url_for
-from flask_login import current_user
+from flask_login import current_user, login_required
+from routes_main import main_bp  # Blueprint-Registrierung statt Lazy-Wrapper in routes_main.py
 
 from models import Competition
 from scoring import get_setting
 
+@main_bp.route("/telegram/webhook", methods=["POST"], endpoint="telegram_webhook")
+@main_bp.route("/telegram/webhook/<secret>", methods=["POST"], endpoint="telegram_webhook")
 def _telegram_webhook(secret=None):
     """Webhook für eingehende Telegram-Nachrichten."""
     from telegram_bot import process_message, send_telegram_message
-    import json
 
     try:
         expected_secret = get_setting("telegram_webhook_secret", current_app.config.get("TELEGRAM_WEBHOOK_SECRET", ""))
@@ -36,6 +38,8 @@ def _telegram_webhook(secret=None):
 
     return "", 200
 
+@main_bp.route("/profile/telegram-token", endpoint="profile_telegram_token")
+@login_required
 def _profile_telegram_token():
     """Generiert einen Telegram-Verknüpfungs-Token für das Profil."""
     from telegram_bot import generate_telegram_token
@@ -49,6 +53,8 @@ def _profile_telegram_token():
         "bot_username": bot_username,
     })
 
+@main_bp.route("/set-competition/<string:code>", endpoint="set_competition")
+@login_required
 def _set_competition(code):
     from flask import session
     comp = Competition.query.filter_by(code=code, is_active=True).first()

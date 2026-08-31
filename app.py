@@ -26,10 +26,17 @@ from config import Config
 from extensions import db, login_manager, mail, cache, csrf, limiter
 
 from models import Competition
-from competition_helpers import get_active_competition
+from competition_helpers import get_active_competition, competition_label
 
 # Blueprint-Module
 from routes_main import main_bp
+# Partner-Module registrieren ihre Routen direkt auf main_bp (statt Lazy-Wrapper in routes_main.py)
+import main_tips_routes  # noqa: F401
+import main_stats_routes  # noqa: F401
+import main_pwa_routes  # noqa: F401
+import main_profile_routes  # noqa: F401
+import main_export_routes  # noqa: F401
+import main_telegram_routes  # noqa: F401
 from routes_auth import auth_bp
 from routes_admin import admin_bp
 from routes_api import api_bp
@@ -91,7 +98,7 @@ def create_app(config_object=Config):
 
     @app.context_processor
     def inject_globals():
-        ctx = {"now": lambda: datetime.now(timezone.utc), "asset_version": _asset_version, "player_preview_mode": bool(session.get("player_preview_mode"))}
+        ctx = {"now": lambda: datetime.now(timezone.utc), "asset_version": _asset_version, "player_preview_mode": bool(session.get("player_preview_mode")), "comp_label": competition_label}
 
         try:
             comp = get_active_competition()

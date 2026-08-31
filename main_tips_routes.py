@@ -1,11 +1,17 @@
-"""Ausgelagerte Main-Route-Logik: Tipps und Sondertipps."""
+"""Routen rund ums Tippen: offene Tipps, Spielplan, Tippvielfalt, Schnelltipp, Sondertipps.
+
+Die Route-Registrierung liegt direkt in diesem Modul (endpoint=... haelt die
+oeffentlichen Fluask-Endpunktnamen, die zuvor durch Lazy-Wrapper in
+routes_main.py bereitgestellt wurden; importiert wird das Modul von app.py)."""
+from datetime import datetime, timezone
 from datetime import datetime, timezone
 
 import bleach
 from flask import current_app, flash, redirect, render_template, request, url_for
-from flask_login import current_user
+from flask_login import current_user, login_required
 
 from extensions import db
+from routes_main import main_bp  # Blueprint-Registrierung statt Lazy-Wrapper in routes_main.py
 from models import Comment, Match, Prediction, SpecialPrediction, SpecialQuestion, User
 from forms import CommentForm, TipForm
 from badges import check_and_award_badges
@@ -27,6 +33,9 @@ from competition_helpers import (
     get_active_competition,
 )
 
+@main_bp.route("/meine-offenen-tipps", endpoint="my_open_tips")
+@main_bp.route("/meine-offenen-tipps/<int:matchday>", endpoint="my_open_tips")
+@login_required
 def _my_open_tips(matchday=None):
     """Fokussierte User-Seite: nur Spiele, die mir noch fehlen."""
     if matchday is None:
@@ -52,6 +61,9 @@ def _my_open_tips(matchday=None):
         locked_or_done=locked_or_done, pred_map=pred_map,
     )
 
+@main_bp.route("/spielplan", endpoint="schedule")
+@main_bp.route("/spielplan/<int:matchday>", endpoint="schedule")
+@login_required
 def _schedule(matchday=None):
     if matchday is None:
         matchday = get_current_matchday()
@@ -88,6 +100,9 @@ def _schedule(matchday=None):
         form_map=form_map,
     )
 
+@main_bp.route("/tipps", endpoint="tip_overview")
+@main_bp.route("/tipps/<int:matchday>", endpoint="tip_overview")
+@login_required
 def _tip_overview(matchday=None):
     """Tippmatrix: alle Tipps pro Spieltag, aber erst ab Spielstart sichtbar."""
     if matchday is None:
@@ -148,6 +163,8 @@ def _tip_overview(matchday=None):
         sort=sort,
     )
 
+@main_bp.route("/match/<int:match_id>", methods=["GET", "POST"], endpoint="match_detail")
+@login_required
 def _match_detail(match_id):
     match = db.get_or_404(Match, match_id)
     pred = Prediction.query.filter_by(user_id=current_user.id, match_id=match_id).first()
@@ -251,6 +268,9 @@ def _match_detail(match_id):
         tip_dist=tip_dist, weather=weather,
     )
 
+@main_bp.route("/schnelltipp", methods=["GET"], endpoint="quick_tip")
+@main_bp.route("/schnelltipp/<int:matchday>", methods=["GET", "POST"], endpoint="quick_tip")
+@login_required
 def _quick_tip(matchday=None):
     if matchday is None:
         return redirect(url_for("main.quick_tip", matchday=get_current_matchday()))
@@ -330,7 +350,7 @@ def _quick_tip(matchday=None):
             pass
 
         flash(f"Schnelltipps für Spieltag {matchday} gespeichert.", "success")
-        return redirect(url_for("main.schedule", matchday=matchday))
+        return redirect(url_for("main.quick_tip", matchday=matchday))
 
     pred_map = {p.match_id: p for p in Prediction.query.filter_by(user_id=current_user.id).all()}
 
@@ -350,6 +370,8 @@ def _quick_tip(matchday=None):
         pos_map=pos_map, form_map=form_map,
     )
 
+@main_bp.route("/sondertipps", methods=["GET", "POST"], endpoint="special_tips")
+@login_required
 def _special_tips():
     # JSON lokal importieren; Sondertipps speichern Listen als JSON-Text.
     import json

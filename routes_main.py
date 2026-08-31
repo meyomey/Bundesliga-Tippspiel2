@@ -1,72 +1,30 @@
-"""Haupt-Routes: Dashboard, Spielplan, Tipp, Profil, Export, etc."""
-import os
-from datetime import datetime, timedelta, timezone
-from io import BytesIO, StringIO
-import csv
+"""Haupt-Routes: Dashboard, Index, Einladen, Mehr, Hilfe und Tipp-Einstieg.
 
-from flask import (
-    Blueprint, render_template, redirect, url_for, flash, request,
-    abort, jsonify, send_file, current_app, send_from_directory,
-)
+Seiten-Modul-Logik liegt in den Partner-Modulen (main_tips/stats/pwa/profile/export/telegram_routes),
+die ihre Routen direkt auf ``main_bp`` registrieren; dieses Modul haelt nur noch
+die hier verbliebenen echten Route-Funktionen."""
+import re
+import secrets
+from datetime import datetime, timedelta, timezone
+
+from flask import Blueprint, current_app, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
-from sqlalchemy import func
 
 from extensions import db
-from models import (
-    User, Team, Match, Prediction, Setting, Comment, Badge, UserBadge,
-    SpecialQuestion, SpecialPrediction, SeasonArchive, Prize, MatchdayWinner,
-    Competition, CompetitionTeam, InvitationCode,
-)
-from forms import (
-    ProfileForm, TipForm, CommentForm, SpecialAnswerForm,
-)
-from scoring import (
-    get_setting, set_setting, get_leaderboard, get_user_stats,
-    get_live_leaderboard, recalculate_all_points, compute_pot_summary,
-    calculate_points, filter_active_users,
-)
-from stats import (
-    get_user_trend, get_user_insights, get_match_tip_distribution,
-    get_match_weather, get_open_matches_for_user, get_current_matchday,
-    compute_live_standings, get_team_position, get_team_form, get_h2h,
-    get_eternal_table, archive_season, evaluate_special_predictions,
-    get_matchday_preview, get_matchday_recap,
-)
-from sync import fetch_live_standings, fetch_live_match_updates
-import bleach
-from badges import check_and_award_badges
-from avatars import save_avatar
-from export import generate_season_pdf
+from mail_helpers import send_email
+from models import InvitationCode, Match, Prediction, User, UserBadge
+from notification_center import send_test_missing_tip_notification
+from scoring import compute_pot_summary, get_leaderboard, get_setting
+from stats import get_current_matchday
 from competition_helpers import (
-    get_active_competition, active_match_query, active_matchdays,
-    filter_matches_for_active_competition, filter_competition_scoped,
+    active_match_query, filter_matches_for_active_competition,
 )
-
-import json as _json
 
 
 main_bp = Blueprint("main", __name__)
 
 
 # ============================================================ PWA Routes -
-@main_bp.route("/sw.js")
-def service_worker():
-    from main_pwa_routes import _service_worker
-    return _service_worker()
-@main_bp.route("/manifest.json")
-def manifest():
-    from main_pwa_routes import _manifest
-    return _manifest()
-@main_bp.route("/icon-<int:size>.png")
-def pwa_icon(size):
-    from main_pwa_routes import _pwa_icon
-    return _pwa_icon(size)
-
-@main_bp.route("/favicon.ico")
-def favicon():
-    from main_pwa_routes import _pwa_icon
-    return _pwa_icon(192)
-
 @main_bp.route("/")
 def index():
     if current_user.is_authenticated:
@@ -161,8 +119,6 @@ def dashboard():
         pot=pot,
         get_user_prediction=lambda mid: Prediction.query.filter_by(user_id=current_user.id, match_id=mid).first(),
     )
-
-
 
 @main_bp.route("/einladen", methods=["GET", "POST"])
 @login_required
@@ -315,130 +271,6 @@ def tip_entry(matchday=None):
         matchday = next_missing.matchday if next_missing else get_current_matchday()
     return redirect(url_for("main.quick_tip", matchday=matchday))
 
-@main_bp.route("/meine-offenen-tipps")
-@main_bp.route("/meine-offenen-tipps/<int:matchday>")
-@login_required
-def my_open_tips(matchday=None):
-    from main_tips_routes import _my_open_tips
-    return _my_open_tips(matchday)
-@main_bp.route("/spielplan")
-@main_bp.route("/spielplan/<int:matchday>")
-@login_required
-def schedule(matchday=None):
-    from main_tips_routes import _schedule
-    return _schedule(matchday)
-@main_bp.route("/tipps")
-@main_bp.route("/tipps/<int:matchday>")
-@login_required
-def tip_overview(matchday=None):
-    from main_tips_routes import _tip_overview
-    return _tip_overview(matchday)
-@main_bp.route("/match/<int:match_id>", methods=["GET", "POST"])
-@login_required
-def match_detail(match_id):
-    from main_tips_routes import _match_detail
-    return _match_detail(match_id)
-@main_bp.route("/schnelltipp", methods=["GET"])
-@main_bp.route("/schnelltipp/<int:matchday>", methods=["GET", "POST"])
-@login_required
-def quick_tip(matchday=None):
-    from main_tips_routes import _quick_tip
-    return _quick_tip(matchday)
-@main_bp.route("/preview")
-@main_bp.route("/preview/<int:matchday>")
-@login_required
-def matchday_preview(matchday=None):
-    from main_stats_routes import _matchday_preview
-    return _matchday_preview(matchday)
-@main_bp.route("/spieltag-recap")
-@main_bp.route("/spieltag-recap/<int:matchday>")
-@login_required
-def matchday_recap(matchday=None):
-    from main_stats_routes import _matchday_recap
-    return _matchday_recap(matchday)
-@main_bp.route("/sondertipps", methods=["GET", "POST"])
-@login_required
-def special_tips():
-    from main_tips_routes import _special_tips
-    return _special_tips()
-@main_bp.route("/ewige-tabelle")
-@login_required
-def eternal_table():
-    from main_stats_routes import _eternal_table
-    return _eternal_table()
-@main_bp.route("/stats")
-@login_required
-def stats_dashboard():
-    from main_stats_routes import _stats_dashboard
-    return _stats_dashboard()
-@main_bp.route("/recap")
-@login_required
-def season_recap():
-    from main_stats_routes import _season_recap
-    return _season_recap()
-@main_bp.route("/preise")
-@login_required
-def prizes():
-    from main_stats_routes import _prizes
-    return _prizes()
-@main_bp.route("/live")
-@login_required
-def live_center():
-    from main_stats_routes import _live_center
-    return _live_center()
-@main_bp.route("/bundesliga-tabelle")
-@login_required
-def bl_standings():
-    from main_stats_routes import _bl_standings
-    return _bl_standings()
-@main_bp.route("/tabelle")
-@main_bp.route("/tabelle/<int:matchday>")
-@login_required
-def leaderboard(matchday=None):
-    from main_stats_routes import _leaderboard
-    return _leaderboard()
-@main_bp.route("/spieltagsieger")
-@login_required
-def matchday_winners():
-    from main_stats_routes import _matchday_winners
-    return _matchday_winners()
-def _compute_profile_stats(user):
-    comp = get_active_competition()
-    q = Prediction.query.filter_by(user_id=user.id).join(Match)
-    if comp:
-        q = q.filter(Match.competition_id == comp.id)
-    user_preds = q.all()
-    md_wins = filter_competition_scoped(
-        MatchdayWinner.query.filter_by(user_id=user.id), MatchdayWinner
-    ).count()
-    return {
-        "total_tips": len(user_preds),
-        "total_points": sum(p.points or 0 for p in user_preds),
-        "exact": sum(1 for p in user_preds if p.points and p.points >= get_setting("points_exact", 4)),
-        "joker_used": sum(1 for p in user_preds if p.joker),
-        "md_wins": md_wins,
-    }
-
-
-def _compute_form_curve(user):
-    comp = get_active_competition()
-    q = Prediction.query.filter_by(user_id=user.id).join(Match)
-    if comp:
-        q = q.filter(Match.competition_id == comp.id)
-    md_points = {}
-    for p in q.all():
-        if p.match and p.match.status == "finished":
-            md_points.setdefault(p.match.matchday, 0)
-            md_points[p.match.matchday] += p.points or 0
-    return sorted(md_points.items())
-
-
-@main_bp.route("/profil", methods=["GET", "POST"])
-@login_required
-def profile():
-    from main_profile_routes import _profile
-    return _profile()
-
 @main_bp.route("/profil/test-benachrichtigung", methods=["POST"])
 @login_required
 def test_user_notification():
@@ -452,33 +284,3 @@ def test_user_notification():
     else:
         flash("ℹ️ Keine Test-Benachrichtigung gesendet. Prüfe, ob deine Kanäle aktiviert und eingerichtet sind.", "info")
     return redirect(url_for("main.profile") + "#benachrichtigungen")
-@main_bp.route("/h2h/<int:user_id>")
-@login_required
-def head_to_head(user_id):
-    from main_stats_routes import _head_to_head
-    return _head_to_head(user_id)
-@main_bp.route("/export/pdf")
-@login_required
-def export_pdf():
-    from main_export_routes import _export_pdf
-    return _export_pdf()
-@main_bp.route("/export/csv")
-@login_required
-def export_csv():
-    from main_export_routes import _export_csv
-    return _export_csv()
-@main_bp.route("/telegram/webhook", methods=["POST"])
-@main_bp.route("/telegram/webhook/<secret>", methods=["POST"])
-def telegram_webhook(secret=None):
-    from main_telegram_routes import _telegram_webhook
-    return _telegram_webhook(secret)
-@main_bp.route("/profile/telegram-token")
-@login_required
-def profile_telegram_token():
-    from main_telegram_routes import _profile_telegram_token
-    return _profile_telegram_token()
-@main_bp.route("/set-competition/<string:code>")
-@login_required
-def set_competition(code):
-    from main_telegram_routes import _set_competition
-    return _set_competition(code)

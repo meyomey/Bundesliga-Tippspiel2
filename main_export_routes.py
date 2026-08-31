@@ -4,12 +4,15 @@ from datetime import datetime, timezone
 from io import BytesIO, StringIO
 
 from flask import flash, redirect, send_file, url_for
-from flask_login import current_user
+from flask_login import current_user, login_required
+from routes_main import main_bp  # Blueprint-Registrierung statt Lazy-Wrapper in routes_main.py
 
 from models import Match, Prediction
 from export import generate_season_pdf
 from competition_helpers import get_active_competition
 
+@main_bp.route("/export/pdf", endpoint="export_pdf")
+@login_required
 def _export_pdf():
     pdf_buf = generate_season_pdf(current_user)
     if pdf_buf is None:
@@ -19,6 +22,8 @@ def _export_pdf():
     return send_file(pdf_buf, mimetype="application/pdf",
                      as_attachment=True, download_name=filename)
 
+@main_bp.route("/export/csv", endpoint="export_csv")
+@login_required
 def _export_csv():
     text = StringIO()
     writer = csv.writer(text, delimiter=";", quoting=csv.QUOTE_MINIMAL)

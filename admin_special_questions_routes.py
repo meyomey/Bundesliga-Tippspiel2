@@ -200,24 +200,26 @@ def _admin_edit_special_question(qid):
         flash(f"Sonderfrage gespeichert, aber Auswertung fehlgeschlagen: {e}", "warning")
         return redirect(url_for("admin.special_questions"), code=303)
 
+    new_values = {
+        "text": q.text,
+        "description": q.description,
+        "answer_type": q.answer_type,
+        "options": q.options,
+        "multi_count": q.multi_count,
+        "number_min": q.number_min,
+        "number_max": q.number_max,
+        "deadline": q.deadline.isoformat() if q.deadline else None,
+        "points_value": q.points_value,
+        "correct_answer": q.correct_answer,
+    }
     changed = {
         "old": old_values,
-        "new": {
-            "text": q.text,
-            "description": q.description,
-            "answer_type": q.answer_type,
-            "options": q.options,
-            "multi_count": q.multi_count,
-            "number_min": q.number_min,
-            "number_max": q.number_max,
-            "deadline": q.deadline.isoformat() if q.deadline else None,
-            "points_value": q.points_value,
-            "correct_answer": q.correct_answer,
-        },
+        "new": new_values,
         "answer_count": answer_count,
         "full_edit_allowed": full_edit_allowed,
     }
-    log_admin_action("special_question_edit", "special_question", qid, f"Sonderfrage '{q.text[:80]}' bearbeitet", changed)
+    log_admin_action("special_question_edit", "special_question", qid, f"Sonderfrage '{q.text[:80]}' bearbeitet",
+                     changed, before=old_values, after=new_values)
     if full_edit_allowed:
         flash("Sonderfrage vollständig aktualisiert.", "success")
     else:

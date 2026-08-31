@@ -2,7 +2,9 @@
 from datetime import datetime, timedelta, timezone
 
 from flask import render_template
-from flask_login import current_user
+from flask_login import current_user, login_required
+
+from routes_main import main_bp  # Blueprint-Registrierung statt Lazy-Wrapper in routes_main.py
 from sqlalchemy import func
 
 from extensions import db
@@ -11,11 +13,8 @@ from scoring import compute_pot_summary, filter_active_users, get_leaderboard, g
 from stats import (
     compute_live_standings,
     get_eternal_table,
-    get_h2h,
     get_matchday_preview,
     get_matchday_recap,
-    get_team_form,
-    get_team_position,
     get_user_insights,
     get_user_trend,
     get_current_matchday,
@@ -28,6 +27,9 @@ from competition_helpers import (
     get_active_competition,
 )
 
+@main_bp.route("/preview", endpoint="matchday_preview")
+@main_bp.route("/preview/<int:matchday>", endpoint="matchday_preview")
+@login_required
 def _matchday_preview(matchday=None):
     if matchday is None:
         matchday = get_current_matchday()
@@ -39,6 +41,9 @@ def _matchday_preview(matchday=None):
         matchdays=active_matchdays(),
     )
 
+@main_bp.route("/spieltag-recap", endpoint="matchday_recap")
+@main_bp.route("/spieltag-recap/<int:matchday>", endpoint="matchday_recap")
+@login_required
 def _matchday_recap(matchday=None):
     data = get_matchday_recap(matchday)
     return render_template(
@@ -51,6 +56,8 @@ def _matchday_recap(matchday=None):
 
 # ================================================ Sondertipps -
 
+@main_bp.route("/ewige-tabelle", endpoint="eternal_table")
+@login_required
 def _eternal_table():
     rows = get_eternal_table()
     return render_template("eternal.html", rows=rows)
@@ -158,6 +165,8 @@ def _build_rank_progression_data(current_user_id):
     labels = [f"ST {md}" for md in matchdays]
     return labels, datasets, len(users)
 
+@main_bp.route("/stats", endpoint="stats_dashboard")
+@login_required
 def _stats_dashboard():
     """Umfassendes Statistik-Dashboard mit Diagrammen.
 
@@ -303,6 +312,8 @@ def _stats_dashboard():
         total_points=sum(p.points or 0 for p in finished_preds),
     )
 
+@main_bp.route("/recap", endpoint="season_recap")
+@login_required
 def _season_recap():
     # Profil-Helper lazy importieren, um zyklische Imports zwischen
     # ausgelagerten Main-Route-Modulen zu vermeiden.
@@ -393,6 +404,8 @@ def _season_recap():
 
 # ================================================ Preise & Pott -
 
+@main_bp.route("/preise", endpoint="prizes")
+@login_required
 def _prizes():
     prize_q = filter_competition_scoped(Prize.query.filter_by(active=True), Prize)
     all_prizes = prize_q.order_by(
@@ -408,6 +421,8 @@ def _prizes():
 
 # =================================================== Live Match Center -
 
+@main_bp.route("/live", endpoint="live_center")
+@login_required
 def _live_center():
     now = datetime.now(timezone.utc)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -453,6 +468,8 @@ def _live_center():
 
 # ================================================ Live Bundesliga-Tabelle -
 
+@main_bp.route("/bundesliga-tabelle", endpoint="bl_standings")
+@login_required
 def _bl_standings():
     source = "lokal"
     error_msg = None
@@ -471,6 +488,9 @@ def _bl_standings():
         error_msg=error_msg,
     )
 
+@main_bp.route("/tabelle", endpoint="leaderboard")
+@main_bp.route("/tabelle/<int:matchday>", endpoint="leaderboard")
+@login_required
 def _leaderboard(matchday=None):
     rows = get_leaderboard(matchday=matchday)
     matchdays = active_matchdays()
@@ -493,6 +513,8 @@ def _leaderboard(matchday=None):
         md_wins=md_wins, trends=trends,
     )
 
+@main_bp.route("/spieltagsieger", endpoint="matchday_winners")
+@login_required
 def _matchday_winners():
     winners = (
         filter_competition_scoped(MatchdayWinner.query, MatchdayWinner)
@@ -527,6 +549,8 @@ def _matchday_winners():
         grouped=grouped, top_winners=top_winners,
     )
 
+@main_bp.route("/h2h/<int:user_id>", endpoint="head_to_head")
+@login_required
 def _head_to_head(user_id):
     other = db.get_or_404(User, user_id)
     my_preds = {p.match_id: p for p in current_user.predictions.all()}

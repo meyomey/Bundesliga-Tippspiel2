@@ -211,23 +211,34 @@ def _fd_request(path, ttl_seconds=30):
         if now_ts - ts < ttl_seconds:
             return cached.get("data"), None
 
+    def _stale_cache_data():
+        """Liefert gecachte Daten bei API-Fehlern - aber nur, wenn der Cache
+        max. 10 Minuten alt ist. Aeltere Daten duerfen nicht mehr geschrieben
+        werden, sonst koennen veraltete Stati frischere Zustaende ueberschreiben."""
+        if isinstance(cached, dict) and (now_ts - cached.get("ts", 0)) <= 600:
+            return cached.get("data")
+        return None
+
     url = f"{current_app.config['FOOTBALL_DATA_BASE']}{path}"
     headers = {"X-Auth-Token": token}
     try:
         r = requests.get(url, headers=headers, timeout=15)
     except requests.exceptions.RequestException as e:
-        if cached and isinstance(cached, dict):
-            return cached.get("data"), None
+        stale = _stale_cache_data()
+        if stale is not None:
+            return stale, None
         return None, f"Netzwerkfehler: {e}"
 
     if r.status_code == 429:
-        if cached and isinstance(cached, dict):
-            return cached.get("data"), None
+        stale = _stale_cache_data()
+        if stale is not None:
+            return stale, None
         return None, "API-Rate-Limit erreicht (10 Calls/Min)."
 
     if r.status_code != 200:
-        if cached and isinstance(cached, dict):
-            return cached.get("data"), None
+        stale = _stale_cache_data()
+        if stale is not None:
+            return stale, None
         return None, f"API-Fehler {r.status_code} (Token/Quota prüfen)"
 
     try:
@@ -1031,6 +1042,14 @@ def sync_results():
     # --- 1. football-data.org versuchen ---
     res_fd = sync_with_football_data()
     if res_fd.get("ok"):
+        # Sicherheitsnetz: faellige Spiele ohne Ergebnis aus OpenLigaDB nachziehen,
+        # damit sie nicht dauerhaft auf "scheduled" stehen bleiben.
+        try:
+            filled = _fill_missing_from_openligadb()
+            if filled:
+                res_fd["msg"] += f" · {filled} Ergebnis(se) via OpenLigaDB nachgezogen"
+        except Exception as e:
+            current_app.logger.warning(f"OpenLigaDB-Nachzug fehlgeschlagen: {e}")
         current_app.logger.info(f"✅ Sync via football-data.org: {res_fd.get('msg')}")
         store_sync_result(res_fd)
         return res_fd

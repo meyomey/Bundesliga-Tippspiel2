@@ -15,7 +15,7 @@ from scoring import compute_pot_summary, is_pot_participant, is_bot_user, is_adm
 from stats import evaluate_special_predictions
 from badges import check_and_award_badges, award_badge, revoke_badge
 from competition_helpers import get_active_competition, filter_competition_scoped
-from audit_log import log_admin_action
+from audit_log import log_admin_action, snapshot_model
 from cache import invalidate_leaderboard
 
 def _admin_users():
@@ -62,6 +62,11 @@ def _admin_users():
 
 def _admin_user_edit(user_id):
     u = db.get_or_404(User, user_id)
+    audited_attrs = [
+        "username", "full_name", "show_full_name", "email", "phone",
+        "favorite_team_id", "is_admin", "has_paid", "paid_note", "paid_at",
+    ]
+    before_snapshot = snapshot_model(u, audited_attrs)
     form = AdminUserForm(obj=u)
     teams = Team.query.order_by(Team.name).all()
     form.favorite_team_id.choices = [(0, "— kein Lieblingsverein —")] + [
@@ -110,9 +115,12 @@ def _admin_user_edit(user_id):
         if form.new_password.data:
             u.set_password(form.new_password.data)
 
+        after_snapshot = snapshot_model(u, audited_attrs)
+        extra_meta = {"password_changed": True} if form.new_password.data else None
         db.session.commit()
         invalidate_leaderboard()
-        log_admin_action("user_update", "user", u.id, f"Spieler '{u.username}' aktualisiert")
+        log_admin_action("user_update", "user", u.id, f"Spieler '{u.username}' aktualisiert",
+                         metadata=extra_meta, before=before_snapshot, after=after_snapshot)
         flash(f"Spieler '{u.username}' aktualisiert.", "success")
         return redirect(url_for("admin.users"))
 

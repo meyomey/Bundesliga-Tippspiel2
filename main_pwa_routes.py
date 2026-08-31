@@ -3,6 +3,9 @@ import os
 
 from flask import current_app, send_from_directory
 
+from routes_main import main_bp  # Blueprint-Registrierung statt Lazy-Wrapper in routes_main.py
+
+@main_bp.route("/sw.js", endpoint="service_worker")
 def _service_worker():
     response = send_from_directory(
         os.path.join(current_app.root_path, "static", "js"),
@@ -13,6 +16,7 @@ def _service_worker():
     response.headers["Cache-Control"] = "no-cache"
     return response
 
+@main_bp.route("/manifest.json", endpoint="manifest")
 def _manifest():
     resp = send_from_directory(
         os.path.join(current_app.root_path, "static"),
@@ -24,6 +28,8 @@ def _manifest():
     resp.headers["Cache-Control"] = "no-cache"
     return resp
 
+@main_bp.route("/icon-<int:size>.png", endpoint="pwa_icon")
+@main_bp.route("/favicon.ico", defaults={"size": 192}, endpoint="favicon")
 def _pwa_icon(size):
     """Robuste Icon-Route fuer PWA/Apple/Favicon.
 
