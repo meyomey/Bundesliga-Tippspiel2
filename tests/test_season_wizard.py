@@ -1,7 +1,7 @@
 """Tests fuer Saisonwechsel-Assistent."""
 from datetime import datetime, timedelta, timezone
 
-from models import Match, User
+from models import Match, User, Competition
 from scoring import get_setting
 
 
@@ -61,3 +61,59 @@ def test_new_season_requires_backup_ack(client, db, admin_user, competition, tea
     }, follow_redirects=True)
     assert resp.status_code == 200
     assert 'Backup'.encode('utf-8') in resp.data
+
+
+def test_new_season_keeps_competition_name_season_free(client, db, admin_user, competition, teams):
+    """Saisonwechsel schreibt die Saison nicht (mehr) in den Wettbewerbs-Namen
+    und bereinigt Altbestand ('Bundesliga 2026' -> 'Bundesliga')."""
+    _login_admin(client, admin_user)
+    competition.name = "Bundesliga 2026"  # Altbestand simulieren
+    db.session.commit()
+
+    resp = client.post('/admin/new-season', data={
+        'new_season_label': '2026/27',
+        'old_season_label': '2025/26',
+        'confirm_text': 'SAISON STARTEN',
+        'backup_ack': '1',
+        'risk_ack': '1',
+        'do_archive': '1',
+        'do_delete_schedule': '1',
+    }, follow_redirects=True)
+    assert resp.status_code == 200
+    fresh = Competition.query.get(competition.id)
+    assert fresh.name == 'Bundesliga'
+    assert fresh.season == '2026/27'
+
+
+def test_competition_label_dedupes_year(client, db, user, competition, teams, monkeypatch, app):
+    """Anzeige entdoppelt 'Bundesliga 2026 2026', egal woher der Name kommt."""
+    from datetime import datetime, timedelta, timezone
+    from models import Match
+
+    monkeypatch.setitem(app.config, 'COMPETITION', competition.code)
+    monkeypatch.setattr('sync.fetch_live_standings', lambda: ([], 'keine daten'))
+    competition.name = "Bundesliga 2026"
+    competition.season = "2026"
+    db.session.add(Match(competition_id=competition.id, matchday=1,
+                         home_team_id=teams[0].id, away_team_id=teams[1].id,
+                         kickoff=datetime.now(timezone.utc) + timedelta(days=1), status='scheduled'))
+    db.session.commit()
+    client.post('/auth/login', data={'email': user.email, 'password': 'testpass123'}, follow_redirects=True)
+    with client.session_transaction() as sess:
+        sess['competition_code'] = competition.code
+    resp = client.get('/preview/1')
+    assert resp.status_code == 200
+    assert resp.data.count(b'Bundesliga 2026 2026') == 0
+    assert 'Bundesliga 2026'.encode('utf-8') in resp.data
+
+
+def test_competition_label_pure_cases():
+    """competition_label deckt alle Doppel-Jahr-Varianten ab."""
+    from competition_helpers import competition_label
+    assert competition_label('Bundesliga', '2025/26') == 'Bundesliga · 2025/26'
+    assert competition_label('Bundesliga 2026', '2026') == 'Bundesliga 2026'
+    assert competition_label('Bundesliga 2026', '2026/27') == 'Bundesliga 2026/27'
+    assert competition_label('Bundesliga 2025/26', '2025/26') == 'Bundesliga 2025/26'
+    assert competition_label('2. Bundesliga', '2026') == '2. Bundesliga · 2026'
+    assert competition_label('', '2026') == '2026'
+    assert competition_label('Bundesliga', '') == 'Bundesliga'

@@ -709,7 +709,8 @@ def test_stats_dashboard_filters_inactive_bots_and_uses_json_chart_data(client, 
     assert 'Ranglistenverlauf aller Spieler'.encode('utf-8') in resp.data
     assert b'rankProgressChart' in resp.data
     assert b'data-rank-player="0"' in resp.data
-    assert b'labels: ["2:0"]' in resp.data
+    assert 'Tipp-Stil'.encode('utf-8') in resp.data
+    assert b'2:0' in resp.data
 
 
 def test_quick_tip_displays_official_table_positions(client, db, user, competition, teams, monkeypatch, app):
@@ -851,13 +852,47 @@ def test_quick_tip_has_prev_next_matchday_buttons(client, db, user, competition,
     assert b'/tipps/2' in resp.data
 
 
+def test_quick_tip_save_stays_on_quick_tip_page(client, db, user, competition, teams, monkeypatch, app):
+    """UX-Fix 2026-08-30: Nach 'Alle Tipps speichern' im Schnelltipp bleibt man
+    im Schnelltipp (selber Spieltag) statt auf 'Spiele & Tipps'/Spielplan zu landen."""
+    from datetime import datetime, timedelta, timezone
+    from models import Match, Prediction
+
+    monkeypatch.setitem(app.config, 'COMPETITION', competition.code)
+    monkeypatch.setattr('sync.fetch_live_standings', lambda: ([], 'keine daten'))
+    match = Match(competition_id=competition.id, matchday=1,
+                  home_team_id=teams[0].id, away_team_id=teams[1].id,
+                  kickoff=datetime.now(timezone.utc) + timedelta(days=1), status='scheduled')
+    db.session.add(match)
+    db.session.commit()
+
+    client.post('/auth/login', data={'email': user.email, 'password': 'testpass123'}, follow_redirects=True)
+    with client.session_transaction() as sess:
+        sess['competition_code'] = competition.code
+    resp = client.post('/schnelltipp/1', data={
+        f'home_{match.id}': '2',
+        f'away_{match.id}': '1',
+    })
+
+    assert resp.status_code in (301, 302)
+    assert '/schnelltipp/1' in resp.headers['Location']
+    pred = Prediction.query.filter_by(user_id=user.id, match_id=match.id).first()
+    assert pred is not None
+    assert (pred.home_tip, pred.away_tip) == (2, 1)
+
+
 def test_live_center_uses_polling_not_sse(client, user):
     """Plesk/Passenger-Stabilitaet: Live-Center nutzt kein dauerhaftes SSE."""
     client.post('/auth/login', data={'email': user.email, 'password': 'testpass123'}, follow_redirects=True)
     resp = client.get('/live')
     assert resp.status_code == 200
     assert b'EventSource' not in resp.data
-    assert b'startPolling' in resp.data
+    # Polling-Logik liegt ausgelagert in static/js/live.js
+    assert b'js/live.js' in resp.data
+    import pathlib
+    js = (pathlib.Path(__file__).resolve().parent.parent / 'static' / 'js' / 'live.js').read_text(encoding='utf-8')
+    assert 'startPolling' in js
+    assert 'EventSource' not in js
 
 
 def test_live_center_stream_does_not_block_worker(client, user):
@@ -989,3 +1024,138 @@ def test_open_special_questions_do_not_show_round_answers(client, db, user):
     assert 'Antworten der Runde'.encode('utf-8') not in resp.data
     assert b'nochgeheim' not in resp.data
     assert 'Geheime Antwort'.encode('utf-8') not in resp.data
+
+
+def test_quick_tip_finished_matchday_disables_action_buttons(client, db, user, competition, teams, monkeypatch, app):
+    """Abgeschlossener Spieltag: 'Zufällig füllen' + 'Alle Tipps speichern' ausgrauen."""
+    import re
+    from datetime import datetime, timedelta, timezone
+    from models import Match
+
+    monkeypatch.setitem(app.config, 'COMPETITION', competition.code)
+    monkeypatch.setattr('sync.fetch_live_standings', lambda: ([], 'keine daten'))
+    db.session.add_all([
+        Match(competition_id=competition.id, matchday=1, home_team_id=teams[0].id, away_team_id=teams[1].id,
+              kickoff=datetime.now(timezone.utc) - timedelta(days=7), status='finished', home_score=2, away_score=1),
+        Match(competition_id=competition.id, matchday=1, home_team_id=teams[2].id, away_team_id=teams[3].id,
+              kickoff=datetime.now(timezone.utc) - timedelta(days=8), status='finished', home_score=0, away_score=0),
+    ])
+    db.session.commit()
+
+    client.post('/auth/login', data={'email': user.email, 'password': 'testpass123'}, follow_redirects=True)
+    with client.session_transaction() as sess:
+        sess['competition_code'] = competition.code
+    resp = client.get('/schnelltipp/1')
+    assert resp.status_code == 200
+    assert re.search(rb'<button[^>]*id="qtRandomBtn"[^>]*disabled', resp.data), "Zufällig-Button muss deaktiviert sein"
+    assert re.search(rb'<button[^>]*qt-btn-save[^>]*disabled', resp.data), "Speichern-Button muss deaktiviert sein"
+    assert 'abgeschlossen'.encode('utf-8') in resp.data  # Hinweistext
+
+
+def test_quick_tip_open_matchday_keeps_action_buttons(client, db, user, competition, teams, monkeypatch, app):
+    """Spieltag mit offenen Spielen: Buttons bleiben aktiv; geschlossene Eingaben sind disabled."""
+    import re
+    from datetime import datetime, timedelta, timezone
+    from models import Match
+
+    monkeypatch.setitem(app.config, 'COMPETITION', competition.code)
+    monkeypatch.setattr('sync.fetch_live_standings', lambda: ([], 'keine daten'))
+    done = Match(competition_id=competition.id, matchday=1, home_team_id=teams[0].id, away_team_id=teams[1].id,
+                 kickoff=datetime.now(timezone.utc) - timedelta(days=7), status='finished', home_score=2, away_score=1)
+    open_ = Match(competition_id=competition.id, matchday=1, home_team_id=teams[2].id, away_team_id=teams[3].id,
+                  kickoff=datetime.now(timezone.utc) + timedelta(days=1), status='scheduled')
+    db.session.add_all([done, open_])
+    db.session.commit()
+
+    client.post('/auth/login', data={'email': user.email, 'password': 'testpass123'}, follow_redirects=True)
+    with client.session_transaction() as sess:
+        sess['competition_code'] = competition.code
+    resp = client.get('/schnelltipp/1')
+    assert resp.status_code == 200
+    assert not re.search(rb'<button[^>]*id="qtRandomBtn"[^>]*disabled', resp.data), "Buttons sollen aktiv bleiben"
+    assert not re.search(rb'<button[^>]*qt-btn-save[^>]*disabled', resp.data)
+    m = re.search(rb'name="home_%d"[^>]*disabled' % done.id, resp.data)
+    assert m, "Eingaben des abgeschlossenen Spiels bleiben gesperrt"
+    n = re.search(rb'name="home_%d"[^>]*disabled' % open_.id, resp.data)
+    assert not n, "Eingaben des offenen Spiels bleiben bedienbar"
+
+
+def test_quick_tip_finished_match_shows_final_result_and_points(client, db, user, competition, teams, monkeypatch, app):
+    """Beendet: offizielles Ergebnis + erzielte Punkte unter den gesperrten Tippfeldern."""
+    import re
+    from datetime import datetime, timedelta, timezone
+    from models import Match, Prediction
+
+    monkeypatch.setitem(app.config, 'COMPETITION', competition.code)
+    monkeypatch.setattr('sync.fetch_live_standings', lambda: ([], 'keine daten'))
+    match = Match(competition_id=competition.id, matchday=1,
+                  home_team_id=teams[0].id, away_team_id=teams[1].id,
+                  kickoff=datetime.now(timezone.utc) - timedelta(days=7),
+                  status='finished', home_score=3, away_score=1)
+    db.session.add(match)
+    db.session.commit()
+    db.session.add(Prediction(user_id=user.id, match_id=match.id, home_tip=2, away_tip=1, points=3))
+    db.session.commit()
+
+    client.post('/auth/login', data={'email': user.email, 'password': 'testpass123'}, follow_redirects=True)
+    with client.session_transaction() as sess:
+        sess['competition_code'] = competition.code
+    resp = client.get('/schnelltipp/1')
+    assert resp.status_code == 200
+    m = re.search(rb'qt-final-result[^>]*>(.*?)</div>', resp.data, re.S)
+    assert m, "Ergebniszeile fehlt"
+    assert b'Ergebnis' in m.group(1) and b'<strong>3:1</strong>' in m.group(1), "Endergebnis wird nicht angezeigt"
+    assert b'+3 Pkt' in m.group(1), "Erzielte Punkte fehlen"
+
+
+def test_quick_tip_unfinished_match_shows_no_result_box(client, db, user, competition, teams, monkeypatch, app):
+    """Offene Spiele bekommen keine Ergebnisanzeige."""
+    from datetime import datetime, timedelta, timezone
+    from models import Match
+
+    monkeypatch.setitem(app.config, 'COMPETITION', competition.code)
+    monkeypatch.setattr('sync.fetch_live_standings', lambda: ([], 'keine daten'))
+    db.session.add(Match(competition_id=competition.id, matchday=1,
+                         home_team_id=teams[0].id, away_team_id=teams[1].id,
+                         kickoff=datetime.now(timezone.utc) + timedelta(days=1), status='scheduled'))
+    db.session.commit()
+
+    client.post('/auth/login', data={'email': user.email, 'password': 'testpass123'}, follow_redirects=True)
+    with client.session_transaction() as sess:
+        sess['competition_code'] = competition.code
+    resp = client.get('/schnelltipp/1')
+    assert resp.status_code == 200
+    assert b'qt-final-result' not in resp.data, "Ergebnisbox bei offenem Spiel unerwuenscht"
+
+
+def test_quick_tip_form_dots_show_german_letters(client, db, user, competition, teams, monkeypatch, app):
+    """Formkurve zeigt deutsche Buchstaben S/U/N (statt englisch W/D/L), passend zur Legende."""
+    from datetime import datetime, timedelta, timezone
+    from models import Match
+
+    monkeypatch.setitem(app.config, 'COMPETITION', competition.code)
+    monkeypatch.setattr('sync.fetch_live_standings', lambda: ([], 'keine daten'))
+    db.session.add_all([
+        # beendete Vorspiele: Winstreak/D/L fuer teams[0]/[2]/[1]
+        Match(competition_id=competition.id, matchday=1, home_team_id=teams[0].id, away_team_id=teams[1].id,
+              kickoff=datetime.now(timezone.utc) - timedelta(days=7), status='finished', home_score=2, away_score=1),
+        Match(competition_id=competition.id, matchday=1, home_team_id=teams[2].id, away_team_id=teams[3].id,
+              kickoff=datetime.now(timezone.utc) - timedelta(days=5), status='finished', home_score=1, away_score=1),
+        Match(competition_id=competition.id, matchday=1, home_team_id=teams[3].id, away_team_id=teams[0].id,
+              kickoff=datetime.now(timezone.utc) - timedelta(days=2), status='finished', home_score=1, away_score=0),
+        # anstehendes Spiel, damit die Formkurve von teams[0] gerendert wird
+        Match(competition_id=competition.id, matchday=2, home_team_id=teams[0].id, away_team_id=teams[2].id,
+              kickoff=datetime.now(timezone.utc) + timedelta(days=3), status='scheduled'),
+    ])
+    db.session.commit()
+
+    client.post('/auth/login', data={'email': user.email, 'password': 'testpass123'}, follow_redirects=True)
+    with client.session_transaction() as sess:
+        sess['competition_code'] = competition.code
+    resp = client.get('/schnelltipp/2')
+    assert resp.status_code == 200
+    # Klassen bleiben englisch (CSS), angezeigte Buchstaben deutsch:
+    assert b'form-W">S<' in resp.data, "Sieg muss als 'S' erscheinen"
+    assert b'form-D">U<' in resp.data, "Unentschieden muss als 'U' erscheinen"
+    assert b'form-L">N<' in resp.data, "Niederlage muss als 'N' erscheinen"
+    assert b'form-W">W<' not in resp.data and b'form-D">D<' not in resp.data and b'form-L">L<' not in resp.data
