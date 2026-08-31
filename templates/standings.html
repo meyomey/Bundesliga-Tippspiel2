@@ -6,7 +6,7 @@
   <div>
     <h1>⚽ Bundesliga</h1>
     <p class="muted small">
-      {{ active_competition_name }} · Saison {{ active_competition_season }} · {% if source == 'football-data.org (live)' %}
+      {{ comp_label(active_competition_name, active_competition_season) }} · {% if source == 'football-data.org (live)' %}
         🟢 Live von <strong>football-data.org</strong>
         <span class="muted small">· auto-refresh alle 60s</span>
       {% else %}
@@ -80,7 +80,7 @@
   <span><span class="legend-box cl"></span> Champions League</span>
   <span><span class="legend-box el"></span> Europa League</span>
   <span><span class="legend-box rel"></span> Abstieg</span>
-  {{ active_competition_name }} · Saison {{ active_competition_season }} · {% if source == 'football-data.org (live)' %}
+  {{ comp_label(active_competition_name, active_competition_season) }} · {% if source == 'football-data.org (live)' %}
   <span style="margin-left:auto"><span class="live-dot"></span> Live-Daten · letzter Refresh: <span id="lastRefresh">jetzt</span></span>
   {% endif %}
 </div>
@@ -88,7 +88,7 @@
 {% endblock %}
 
 {% block scripts %}
-{{ active_competition_name }} · Saison {{ active_competition_season }} · {% if source == 'football-data.org (live)' %}
+{% if source == 'football-data.org (live)' %}
 <script>
 (function() {
   const POLL_INTERVAL = 60_000; // 60s

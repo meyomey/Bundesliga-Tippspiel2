@@ -70,3 +70,31 @@ def test_push_remind_for_match(monkeypatch, db, user, competition, teams):
     sent, failed = _remind_for_match(match)
     assert sent == 1
     assert failed == 0
+
+
+def test_eingecheckte_uploads_keine_defekten_platzhalter():
+    """Repo-Hygiene: eingecheckte Dateien in static/uploads muessen echte Bilder sein.
+
+    Regressions-Schutz: 85-Byte-Test-Stubs (avatar_1_*.png, keine validen PNGs)
+    waren einmal committed worden - dieselbe Bug-Klasse wie der Logo-Vorfall
+    (Test-Fakes in eingecheckten Verzeichnissen gehen per FTP auf den Server).
+    Seit dem Fix schreiben Avatar-Tests nur noch nach tmp_path
+    (app.config['UPLOAD_FOLDER']) und echte Avatare sind gitignored.
+    """
+    import pathlib
+
+    up_dir = pathlib.Path(__file__).resolve().parent.parent / 'static' / 'uploads'
+    assert up_dir.is_dir(), 'static/uploads fehlt im Repo'
+    files = sorted(up_dir.iterdir())
+    assert files, 'static/uploads ist leer'
+
+    avatars = [p for p in files if p.name.startswith('avatar_')]
+    assert not avatars, f'Eingecheckte Avatar-Dateien unerwuenscht: {[a.name for a in avatars]}'
+
+    for p in files:
+        data = p.read_bytes()
+        assert len(data) > 200, f'{p.name} wirkt wie ein Test-Fake/Stub ({len(data)} Bytes)'
+        head = data[:200].lstrip()
+        ok = (head.startswith(b'<svg') or head.startswith(b'<?xml')
+              or data[:8] == b'\x89PNG\r\n\x1a\n')
+        assert ok, f'{p.name}: weder SVG noch PNG - womoeglich kaputt'

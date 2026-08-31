@@ -1099,3 +1099,54 @@ faker==28.4.1
 - **Ursachenkette (verifiziert):** Der alte Test `test_ensure_local_team_logos_updates_remote_urls` lief mit `force=True` gegen echte Team-Fixtures und überschrieb dabei die eingecheckten Dateien in `static/team_logos/` mit einem 46-Byte-Platzhalter `<svg…></svg>`. Betroffen genau die vier Teams aus KNOWN_TEAM_LOGO_FIXES, weil dort für FCB die Endung .svg und für BVB/B04/RBL .png zuständig ist. Die kaputten Dateien wurden committed und gingen über das 01-Runtime-ZIP per FTP auf den Server, wo die DB bereits lokale Pfade speicherte → kaputte Logos bis zum manuellen Neu-Download.
 - **Fixes:** 1) Neue Fixture `logo_static` in tests/test_maintenance.py leitet `app.static_folder` für alle Logo-Tests nach `tmp_path` um — Tests können das Repo-Verzeichnis gar nicht mehr beschreiben (Beweis: Dateien byte-identisch vor/nach voller Suite). 2) Die vier Originaldateien von den offiziellen Quell-URLs neu geladen (gleiche Quellen wie `_logo_source_map`, damit exakt die Dateien entstehen, die das Wartungscenter erzeugt hätte). 3) Repo-Hygiene-Test: eingecheckte Logos müssen >200 Bytes und valide SVG-/PNG-Signatur haben — Stub-Commits schlagen künftig in der Suite fehl.
 - Teststand: 234 → 235 bestanden.
+
+## 2026-08-31 - Workspace neu aufgesetzt & Gesamtstand re-verifiziert
+
+- Frischer Klon von GitHub (Commit `2982653`, 31.08.2026, 18:58 Uhr) in der Sandbox; Venv neu aufgebaut mit psycopg2-gefiltertem requirements (Python 3.13) — wie gehabt ohne psycopg2-binary (PostgreSQL-only, für SQLite-Tests nicht nötig).
+- Setup-Skript `setup_sandbox.sh` im Workspace-Root angelegt (außerhalb des Repos): stellt Klon + Venv nach einem Sandbox-Reset mit einem Befehl wieder her.
+- Komplette Suite: **235/235 bestanden** (53 s), 4 Warnings (reportlab-Deprecation bekannt, Rest Umgebungsrauschen).
+- Coverage neu gemessen: **78 %** (10.618 Statements) — vorher dokumentiert 72 %; Anstieg durch die neuen Suiten (Sync-Mocks, PDF-Export, Notification-Bulk, Player-Smoke, Audit-Diffs).
+- Hinweis: `_lieferungen/` (01 Runtime, 02 Doku+Tests) ist nicht auf GitHub eingecheckt und muss nach jedem Klon lokal neu gebaut werden.
+
+## 2026-08-31 - Lieferpakete neu gebaut (01 Runtime, 02 Doku+Tests)
+
+- Neues Dev-Tool `build_lieferungen.py` baut beide ZIPs automatisch aus `git ls-files`: `01_Runtime_<Datum>.zip` (136 Dateien: passenger_wsgi.py, alle Runtime-Module, requirements.txt + requirements_py39.txt, templates/, static/) und `02_Doku_Tests_<Datum>.zip` (52 Dateien: Doku inkl. docs/, tests/, pytest.ini, Dev-Tools inkl. build_lieferungen.py, Docker-Dateien). Jedes ZIP enthält ein MANIFEST.txt mit Build-Datum, Commit und Teststand.
+- **Verifikation:** Beide ZIPs in ein leeres Verzeichnis entpackt → komplette Suite läuft dort **235/235 grün**.
+- **Bewusst NICHT in 01 enthalten:** `vendor/` (separat via build_vendor.bat), `.env`, `tippspiel.db` (Server-Daten nicht überschreiben), `.htaccess` (nicht im Repo, liegt auf dem Server) sowie **zwei kaputte Avatar-Stubs** (`static/uploads/avatar_1_*.png`, 85 Byte, keine validen PNGs — gleiche Bug-Klasse wie der Logo-Vorfall). Offen: Repo-Cleanup + Avatar-Test-Fixture auf tmp_path umstellen (wie `logo_static`).
+- Weiterhin offen: `.github/workflows/tests.yml` ist nicht im Repo (wurde im alten Chat nachgebaut, aber nie auf GitHub hochgeladen).
+
+## 2026-08-31 - Rangliste: Spalte "Quote" eindeutig in "Exaktquote" umbenannt
+
+- Nutzer-Rückfrage: "Quote" war missverständlich (11 % vs. 0 % bei zwei Spielern). Klarstellung per Label statt nur Tooltip:
+  - Desktop-Tabellenkopf: `Quote` → `Exaktquote`, Tooltip erweitert ("Exaktquote: Anteil exakter Ergebnistipps an allen beendeten Spielen, zu denen getippt wurde").
+  - Mobile Karte: Label `Quote` → `Exaktquote`.
+  - Legende: fehlender Eintrag ergänzt — "Exaktquote: exakte Treffer / beendete, getippte Spiele".
+- Berechnung unverändert (`scoring.get_leaderboard`): `round(exakt / beendete_getippte * 100)`, sonst 0 — es zählt nur der exakte Ergebnistipp, live/laufende Spiele zählen nicht.
+- Test `test_leaderboard_page` (test_routes.py) um 6 Assertions erweitert (positiv: Header/Tooltip/Legende/Mobil-Karte; negativ: alte Labels weg). Teststand bleibt **235/235**.
+
+## 2026-08-31 - Repo-Hygiene & CI: .gitignore, CI-Workflow, Avatar-Stubs entfernt
+
+- **.gitignore angelegt** (fehlte komplett): schuetzt vor Commits von `tippspiel.db` (echte Nutzerdaten: Mails, Passwort-Hashes), `.env`, `instance/`, `.venv/`, `__pycache__/`, `.coverage`/`htmlcov`/`.pytest_cache`, `_lieferungen/`, `vendor/` sowie lokal erzeugten Avataren (`static/uploads/avatar_*.png`). Die eingecheckten PWA-Icons bleiben erlaubt.
+- **CI-Workflow `.github/workflows/tests.yml` erstellt** (war im alten Chat nachgebaut, aber nie hochgeladen): Job 1 Flake8 — harter Gate nur auf Syntaxfehler/undefinierte Namen (`E9,F63,F7,F82`, aktuell **0 Befunde**), Rest als reine Statistik (2366 Style-Befunde, kein Fail). Job 2 pytest-Matrix auf Python **3.9–3.13** (3.9 = Netcup-Ziel) mit Coverage aus pytest.ini. Damit faengt CI kuenftig genau die Fehlerklasse ab, die zum Logo-Vorfall fuehrte: lokal gruen, aber Repo kaputt (Stub-Commits).
+- **Kaputte Avatar-Stubs entfernt:** `static/uploads/avatar_1_1778599755.png` + `avatar_1_1778599851.png` (85/89 Byte, keine validen PNGs — Test-Fakes einer alten Testversion) per `git rm`. Der aktuelle Avatar-Test schreibt schon laengst nach `tmp_path` (`app.config['UPLOAD_FOLDER']`), es war also reiner Altbestand.
+- **Hygiene-Test** `test_eingecheckte_uploads_keine_defekten_platzhalter` (test_avatars_live_push.py): alle eingecheckten Dateien in `static/uploads` muessen echte Bilder sein (>200 B + SVG/PNG-Magic), `avatar_*`-Dateien duerfen gar nicht eingecheckt sein — analog zum Logo-Hygiene-Test.
+- `build_lieferungen.py` angepasst: Avatar-Ausschluss entfernt (obsolet), `.github/workflows/` + `.gitignore` wandern in Paket 02, Manifeste aktualisiert.
+- Teststand: 235 → **236 bestanden**.
+
+## 2026-08-31 - Fix: Doppel-Saisonlabel auf Rangliste & weiteren Seiten (comp_label nachgerüstet)
+
+- **Symptom (Nutzer-Report nach Deploy):** Rangliste zeigte weiterhin "Bundesliga 2026 · Saison 2026" — obwohl der Saisonlabel-Fix vom selben Tag deployed war.
+- **Ursache:** Der Fix hatte nur `base.html` (teilweise), `matchday_preview/recap` und `tip_overview` umgestellt. Sechs Templates konkatenierten Name + Saison weiterhin roh: `leaderboard.html` (Unterzeile der Rangliste — genau die Stelle aus dem Report), `standings.html` (3 Stellen), `stats_dashboard.html`, `special_tips.html`, `admin/dashboard.html` und der season-pill-Tooltip in `base.html`.
+- **Zusatzfund:** `standings.html` hatte im `{% block scripts %}` eine verirrte Textzeile (Copy-Paste-Rest aus der Legende) — "Bundesliga 2026 · Saison 2026 · " wurde als nackter Text am Seitenende der Tabelle ausgegeben. Entfernt; der `{% if source == 'football-data.org (live)' %}`-Wächter um das Polling-Script bleibt.
+- **Fix:** Alle Stellen nutzen jetzt `comp_label(active_competition_name, active_competition_season)`. Mit Produktiv-Daten (name='Bundesliga 2026', season='2026') zeigt die Rangliste nun "Bundesliga 2026 · Bei Gleichstand: …" (Jahr bleibt im Namen, Saison dedupliziert); die vollständige Namens-Bereinigung passiert beim nächsten Saisonwechsel.
+- 2 neue Regressionstests in `test_season_wizard.py`: `test_zentralseiten_kein_doppeltes_saisonlabel` (/tabelle, /bundesliga-tabelle, /stats, /sondertipps — kein Doppel-Label + dedupliziertes Label auf der Rangliste) und `test_admin_dashboard_kein_doppeltes_saisonlabel` (/admin).
+- Teststand: 236 → **238 bestanden**.
+- Deploy: nur 6 Templates geaendert (leaderboard, standings, stats_dashboard, special_tips, base, admin/dashboard) — im neuen 03-Deploy-Paket enthalten.
+
+## 2026-08-31 - Ewige Tabelle: Legende + Spaltentooltips ergaenzt
+
+- Nutzer-Hinweis: Die Ewige Tabelle nutzte abgekuerzte Spaltenkoepfe (EX, DIF, TEN, ✗, 🏆, "Beste"), erklaerte sie aber nirgends — die Rangliste hat dagegen eine Legende.
+- **Legende** unter der Tabelle im Stil der Rangliste (`legend leaderboard-legend`): Saisons = mitgespielte Saisons, 🏆 = Saisonsiege (Rang 1), Beste = beste Platzierung, Exakt/Diff/Tendenz/Falsch wie in der Rangliste, Gesamt = Punkte ueber alle Saisons.
+- **Tooltips** auf allen abgekuerzten Desktop-Spaltenkoepfen ergaenzt (gleiche Titel wie die Legende), damit die Erklaerung auch ohne Scrollen verfuegbar ist.
+- Regressionstest `test_eternal_table_has_legend` in test_player_smoke.py (Legenden-Eintraege + Tooltip-Attribute).
+- Nur `templates/eternal.html` + Test geaendert. Teststand: 238 → **239 bestanden**.

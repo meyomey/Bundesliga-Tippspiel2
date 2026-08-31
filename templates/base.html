@@ -46,7 +46,7 @@
         <small>TIPPRUNDE</small>
       </div>
       {% if current_user.is_authenticated %}
-      <span class="season-pill" title="{{ active_competition_name }} · Saison {{ active_competition_season }}">
+      <span class="season-pill" title="{{ comp_label(active_competition_name, active_competition_season) }}">
         {{ active_competition_season or 'Saison' }}
       </span>
       {% endif %}

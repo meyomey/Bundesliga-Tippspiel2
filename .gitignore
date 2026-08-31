@@ -1,0 +1,30 @@
+# =====================================================
+# Wulmstoerper Tipprunde - .gitignore
+# =====================================================
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# --- Tests / Coverage ---
+.pytest_cache/
+.coverage
+htmlcov/
+
+# --- Datenbank & Secrets (NIEMALS committen!) ---
+tippspiel.db
+*.sqlite
+instance/
+.env
+
+# --- Lokal erzeugte Build-Artefakte ---
+_lieferungen/
+vendor/
+
+# --- Lokal erzeugte Avatare (echte Nutzerdaten) ---
+# Die eingecheckten PWA-Icons (logo_v2_*.png, badge_v2_72.png) bleiben erlaubt;
+# alles unter avatar_*.png wird beim Ausfuehren der App lokal erzeugt und darf
+# nicht ins Repo (Schutz vor Test-Stubs wie beim Logo-Vorfall 31.08.2026).
+static/uploads/avatar_*.png

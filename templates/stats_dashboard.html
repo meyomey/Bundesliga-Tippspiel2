@@ -7,7 +7,7 @@
 
   <div class="page-header">
     <div>
-      <span class="overline">📊 {{ active_competition_name }} · Saison {{ active_competition_season }}</span>
+      <span class="overline">📊 {{ comp_label(active_competition_name, active_competition_season) }}</span>
       <h1>Statistik-Dashboard</h1>
       <p class="muted small">{{ user.username }} · {{ total_points }} Punkte · {{ total_tips }} gewertete Tipps · Stand: Spieltag {{ current_md }}</p>
     </div>

@@ -1,0 +1,49 @@
+GITHUB-DESKTOP-ANLEITUNG - Stand 31.08.2026
+============================================
+
+Dieses ZIP enthaelt alle Aenderungen vom 31.08.2026 (15 Dateien), die
+auf GitHub fehlen. Ausserdem muessen 2 Dateien GELOESCHT werden
+(kaputte Avatar-Stubs, siehe Schritt 4).
+
+SCHRITT 1 - GitHub Desktop installieren
+  https://desktop.github.com/ herunterladen und installieren.
+  Beim ersten Start mit dem GitHub-Konto anmelden (meyomey).
+
+SCHRITT 2 - Repo klonen
+  In GitHub Desktop: File > Clone repository...
+  > GitHub.com-Tab > "Bundesliga-Tippspiel2" auswaehlen (gehoert
+    zum Konto meyomey) > Clone.
+  Merken, wohin geklont wird (meist:
+  C:\Users\<DeinName>\Documents\GitHub\Bundesliga-Tippspiel2).
+
+SCHRITT 3 - Dateien aus diesem ZIP einkopieren
+  ZIP entpacken (z. B. auf den Desktop) und den INHALT (alle Ordner
+  templates/, tests/, .github/ plus die 3 einzelnen Dateien) in den
+  geklonten Ordner kopieren. Vorhandene Dateien UEBERSCHREIBEN.
+  Hinweis: .gitignore und .github sind versteckte Ordner/Dateien -
+  einfach mitkopieren, sie funktionieren trotzdem.
+
+SCHRITT 4 - Die 2 kaputten Avatare loeschen
+  Im geklonten Ordner diese beiden Dateien loeschen:
+    static\uploads\avatar_1_1778599755.png
+    static\uploads\avatar_1_1778599851.png
+
+SCHRITT 5 - Aenderungen pruefen
+  In GitHub Desktop links "Changes" oeffnen: es sollten ca. 17
+  geaenderte/geloeschte/neue Dateien gelistet sein.
+
+SCHRITT 6 - Commit schreiben
+  Unten links eine Zusammenfassung eintragen, z. B.:
+    "Stand 31.08.: Exaktquote, comp_label-Fix, Legende Ewige Tabelle, CI + gitignore"
+  Dann: "Commit to main" klicken.
+
+SCHRITT 7 - Hochladen (Push)
+  Oben auf "Push origin" klicken. Fertig.
+
+SCHRITT 8 - CI beobachten (optional)
+  Auf github.com/meyomey/Bundesliga-Tippspiel2 > Actions:
+  Beim Push laeuft automatisch "Tests & Lint" (Flake8 + alle Tests
+  auf Python 3.9-3.13). Gruene Haekchen = alles gut.
+
+BEI PROBLEMEN: Einfach den Chat fragen - Fehlermeldung von GitHub
+Desktop mitkopieren.

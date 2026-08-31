@@ -117,3 +117,49 @@ def test_competition_label_pure_cases():
     assert competition_label('2. Bundesliga', '2026') == '2. Bundesliga · 2026'
     assert competition_label('', '2026') == '2026'
     assert competition_label('Bundesliga', '') == 'Bundesliga'
+
+
+def test_zentralseiten_kein_doppeltes_saisonlabel(client, db, user, competition, teams, monkeypatch, app):
+    """Alle Zentralseiten nutzen comp_label: kein 'Bundesliga 2026 · Saison 2026'.
+
+    Regressions-Schutz: Die Rangliste (und weitere Seiten) konkatenierten
+    Name + Saison roh, obwohl competition_label() als comp_label global
+    verfuegbar ist. Produktiv war dort 'Bundesliga 2026 · Saison 2026'
+    sichtbar (Name trug das Jahr noch aus dem alten Saisonwechsel).
+    """
+    from datetime import datetime, timedelta, timezone
+    from models import Match
+
+    monkeypatch.setitem(app.config, 'COMPETITION', competition.code)
+    monkeypatch.setattr('sync.fetch_live_standings', lambda: ([], 'keine daten'))
+    competition.name = "Bundesliga 2026"
+    competition.season = "2026"
+    db.session.add(Match(competition_id=competition.id, matchday=1,
+                         home_team_id=teams[0].id, away_team_id=teams[1].id,
+                         kickoff=datetime.now(timezone.utc) + timedelta(days=1), status='scheduled'))
+    db.session.commit()
+    client.post('/auth/login', data={'email': user.email, 'password': 'testpass123'}, follow_redirects=True)
+    with client.session_transaction() as sess:
+        sess['competition_code'] = competition.code
+
+    double = 'Bundesliga 2026 · Saison 2026'.encode('utf-8')
+    for url in ['/tabelle', '/bundesliga-tabelle', '/stats', '/sondertipps']:
+        resp = client.get(url, follow_redirects=True)
+        assert resp.status_code == 200, url
+        assert double not in resp.data, f'{url}: Doppel-Saisonlabel noch sichtbar'
+    # Rangliste zeigt das deduplizierte Label (Name behaelt das Jahr, Saison faellt weg)
+    resp = client.get('/tabelle')
+    assert 'Bundesliga 2026 · Bei Gleichstand'.encode('utf-8') in resp.data
+
+
+def test_admin_dashboard_kein_doppeltes_saisonlabel(client, db, admin_user, competition, monkeypatch, app):
+    """Admin-Dashboard nutzt comp_label statt roher Name+Saison-Konkatenation."""
+    monkeypatch.setitem(app.config, 'COMPETITION', competition.code)
+    competition.name = "Bundesliga 2026"
+    competition.season = "2026"
+    db.session.commit()
+    client.post('/auth/login', data={'email': admin_user.email, 'password': 'admin123'}, follow_redirects=True)
+    resp = client.get('/admin', follow_redirects=True)
+    assert resp.status_code == 200
+    assert 'Bundesliga 2026 · Saison 2026'.encode('utf-8') not in resp.data
+    assert 'Bundesliga 2026'.encode('utf-8') in resp.data

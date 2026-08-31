@@ -5,7 +5,7 @@
 <div class="page-header">
   <div>
     <h1>🏆 Rangliste{% if current_md %} <small class="muted">· ST {{ current_md }}</small>{% endif %}</h1>
-    <p class="muted small">{{ active_competition_name }} · Saison {{ active_competition_season }} · Bei Gleichstand: Punkte → Exakt → Diff → Tendenz → Tipps</p>
+    <p class="muted small">{{ comp_label(active_competition_name, active_competition_season) }} · Bei Gleichstand: Punkte → Exakt → Diff → Tendenz → Tipps</p>
   </div>
   <div class="header-actions">
     <select onchange="location.href=this.value">
@@ -138,7 +138,7 @@
           </div>
           <div class="lb-stat-mini">
             <span class="num">{{ r.exact_quote }}%</span>
-            <span class="lbl">Quote</span>
+            <span class="lbl">Exaktquote</span>
           </div>
         </div>
 
@@ -166,7 +166,7 @@
           <th class="center wrong-col" title="Falscher Tipp">Falsch</th>
           <th class="center" title="Gesetzte Joker">Joker</th>
           <th class="center" title="Gewonnene Spieltage">ST-Siege</th>
-          <th class="center" title="Quote exakter Tipps">Quote</th>
+          <th class="center" title="Exaktquote: Anteil exakter Ergebnistipps an allen beendeten Spielen, zu denen getippt wurde">Exaktquote</th>
           <th class="right" title="Gesamtpunkte">Pkt</th>
           <th></th>
         </tr>
@@ -240,6 +240,7 @@
   <span><b class="wrong-col">Falsch</b> daneben</span>
   <span><b>Joker</b> eingesetzte Joker</span>
   <span><b>ST-Siege</b> Spieltagssiege</span>
+  <span><b>Exaktquote</b> exakte Treffer / beendete, getippte Spiele</span>
 </div>
 
 <div class="card export-actions-card">

@@ -105,6 +105,13 @@ class TestMainRoutes:
         assert b'>Exakt</th>' in response.data
         assert b'>Tendenz</th>' in response.data
         assert b'ST-Siege' in response.data
+        # Quote-Spalte heisst jetzt "Exaktquote" (Header + Tooltip + Legende + Mobil-Karte)
+        assert b'>Exaktquote</th>' in response.data
+        assert b'title="Exaktquote:' in response.data
+        assert '>Exaktquote</span>'.encode('utf-8') in response.data
+        assert 'exakte Treffer / beendete, getippte Spiele'.encode('utf-8') in response.data
+        assert b'>Quote</th>' not in response.data
+        assert '>Quote</span>'.encode('utf-8') not in response.data
 
     def test_more_page_requires_login(self, client):
         """Test: Mehr-Seite erfordert Login."""

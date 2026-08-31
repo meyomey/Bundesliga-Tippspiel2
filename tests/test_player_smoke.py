@@ -131,3 +131,19 @@ def test_leaderboard_honours_matchday_parameter(client, db, user):
         assert seen == [3], f'matchday wurde nicht uebergeben: {seen}'
     finally:
         main_stats_routes.get_leaderboard = real
+
+
+def test_eternal_table_has_legend(client, db, user):
+    """Ewige Tabelle erklaert ihre Abkuerzungen (EX/DIF/TEN/...) per Legende."""
+    _login(client, user)
+    resp = client.get('/ewige-tabelle')
+    assert resp.status_code == 200
+    for marker in ['mitgespielte Saisons', 'Saisonsiege (Rang 1)', 'beste Platzierung',
+                   'Ergebnis stimmt genau', 'richtige Tordifferenz', 'Sieger/Remis richtig',
+                   'daneben', 'Punkte über alle Saisons']:
+        assert marker.encode('utf-8') in resp.data, f'Legenden-Eintrag fehlt: {marker}'
+    # Tooltips auf den abgekuerzten Desktop-Spaltenkoepfen
+    assert b'title="Saisonsiege (Rang 1)"' in resp.data
+    assert b'title="Beste Platzierung aller Saisons"' in resp.data
+    assert b'title="Exakter Ergebnistipp"' in resp.data
+    assert b'title="Richtige Tordifferenz"' in resp.data

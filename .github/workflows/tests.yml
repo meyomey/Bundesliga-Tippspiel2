@@ -1,0 +1,45 @@
+name: Tests & Lint
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    name: Flake8 Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Flake8 installieren
+        run: pip install flake8
+      - name: Harter Gate: Syntaxfehler & undefinierte Namen
+        run: |
+          flake8 . --exclude=.venv,htmlcov,__pycache__,.pytest_cache --count \
+            --select=E9,F63,F7,F82 --show-source --statistics
+      - name: Style-Statistik (kein Gate, nur Bericht)
+        run: |
+          flake8 . --exclude=.venv,htmlcov,__pycache__,.pytest_cache --count \
+            --exit-zero --max-complexity=10 --statistics
+
+  test:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.9 = Netcup/Plesk-Zielversion; 3.10-3.13 = Abwaertskompatibilitaet
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Abhaengigkeiten installieren
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Testsuite
+        run: python -m pytest -q
