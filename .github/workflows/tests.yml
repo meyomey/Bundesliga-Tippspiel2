@@ -15,7 +15,7 @@ jobs:
           python-version: "3.11"
       - name: Flake8 installieren
         run: pip install flake8
-      - name: Harter Gate: Syntaxfehler & undefinierte Namen
+      - name: "Harter Gate: Syntaxfehler & undefinierte Namen"
         run: |
           flake8 . --exclude=.venv,htmlcov,__pycache__,.pytest_cache --count \
             --select=E9,F63,F7,F82 --show-source --statistics
