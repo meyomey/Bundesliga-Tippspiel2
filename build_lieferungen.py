@@ -7,6 +7,8 @@ Erzeugt aus dem aktuellen Repo-Stand unter _lieferungen/:
   03_Deploy_YYYY-MM-DD.zip      -> kompletter Runtime-Stand + DEPLOY_ANLEITUNG.txt
                                   (Upload-Checkliste, Nicht-Ueberschreiben-Hinweise,
                                   Verifikation nach Restart)
+  04_GitHub_Upload_YYYY-MM-DD.zip -> die Dateien, die auf GitHub fehlen/geaendert
+                                  sind (fuer GitHub Desktop, inkl. Anleitung)
 
 Aufruf: python build_lieferungen.py   (aus dem Repo-Root)
 """
@@ -23,6 +25,16 @@ TODAY = date.today().isoformat()
 DEV_PY = {"generate_pwa_icons.py", "scheduler.py"}          # Dev-/Standalone-Skripte
 BROKEN_AVATARS = set()  # veraltet: kaputte Avatar-Stubs wurden aus dem Repo entfernt
 NOT_RUNTIME = DEV_PY | {"build_lieferungen.py"}              # nur in 02, nicht auf den Server
+
+# Dateien, die auf GitHub fehlen bzw. seit dem letzten Stand geaendert sind
+# (fuer 04_GitHub_Upload). Nach dem GitHub-Push (Commit 445dcf2) kamen lokal
+# dazu: Coverage-Suite, CHANGELOG-Eintrag, build_lieferungen.py v2 (04-Skip).
+# Nach dem naechsten Push wieder leeren.
+GITHUB_UPLOAD_FILES = [
+    "tests/test_export_whatsapp_coverage.py",
+    "CHANGELOG.md",
+    "build_lieferungen.py",
+]
 
 def tracked_files() -> list:
     # tracked + untracked (aber nicht gitignorte) Dateien:
@@ -54,7 +66,7 @@ def manifest_01(commit: str, commit_date: str) -> str:
 Build-Datum:   {TODAY}
 Quelle:        git clone meyomey/Bundesliga-Tippspiel2
 Commit:        {commit} ({commit_date})
-Teststand:     235/235 Tests gruen, Coverage 78 %
+Teststand:     251/251 Tests gruen, Coverage 79 %
 Python-Ziel:   3.9 (Netcup/Plesk), kompatibel bis 3.13
 
 INHALT (ZIP direkt in den Application Root entpacken):
@@ -80,7 +92,7 @@ def manifest_02(commit: str, commit_date: str) -> str:
 Build-Datum:   {TODAY}
 Quelle:        git clone meyomey/Bundesliga-Tippspiel2
 Commit:        {commit} ({commit_date})
-Teststand:     235/235 Tests gruen, Coverage 78 %
+Teststand:     251/251 Tests gruen, Coverage 79 %
 
 INHALT:
 - Doku:      README.md, CHANGELOG.md, FEATURES.md, OPTIMIZATION_ROADMAP.md,
@@ -111,7 +123,7 @@ def manifest_deploy(commit: str, commit_date: str) -> str:
 Build-Datum:   {TODAY}
 Quelle:        git clone meyomey/Bundesliga-Tippspiel2
 Commit:        {commit} ({commit_date}) + lokale Aenderungen
-Teststand:     235/235 Tests gruen, Coverage 78 %
+Teststand:     251/251 Tests gruen, Coverage 79 %
 
 WAS IST DRIN:
 Der KOMPLETTE aktuelle Runtime-Stand: alle Python-Module, templates/,
@@ -172,6 +184,34 @@ ROLLBACK:
 Plesk-Backup aus "VOR DEM UPLOAD" zurueckspielen.
 """
 
+def manifest_04(commit: str, commit_date: str) -> str:
+    return f"""GITHUB-UPLOAD-PAKET - fuer GitHub Desktop (Stand {TODAY})
+====================================================
+
+Dieses Paket enthaelt die Dateien, die auf GitHub fehlen bzw. sich
+seit dem letzten Stand geaendert haben. Kopiere den Inhalt in den
+lokal geklonten Ordner (Bundesliga-Tippspiel2) und ueberschreibe
+vorhandene Dateien.
+
+ZUSAETZLICH VON HAND LOESCHEN (kaputte Avatar-Stubs aus dem Repo):
+    static\\uploads\\avatar_1_1778599755.png
+    static\\uploads\\avatar_1_1778599851.png
+
+DANACH in GitHub Desktop:
+    1. "Changes" pruefen (ca. 18 Dateien: geaendert/geloescht/neu)
+    2. Zusammenfassung schreiben + "Commit to main"
+    3. "Push origin"
+
+DIE CI LAEUFT DANN AUTOMATISCH:
+    github.com/meyomey/Bundesliga-Tippspiel2 > Actions > "Tests & Lint"
+    - Flake8-Gate (Syntaxfehler/undefinierte Namen)
+    - pytest auf Python 3.9-3.13 (3.9 = Netcup-Zielversion)
+
+Quelle:  Commit {commit} ({commit_date}) + lokale Aenderungen
+Teststand: 251/251 Tests gruen, Coverage 79 %
+"""
+
+
 def main():
     tracked = tracked_files()
     commit, commit_date = commit_info()
@@ -199,8 +239,15 @@ def main():
     print(f"01 Runtime : {z1}  ({len(runtime)} Dateien)")
     print(f"02 Doku+Ts : {z2}  ({len(docs_tests)} Dateien)")
     print(f"03 Deploy  : {z3}  ({len(runtime)} Dateien)")
+    if GITHUB_UPLOAD_FILES:
+        z4 = make_zip(f"04_GitHub_Upload_{TODAY}.zip", GITHUB_UPLOAD_FILES,
+                      manifest_04(commit, commit_date),
+                      manifest_name="GITHUB_UPLOAD_ANLEITUNG.txt")
+        print(f"04 GitHub  : {z4}  ({len(GITHUB_UPLOAD_FILES)} Dateien)")
+    else:
+        print("04 GitHub  : entfaellt (keine offenen GitHub-Aenderungen)")
     print(f"Commit     : {commit} ({commit_date})")
-    unassigned = set(tracked) - set(runtime) - set(docs_tests) - BROKEN_AVATARS
+    unassigned = set(tracked) - set(runtime) - set(docs_tests) - BROKEN_AVATARS - set(GITHUB_UPLOAD_FILES)
     if unassigned:
         print(f"WARNUNG - in keinem Paket: {sorted(unassigned)}")
     duplicated = set(runtime) & set(docs_tests)

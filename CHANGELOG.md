@@ -1150,3 +1150,37 @@ faker==28.4.1
 - **Tooltips** auf allen abgekuerzten Desktop-Spaltenkoepfen ergaenzt (gleiche Titel wie die Legende), damit die Erklaerung auch ohne Scrollen verfuegbar ist.
 - Regressionstest `test_eternal_table_has_legend` in test_player_smoke.py (Legenden-Eintraege + Tooltip-Attribute).
 - Nur `templates/eternal.html` + Test geaendert. Teststand: 238 → **239 bestanden**.
+
+## 2026-08-31 - Fix: YAML-Syntaxfehler im CI-Workflow (erster GitHub-Lauf)
+
+- **Symptom:** GitHub meldete nach dem ersten Push "Invalid workflow file: .github/workflows/tests.yml, error in your yaml syntax on line 18".
+- **Ursache:** Step-Name `Harter Gate: Syntaxfehler & undefinierte Namen` war unquotiert — der Doppelpunkt mit Leerzeichen (`: `) beendet in YAML einen Plain-Scalar, der Parser erwartete danach ein neues Schluessel-Wert-Paar.
+- **Fix:** Name gequotet (`"Harter Gate: …"`); lokal mit pyyaml verifiziert (Struktur: Jobs lint/test, alle Steps, Matrix 3.9-3.13). Lehre: Workflow-Dateien vor dem Upload immer lokal parsen (pyyaml).
+- Teststand unveraendert **239/239** (CI-Datei ist nicht Teil der Suite).
+
+## 2026-08-31 - CI-Fix: Python-3.13-Job (psycopg2-Wheel) + Node.js-20-Warnungen
+
+- **Symptom (GitHub-Actions-Lauf 2):** Python-3.13-Job scheiterte mit exit code 1; dazu 6 Node.js-20-Deprecation-Warnungen (checkout@v4, setup-python@v5) in allen Jobs.
+- **Ursache 1 (Error):** `requirements.txt` pinnte `psycopg2-binary==2.9.9` — diese Version hat **keine cp313-Wheels** (PyPI-geprueft); auf dem Python-3.13-Job fiel `pip install -r requirements.txt` auf Source-Build zurueck, der ohne libpq auf dem Runner scheitert. 3.9–3.12 waren nicht betroffen (cp39-cp312-Wheels vorhanden).
+- **Fix 1:** `psycopg2-binary==2.9.12` (letzte 2.9.x) — hat cp313-Wheels **und** cp39-manylinux-Wheels (Netcup-Kompatibilitaet bleibt). In der Sandbox auf Python 3.13 installiert + importiert verifiziert (genau der in CI fehlgeschlagene Schritt). `requirements_py39.txt` war nicht betroffen (kein psycopg-Eintrag).
+- **Ursache 2 (Warnings):** `actions/checkout@v4` und `actions/setup-python@v5` laufen auf dem seit 2025 deprecated Node.js 20.
+- **Fix 2:** `actions/checkout@v5` + `actions/setup-python@v6` (Node.js 24); Workflow lokal mit pyyaml geparst, Job-/Step-Struktur unveraendert.
+- Gepruefte Zusatzfakten: Pillow 10.4.0 hat cp313-Wheels; reportlab 4.2.2 ist ein reines Python-Wheel (`py3-none-any`) — beides kein 3.13-Risiko.
+- `build_lieferungen.py` baut jetzt auch `04_GitHub_Upload_*.zip` (fest integriert, inkl. Anleitung); `requirements.txt` ist dort enthalten. Manifest-Teststaende auf 239/239 aktualisiert.
+- Teststand unveraendert **239/239**.
+
+## 2026-08-31 - CI live: erster kompletter Lauf gruen auf GitHub
+
+- Push via GitHub Desktop in 3 Commits: `2f4d1f8` (Stand 31.08.: Exaktquote, comp_label-Fix, Legende Ewige Tabelle, CI + gitignore), `b77b5d6` (Fix YAML-Syntax im CI-Workflow), `445dcf2` (CI-Fix: psycopg2 2.9.12 fuer Python 3.13 + Actions-Update, 19:47 Uhr).
+- **Erster vollstaendiger CI-Lauf gruen:** Flake8-Lint + pytest-Matrix auf Python 3.9/3.10/3.11/3.12/3.13 (6 Jobs) ohne Fehler.
+- Damit ist GitHub wieder aktuell: Avatar-Stubs geloescht, `.gitignore` + `.github/workflows/tests.yml` eingecheckt. Die CI wacht ab jetzt bei jedem Push ueber das Repo — sie faengt kuenftig automatisch die Fehlerklassen ab, die zum Logo-Vorfall fuehrten (Stub-Commits, lokal gruen aber Repo kaputt) und prueft die Netcup-Zielversion 3.9 sowie 3.10-3.13.
+- `build_lieferungen.py`: Liste `GITHUB_UPLOAD_FILES` geleert — Paket `04_GitHub_Upload` entfaellt automatisch, solange keine offenen GitHub-Aenderungen existieren; beim naechsten lokalen Aenderungsblock einfach wieder befuellen.
+
+## 2026-08-31 - Coverage-Runde: export.py & whatsapp.py auf 100 %
+
+- Neue Suite `tests/test_export_whatsapp_coverage.py` (12 Tests) schliesst die dokumentierten Luecken der beiden zuvor am schlechtesten abgedeckten Module:
+  - **export.py (88 % → 100 %):** reportlab-ImportError-Pfad (Rueckgabe None via `builtins.__import__`-Monkeypatch), Rang-Berechnungs-Exception (Report baut trotzdem), MatchdayWinner-Tabelle ("Gewonnene Spieltage" mit Geteilt/Solo), Badge-Sektion ("Erspielte Auszeichnungen"), Vollstaendiger-Name-Zweig.
+  - **whatsapp.py (42 % → 100 %):** Eingabe-Guards (leere Nummer/Key/Nachricht → False ohne Request), Ziffern-Normalisierung + URL-Encoding, HTTP-Fehler (200 ohne "Message queued" → False + Warning-Log), RequestException (→ False + Error-Log), Massen-Reminder (nur offene User mit WhatsApp-Konfig, Bots per @bot.local raus, Tipp-Skip, sleep gepatcht), Fehler-Zaehlung, Scheduler-Job (1h-Fenster + stdout-Ausgabe via capsys), Test-Nachricht ohne Konfiguration.
+  - Fallstrick dokumentiert: `User` hat kein `is_bot`-Feld — Bot-Erkennung laeuft ausschliesslich ueber die E-Mail-Endung `@bot.local`.
+- Gesamtprojekt-Coverage: **78 % → 79 %** (10.917 Statements, 2.345 offen).
+- Teststand: 239 → **251 bestanden**.
