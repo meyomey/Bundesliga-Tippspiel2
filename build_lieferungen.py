@@ -32,8 +32,12 @@ NOT_RUNTIME = DEV_PY | {"build_lieferungen.py"}              # nur in 02, nicht 
 # Nach dem naechsten Push wieder leeren.
 GITHUB_UPLOAD_FILES = [
     "tests/test_export_whatsapp_coverage.py",
+    "tests/test_split_facades.py",
     "CHANGELOG.md",
     "build_lieferungen.py",
+    # Prio-7-Split (31.08.2026): sync.py/stats.py in Fachmodule zerlegt
+    "sync.py", "sync_shared.py", "sync_football_data.py", "sync_openligadb.py",
+    "stats.py", "stats_personal.py", "stats_live.py", "stats_season.py",
 ]
 
 def tracked_files() -> list:
@@ -66,7 +70,7 @@ def manifest_01(commit: str, commit_date: str) -> str:
 Build-Datum:   {TODAY}
 Quelle:        git clone meyomey/Bundesliga-Tippspiel2
 Commit:        {commit} ({commit_date})
-Teststand:     251/251 Tests gruen, Coverage 79 %
+Teststand:     256/256 Tests gruen, Coverage 79 %
 Python-Ziel:   3.9 (Netcup/Plesk), kompatibel bis 3.13
 
 INHALT (ZIP direkt in den Application Root entpacken):
@@ -92,7 +96,7 @@ def manifest_02(commit: str, commit_date: str) -> str:
 Build-Datum:   {TODAY}
 Quelle:        git clone meyomey/Bundesliga-Tippspiel2
 Commit:        {commit} ({commit_date})
-Teststand:     251/251 Tests gruen, Coverage 79 %
+Teststand:     256/256 Tests gruen, Coverage 79 %
 
 INHALT:
 - Doku:      README.md, CHANGELOG.md, FEATURES.md, OPTIMIZATION_ROADMAP.md,
@@ -123,7 +127,7 @@ def manifest_deploy(commit: str, commit_date: str) -> str:
 Build-Datum:   {TODAY}
 Quelle:        git clone meyomey/Bundesliga-Tippspiel2
 Commit:        {commit} ({commit_date}) + lokale Aenderungen
-Teststand:     251/251 Tests gruen, Coverage 79 %
+Teststand:     256/256 Tests gruen, Coverage 79 %
 
 WAS IST DRIN:
 Der KOMPLETTE aktuelle Runtime-Stand: alle Python-Module, templates/,
@@ -193,12 +197,8 @@ seit dem letzten Stand geaendert haben. Kopiere den Inhalt in den
 lokal geklonten Ordner (Bundesliga-Tippspiel2) und ueberschreibe
 vorhandene Dateien.
 
-ZUSAETZLICH VON HAND LOESCHEN (kaputte Avatar-Stubs aus dem Repo):
-    static\\uploads\\avatar_1_1778599755.png
-    static\\uploads\\avatar_1_1778599851.png
-
 DANACH in GitHub Desktop:
-    1. "Changes" pruefen (ca. 18 Dateien: geaendert/geloescht/neu)
+    1. "Changes" pruefen (12 Dateien: geaendert/neu)
     2. Zusammenfassung schreiben + "Commit to main"
     3. "Push origin"
 
@@ -208,7 +208,7 @@ DIE CI LAEUFT DANN AUTOMATISCH:
     - pytest auf Python 3.9-3.13 (3.9 = Netcup-Zielversion)
 
 Quelle:  Commit {commit} ({commit_date}) + lokale Aenderungen
-Teststand: 251/251 Tests gruen, Coverage 79 %
+Teststand: 256/256 Tests gruen, Coverage 79 %
 """
 
 

@@ -1,0 +1,20 @@
+GITHUB-UPLOAD-PAKET - fuer GitHub Desktop (Stand 2026-08-31)
+====================================================
+
+Dieses Paket enthaelt die Dateien, die auf GitHub fehlen bzw. sich
+seit dem letzten Stand geaendert haben. Kopiere den Inhalt in den
+lokal geklonten Ordner (Bundesliga-Tippspiel2) und ueberschreibe
+vorhandene Dateien.
+
+DANACH in GitHub Desktop:
+    1. "Changes" pruefen (12 Dateien: geaendert/neu)
+    2. Zusammenfassung schreiben + "Commit to main"
+    3. "Push origin"
+
+DIE CI LAEUFT DANN AUTOMATISCH:
+    github.com/meyomey/Bundesliga-Tippspiel2 > Actions > "Tests & Lint"
+    - Flake8-Gate (Syntaxfehler/undefinierte Namen)
+    - pytest auf Python 3.9-3.13 (3.9 = Netcup-Zielversion)
+
+Quelle:  Commit 2982653 (2026-08-31 18:58) + lokale Aenderungen
+Teststand: 256/256 Tests gruen, Coverage 79 %

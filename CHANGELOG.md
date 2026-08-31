@@ -1184,3 +1184,11 @@ faker==28.4.1
   - Fallstrick dokumentiert: `User` hat kein `is_bot`-Feld — Bot-Erkennung laeuft ausschliesslich ueber die E-Mail-Endung `@bot.local`.
 - Gesamtprojekt-Coverage: **78 % → 79 %** (10.917 Statements, 2.345 offen).
 - Teststand: 239 → **251 bestanden**.
+## 2026-08-31 - Refactoring Prio 7: stats.py & sync.py in Fachmodule aufgeteilt
+
+- **stats.py (630 Zeilen → Kern ~100 + Fassade):** Ausgelagert in `stats_personal.py` (persoenliche Statistiken, 246 Z.), `stats_live.py` (Live-Statistiken, 251 Z.) und `stats_season.py` (Saison-Tabellen/Ewige Tabelle, 143 Z.). `stats.py` bleibt Kernmodul (Misc-Helper, Spieltags-Preview/Recap) und re-exportiert alle Namen der Fachmodule (Fassade), damit saemtliche `from stats import ...`-Aufrufer unveraendert weiterlaufen.
+- **sync.py (1348 Zeilen → Kern ~330 + Fassade):** Ausgelagert in `sync_shared.py` (Konstanten, Saisoncode, Team-Aufloesung, Match-Abgleich, store_sync_result, 359 Z.), `sync_football_data.py` (football-data.org-Client inkl. Live-Standings, 267 Z.) und `sync_openligadb.py` (OpenLigaDB-Client inkl. `sync_results`, 365 Z.). `sync.py` behaelt Logos, Seeding, `get_sync_diagnostics` und die Schema-Migration und re-exportiert alle ausgelagerten Namen inkl. `requests`, damit auch Test-Monkeypatches (`monkeypatch.setattr(sync.requests, "get", ...)`, `'sync.requests.get'`) unveraendert greifen.
+- Import-Graph azyklisch: `sync_football_data`/`sync_openligadb` → `sync_shared`; `sync_openligadb` → `sync_football_data`. Zirkularitaetsfalle geloest: `_olb_get`/`_olb_team_name` (generische Dict-Helfer) liegen in `sync_shared`, weil die Team-Aufloesung dort sie ebenfalls nutzt.
+- Nebenbei: toten `from badges import check_and_award_badges`-Import in `seed_demo_data` entfernt; alle 8 Dateien flake8-clean (F401/F811/F821/E9/F63/F7/F82).
+- **Kein einziger bestehender Test musste angepasst werden** — die Fassaden halten alle Importpfade und Monkeypatch-Ziele am Leben. Neu dazu: `tests/test_split_facades.py` (5 Vertragstests) sichert die Re-Exports dauerhaft ab (Namenslisten + Identitaet Fassade→Fachmodul + `sync.requests`-Monkeypatch-Ziel + Azyklik).
+- Teststand: 251 → **256 bestanden**. Gesamt-Coverage: **79 %** (unveraendert; die Importkoepfe der neuen Module werden vom Vertragstest abgedeckt).
