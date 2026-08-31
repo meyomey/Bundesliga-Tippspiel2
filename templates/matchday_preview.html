@@ -1,23 +1,30 @@
 {% extends "base.html" %}
-{% block title %}Spieltags-Preview{% endblock %}
+{% set quote_labels = [] %}
+{% set quote_values = [] %}
+{% for r in preview.matches %}
+  {% set _ = quote_labels.append(r.match.home_team.short_name ~ '–' ~ r.match.away_team.short_name) %}
+  {% set _ = quote_values.append(r.completion_pct) %}
+{% endfor %}
+{% block title %}Spieltags-Vorschau{% endblock %}
 {% block content %}
 
 <div class="page-header">
   <div>
     <span class="overline">VORSCHAU</span>
-    <h1>🔮 Spieltags-Preview</h1>
-    <p class="muted small">Spieltag {{ matchday }} · {{ active_competition_name }} {{ active_competition_season }} · Community-Trends ohne individuelle Tipps vor Anpfiff</p>
+    <h1>🔮 Spieltags-Vorschau</h1>
+    <p class="muted small">Spieltag {{ matchday }} · {{ comp_label(active_competition_name, active_competition_season) }} · Community-Trends ohne individuelle Tipps vor Anpfiff</p>
   </div>
   <div class="header-actions">
     <select onchange="location.href='{{ url_for('main.matchday_preview') }}/'+this.value">
       {% for md in matchdays %}<option value="{{ md }}" {{ 'selected' if md == matchday }}>Spieltag {{ md }}</option>{% endfor %}
     </select>
-    <a class="btn-ghost btn-sm" href="{{ url_for('main.matchday_recap', matchday=matchday) }}">📊 Recap</a>
+    <a class="btn-ghost btn-sm" href="{{ url_for('main.matchday_recap', matchday=matchday) }}">🧾 Rückblick</a>
     <a class="btn-ghost btn-sm" href="{{ url_for('main.quick_tip', matchday=matchday) }}">⚡ Schnelltipp</a>
   </div>
 </div>
 
-<div class="stats-grid" style="margin-bottom:16px;">
+<!-- Kennzahlen zur Tippaktivität -->
+<div class="kpi-grid">
   <div class="card stat-kpi"><div class="kpi-num">{{ preview.overall_completion_pct }}%</div><div class="kpi-lbl">Tippquote</div></div>
   <div class="card stat-kpi"><div class="kpi-num">{{ preview.total_predictions }}</div><div class="kpi-lbl">Tipps abgegeben</div></div>
   <div class="card stat-kpi"><div class="kpi-num">{{ preview.users_count }}</div><div class="kpi-lbl">Mitspieler</div></div>
@@ -25,21 +32,39 @@
 </div>
 
 {% if preview.top_match %}
-<div class="card">
-  <h2>🔥 Top-Spiel nach Tippaktivität</h2>
-  <p>
-    <strong>{{ preview.top_match.match.home_team.short_name }} – {{ preview.top_match.match.away_team.short_name }}</strong>
-    · {{ preview.top_match.tips }} Tipps · häufigster Tipp: <strong>{{ preview.top_match.top_score }}</strong>
-  </p>
+<div class="card section-card">
+  <h3>🔥 Top-Spiel nach Tippaktivität</h3>
+  <div class="hl-list">
+    <div class="hl-item">
+      <span class="hl-ico">⚽</span>
+      <div>
+        <div class="hl-title">{{ preview.top_match.match.home_team.short_name }} – {{ preview.top_match.match.away_team.short_name }}</div>
+        <div class="hl-sub">häufigster Tipp: {{ preview.top_match.top_score }}</div>
+      </div>
+      <div class="hl-pts">{{ preview.top_match.tips }} <small>Tipps</small></div>
+    </div>
+  </div>
 </div>
 {% endif %}
 
-<div class="grid-12">
+{% if preview.matches %}
+<div class="card section-card">
+  <h3>📈 Tippquote der Spiele</h3>
+  <p class="muted small">Anteil der Mitspieler, die für das jeweilige Spiel bereits getippt haben.</p>
+  <div class="chart-box"><canvas id="previewQuoteChart"></canvas></div>
+</div>
+{% endif %}
+
+<div class="chart-grid">
   {% for row in preview.matches %}
-  <section class="card span-6">
+  <section class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
-      <h2 style="margin:0">{{ row.match.home_team.short_name }} – {{ row.match.away_team.short_name }}</h2>
-      <span class="status status-{{ row.match.status }}">{{ row.match.status }}</span>
+      <h3 style="margin:0">{{ row.match.home_team.short_name }} – {{ row.match.away_team.short_name }}</h3>
+      <span class="status status-{{ row.match.status }}">
+        {% if row.match.status == 'finished' %}beendet
+        {% elif row.match.status == 'live' %}LIVE
+        {% else %}geplant{% endif %}
+      </span>
     </div>
     <p class="muted small">{{ row.match.kickoff|de_local('%a, %d.%m. %H:%M') }} · {{ row.tips }}/{{ preview.users_count }} Tipps · {{ row.joker_count }} Joker</p>
     <div class="tendency-row" style="margin:10px 0;">
@@ -53,11 +78,62 @@
 </div>
 
 {% if preview.missing_users %}
-<div class="card">
-  <h2>⏰ Noch offene Tipps</h2>
+<div class="card section-card">
+  <h3>⏰ Noch offene Tipps</h3>
   <p class="muted small">Spieler mit mindestens einem offenen Tipp für diesen Spieltag:</p>
   <p>{% for u in preview.missing_users[:30] %}<span class="chip">{{ u.username }}</span> {% endfor %}{% if preview.missing_users|length > 30 %}<span class="muted">…</span>{% endif %}</p>
 </div>
 {% endif %}
 
+{% endblock %}
+
+{% block scripts %}
+{% if preview.matches %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  if (typeof Chart === 'undefined') {
+    console.warn('Chart.js ist nicht geladen; Vorschau-Diagramm wird uebersprungen.');
+    return;
+  }
+  const teal = '#14b8a6';
+  const qCtx = document.getElementById('previewQuoteChart');
+  if (!qCtx) return;
+  new Chart(qCtx, {
+    type: 'bar',
+    data: {
+      labels: {{ quote_labels|tojson }},
+      datasets: [{
+        label: 'Tippquote in %',
+        data: {{ quote_values|tojson }},
+        backgroundColor: teal,
+        borderRadius: 6,
+        maxBarThickness: 22
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) { return ' ' + ctx.parsed.x + ' % haben getippt'; }
+          }
+        }
+      },
+      scales: {
+        x: {
+          min: 0,
+          max: 100,
+          grid: { color: 'rgba(148,163,184,0.15)' },
+          ticks: { callback: function(v) { return v + ' %'; } }
+        },
+        y: { grid: { display: false } }
+      }
+    }
+  });
+});
+</script>
+{% endif %}
 {% endblock %}

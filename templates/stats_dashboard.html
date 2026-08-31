@@ -2,57 +2,54 @@
 {% block title %}Statistiken · {{ user.username }}{% endblock %}
 {% block content %}
 
-<a href="{{ url_for('main.profile') }}" class="back-link">← Profil</a>
+<div class="sdash">
+  <a href="{{ url_for('main.profile') }}" class="back-link">← Profil</a>
 
-<div class="page-header">
-  <div>
-    <span class="overline">📊 {{ active_competition_name }} · Saison {{ active_competition_season }}</span>
-    <h1>Statistik-Dashboard</h1>
-    <p class="muted small">{{ user.username }} · {{ total_points }} Punkte · {{ total_tips }} gewertete Tipps · Stand: Spieltag {{ current_md }}</p>
+  <div class="page-header">
+    <div>
+      <span class="overline">📊 {{ active_competition_name }} · Saison {{ active_competition_season }}</span>
+      <h1>Statistik-Dashboard</h1>
+      <p class="muted small">{{ user.username }} · {{ total_points }} Punkte · {{ total_tips }} gewertete Tipps · Stand: Spieltag {{ current_md }}</p>
+    </div>
   </div>
-</div>
 
-<div class="stats-grid">
-
-  <!-- KPI-Kacheln -->
-  <div class="card stat-kpi"><div class="kpi-num">{{ total_points }}</div><div class="kpi-lbl">Punkte</div></div>
-  <div class="card stat-kpi"><div class="kpi-num">{{ total_tips }}</div><div class="kpi-lbl">Tipps</div></div>
-  {% if insights %}
-  <div class="card stat-kpi"><div class="kpi-num">{{ insights.avg_points_per_match }}</div><div class="kpi-lbl">Ø Punkte/Spiel</div></div>
-  <div class="card stat-kpi"><div class="kpi-num">{{ joker_count }}</div><div class="kpi-lbl">Joker genutzt</div></div>
-  {% endif %}
-  <div class="card stat-kpi"><div class="kpi-num">{{ trend.current_rank or '?' }}</div><div class="kpi-lbl">Rang</div></div>
-  {% if trend.delta and trend.delta != 0 %}
-  <div class="card stat-kpi"><div class="kpi-num {% if trend.delta > 0 %}text-ok{% else %}text-danger{% endif %}">{{ '%+d'|format(trend.delta) }}</div><div class="kpi-lbl">Plätze vs. letzte Woche</div></div>
-  {% endif %}
-  <div class="card stat-kpi"><div class="kpi-num">{{ joker_avg }}</div><div class="kpi-lbl">Ø Joker-Punkte</div></div>
-</div>
-
-
-<div class="card wide" style="margin-top:16px;">
-  <h3>✨ Stats 2.0 — Fun Facts</h3>
-  <div class="stats-grid">
-    <div class="stat-kpi"><div class="kpi-num">{{ stats20.best_point_streak }}</div><div class="kpi-lbl">Beste Punkte-Serie</div></div>
-    <div class="stat-kpi"><div class="kpi-num">{{ stats20.current_point_streak }}</div><div class="kpi-lbl">Aktuelle Serie</div></div>
-    <div class="stat-kpi"><div class="kpi-num">{{ stats20.longest_dry_run }}</div><div class="kpi-lbl">Längste Durststrecke</div></div>
-    <div class="stat-kpi"><div class="kpi-num">{{ stats20.upset_hits }}</div><div class="kpi-lbl">Mutige Treffer</div></div>
+  <!-- Kennzahlen auf einen Blick -->
+  <div class="kpi-grid">
+    <div class="card stat-kpi"><div class="kpi-num">{{ total_points }}</div><div class="kpi-lbl">Punkte</div></div>
+    <div class="card stat-kpi">
+      <div class="kpi-num">{{ trend.current_rank or '?' }}{% if trend.delta and trend.delta != 0 %} <span class="kpi-delta {% if trend.delta > 0 %}text-ok{% else %}text-danger{% endif %}">{{ '%+d'|format(trend.delta) }}</span>{% endif %}</div>
+      <div class="kpi-lbl">Rang</div>
+    </div>
+    <div class="card stat-kpi"><div class="kpi-num">{{ total_tips }}</div><div class="kpi-lbl">Gewertete Tipps</div></div>
+    {% if insights %}
+    <div class="card stat-kpi"><div class="kpi-num">{{ insights.avg_points_per_match }}</div><div class="kpi-lbl">Ø Punkte/Spiel</div></div>
+    {% endif %}
+    <div class="card stat-kpi"><div class="kpi-num">{{ joker_count }}</div><div class="kpi-lbl">Joker genutzt</div></div>
+    <div class="card stat-kpi"><div class="kpi-num">{{ joker_avg }}</div><div class="kpi-lbl">Ø Joker-Punkte</div></div>
   </div>
-  <p class="muted small" style="margin-top:10px;">
-    Tipp-Neigung: 🏠 {{ stats20.home_bias }}% Heimsieg · ⚖ {{ stats20.draw_bias }}% Remis · ✈ {{ stats20.away_bias }}% Auswärtssieg
-    {% if stats20.favorite_score_team %}<br>Dein Punkte-Liebling: <strong>{{ stats20.favorite_score_team[0] }}</strong> mit {{ stats20.favorite_score_team[1] }} Punkten in beteiligten Spielen.{% endif %}
-  </p>
-</div>
 
-<div class="stats-charts">
+  <!-- Stats 2.0 Fun Facts -->
+  <div class="card section-card">
+    <h3>✨ Stats 2.0 — Fun Facts</h3>
+    <div class="kpi-grid kpis-compact">
+      <div class="stat-kpi"><div class="kpi-num">{{ stats20.best_point_streak }}</div><div class="kpi-lbl">Beste Punkte-Serie</div></div>
+      <div class="stat-kpi"><div class="kpi-num">{{ stats20.current_point_streak }}</div><div class="kpi-lbl">Aktuelle Serie</div></div>
+      <div class="stat-kpi"><div class="kpi-num">{{ stats20.longest_dry_run }}</div><div class="kpi-lbl">Längste Durststrecke</div></div>
+      <div class="stat-kpi"><div class="kpi-num">{{ stats20.upset_hits }}</div><div class="kpi-lbl">Mutige Treffer</div></div>
+    </div>
+    {% if stats20.favorite_score_team %}
+    <p class="muted small kpi-foot">Dein Punkte-Liebling: <strong>{{ stats20.favorite_score_team[0] }}</strong> mit {{ stats20.favorite_score_team[1] }} Punkten in beteiligten Spielen.</p>
+    {% endif %}
+  </div>
 
-  <!-- 1. Punkte-Verlauf -->
-  <div class="card chart-card wide">
+  <!-- Deine Saisonkurve -->
+  <div class="card section-card">
     <h3>📈 Punkte-Verlauf pro Spieltag</h3>
-    <canvas id="pointsChart" height="80"></canvas>
+    <div class="chart-box"><canvas id="pointsChart"></canvas></div>
   </div>
 
-  <!-- 2. Ranglistenverlauf aller Spieler -->
-  <div class="card chart-card wide rank-progress-card">
+  <!-- Community-Rankings -->
+  <div class="card section-card rank-progress-card">
     <div class="card-header">
       <div>
         <h3>📉 Ranglistenverlauf aller Spieler</h3>
@@ -84,289 +81,77 @@
     {% endif %}
   </div>
 
-  <!-- 3. Tipp-Qualität pro Spieltag (gestapeltes Balken) -->
-  <div class="card chart-card wide">
-    <h3>📊 Tipp-Qualität pro Spieltag</h3>
-    <canvas id="accuracyChart" height="80"></canvas>
-  </div>
+  <!-- Zwei-Spalten-Bereich: Trefferqualität, Stil, Joker, Bots -->
+  <div class="chart-grid">
 
-  <!-- 3. Tipp-Verteilung -->
-  {% if insights %}
-  <div class="card chart-card">
-    <h3>🎯 Tipp-Verteilung</h3>
-    <canvas id="tendencyChart" height="80"></canvas>
-  </div>
-  {% endif %}
+    <div class="card section-card">
+      <h3>🎯 Tipp-Qualität pro Spieltag</h3>
+      <div class="chart-box"><canvas id="accuracyChart"></canvas></div>
+    </div>
 
-  <!-- 4. Beliebteste Tipps -->
-  <div class="card chart-card">
-    <h3>🏅 Beliebteste Tipps</h3>
-    <canvas id="topTipsChart" height="80"></canvas>
-  </div>
+    {% if insights %}
+    <div class="card section-card">
+      <h3>🧠 Tipp-Stil &amp; -Verteilung</h3>
+      <p class="muted small">Häufigster Tipp: <strong>{{ insights.most_common_tip }}</strong> ({{ insights.most_common_pct }}% deiner Tipps)</p>
+      <div class="bias-row"><span class="bias-lbl">🏠 Heimsieg</span><div class="bias-track"><div class="bias-bar bias-home" style="width:{{ insights.tendency_pct.home }}%"></div></div><span class="bias-val">{{ insights.tendency_pct.home }}%</span></div>
+      <div class="bias-row"><span class="bias-lbl">⚖️ Remis</span><div class="bias-track"><div class="bias-bar bias-draw" style="width:{{ insights.tendency_pct.draw }}%"></div></div><span class="bias-val">{{ insights.tendency_pct.draw }}%</span></div>
+      <div class="bias-row"><span class="bias-lbl">✈️ Auswärts</span><div class="bias-track"><div class="bias-bar bias-away" style="width:{{ insights.tendency_pct.away }}%"></div></div><span class="bias-val">{{ insights.tendency_pct.away }}%</span></div>
+      {% if top_tip_labels %}
+      <p class="muted small tchips-head">Deine häufigsten Ergebnisse:</p>
+      <div class="tchips">
+        {% for lbl in top_tip_labels %}
+        <span class="tchip">{{ lbl }} <em>×{{ top_tip_data[loop.index0] }}</em></span>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
 
-  <!-- 5. Joker-Erfolg -->
-  <div class="card chart-card">
-    <h3>⚡ Joker-Erfolg</h3>
-    <canvas id="jokerChart" height="80"></canvas>
-  </div>
+    <div class="card section-card">
+      <h3>⚡ Joker</h3>
+      <div class="split-bar">
+        <div class="split-bar-ok" style="width: {{ (100 * joker_success / joker_count)|round(0)|int if joker_count else 0 }}%"></div>
+      </div>
+      <div class="split-legend">
+        <span><i class="dot dot-ok"></i> {{ joker_success }} erfolgreich</span>
+        <span><i class="dot dot-miss"></i> {{ joker_fail }} daneben</span>
+        <span class="legend-right">{{ (100 * joker_success / joker_count)|round(0)|int if joker_count else 0 }}% Trefferquote</span>
+      </div>
+      <p class="muted small kpi-foot">Im Schnitt brachte jeder Joker <strong>{{ joker_avg }}</strong> Punkte.</p>
+    </div>
 
-  <!-- 6. Vergleich mit KI-Bots -->
-  <div class="card chart-card">
-    <h3>🤖 vs aktive KI-Bots</h3>
-    <canvas id="botChart" height="80"></canvas>
-  </div>
+    <div class="card section-card">
+      <h3>🤖 Du vs aktive KI-Bots</h3>
+      {% if bot_comparison|length == 1 %}<p class="muted small">Aktuell ist kein KI-Bot aktiviert oder gewertet.</p>{% endif %}
+      <table class="mini-table">
+        {% for b in bot_comparison %}
+        <tr class="{% if b.is_me %}highlight-row{% endif %}">
+          <td>{{ loop.index }}.</td>
+          <td>{{ b.name }} {% if b.is_me %}<span class="badge badge-sm">DU</span>{% endif %}</td>
+          <td><strong>{{ b.points }}</strong> Pkt</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
 
-  <!-- 7. Tipp-Stil -->
-  {% if insights %}
-  <div class="card chart-card">
-    <h3>🧠 Tipp-Stil</h3>
-    <p class="muted small">Häufigster Tipp: <strong>{{ insights.most_common_tip }}</strong> ({{ insights.most_common_pct }}%)</p>
-    <table class="mini-table">
-      <tr><td>Heimsiege</td><td>{{ insights.tendency_pct.home }}%</td></tr>
-      <tr><td>Unentschieden</td><td>{{ insights.tendency_pct.draw }}%</td></tr>
-      <tr><td>Auswärtssiege</td><td>{{ insights.tendency_pct.away }}%</td></tr>
-    </table>
   </div>
-  {% endif %}
-
-  <!-- 8. Rangliste vs Bots -->
-  <div class="card chart-card wide">
-    <h3>🏆 Rangliste — Du vs aktive Bots</h3>
-    {% if bot_comparison|length == 1 %}<p class="muted small">Aktuell ist kein KI-Bot aktiviert oder gewertet.</p>{% endif %}
-    <table class="mini-table">
-      {% for b in bot_comparison %}
-      <tr class="{% if b.is_me %}highlight-row{% endif %}">
-        <td>{{ loop.index }}.</td>
-        <td>{{ b.name }} {% if b.is_me %}<span class="badge badge-sm">DU</span>{% endif %}</td>
-        <td><strong>{{ b.points }}</strong> Pkt</td>
-      </tr>
-      {% endfor %}
-    </table>
-  </div>
-
 </div>
+
 
 {% endblock %}
 
 {% block scripts %}
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-  if (typeof Chart === 'undefined') {
-    console.warn('Chart.js ist nicht geladen; Statistikdiagramme werden uebersprungen.');
-    return;
-  }
-  const teal = '#14b8a6';
-  const blue = '#3b82f6';
-  const green = '#10b981';
-  const yellow = '#f59e0b';
-  const red = '#ef4444';
-  const purple = '#8b5cf6';
-
-  // Ranglistenverlauf aller Spieler
-  const rankCtx = document.getElementById('rankProgressChart');
-  let rankChart = null;
-  const rankDatasets = {{ rank_chart_datasets|tojson }};
-  if (rankCtx && rankDatasets.length) {
-    rankChart = new Chart(rankCtx, {
-      type: 'line',
-      data: {
-        labels: {{ rank_chart_labels|tojson }},
-        datasets: rankDatasets
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: { mode: 'nearest', intersect: false },
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              label: function(ctx) { return `${ctx.dataset.label}: Platz ${ctx.parsed.y}`; }
-            }
-          }
-        },
-        scales: {
-          y: {
-            reverse: true,
-            min: 1,
-            max: {{ rank_chart_max or 1 }},
-            ticks: { stepSize: 1, precision: 0 },
-            title: { display: true, text: 'Platz' }
-          },
-          x: { title: { display: true, text: 'Spieltag' } }
-        }
-      }
-    });
-  }
-
-  function syncRankCheckboxes() {
-    if (!rankChart) return;
-    document.querySelectorAll('[data-rank-player]').forEach(cb => {
-      const idx = Number(cb.dataset.rankPlayer);
-      cb.checked = rankChart.isDatasetVisible(idx);
-    });
-  }
-
-  function setRankVisibility(mode) {
-    if (!rankChart) return;
-    rankChart.data.datasets.forEach((ds, idx) => {
-      let visible = false;
-      if (mode === 'all') visible = true;
-      if (mode === 'me') visible = !!ds.isMe;
-      if (mode === 'top') visible = idx < 5 || !!ds.isMe;
-      rankChart.setDatasetVisibility(idx, visible);
-    });
-    rankChart.update();
-    syncRankCheckboxes();
-  }
-
-  document.querySelectorAll('[data-rank-player]').forEach(cb => {
-    cb.addEventListener('change', () => {
-      if (!rankChart) return;
-      const idx = Number(cb.dataset.rankPlayer);
-      rankChart.setDatasetVisibility(idx, cb.checked);
-      rankChart.update();
-    });
-  });
-  document.getElementById('rankSelectTop')?.addEventListener('click', () => setRankVisibility('top'));
-  document.getElementById('rankSelectMe')?.addEventListener('click', () => setRankVisibility('me'));
-  document.getElementById('rankSelectAll')?.addEventListener('click', () => setRankVisibility('all'));
-  syncRankCheckboxes();
-
-  // 1. Punkte-Verlauf
-  const ptsCtx = document.getElementById('pointsChart');
-  if (ptsCtx) {
-    new Chart(ptsCtx, {
-      type: 'line',
-      data: {
-        labels: {{ md_labels_all|tojson }},
-        datasets: [{
-          label: 'Punkte',
-          data: {{ md_data_all|tojson }},
-          borderColor: teal,
-          backgroundColor: teal + '20',
-          fill: true,
-          tension: 0.3,
-          pointRadius: 4,
-        }]
-      },
-      options: {
-        responsive: true,
-        plugins: { legend: { display: false } },
-        scales: {
-          x: { title: { display: true, text: 'Spieltag' } },
-          y: { beginAtZero: true, title: { display: true, text: 'Punkte' } }
-        }
-      }
-    });
-  }
-
-  // 2. Tipp-Qualität (gestapelt)
-  const accCtx = document.getElementById('accuracyChart');
-  if (accCtx) {
-    new Chart(accCtx, {
-      type: 'bar',
-      data: {
-        labels: {{ acc_labels|tojson }},
-        datasets: [
-          { label: 'Exakt %', data: {{ acc_exact|tojson }}, backgroundColor: green },
-          { label: 'Differenz %', data: {{ acc_diff|tojson }}, backgroundColor: blue },
-          { label: 'Tendenz %', data: {{ acc_tendency|tojson }}, backgroundColor: yellow },
-          { label: 'Daneben %', data: {{ acc_wrong|tojson }}, backgroundColor: red },
-        ]
-      },
-      options: {
-        responsive: true,
-        scales: {
-          x: { stacked: true, title: { display: true, text: 'Spieltag' } },
-          y: { stacked: true, max: 100, title: { display: true, text: '%' } }
-        },
-        plugins: {
-          tooltip: {
-            callbacks: {
-              label: function(ctx) { return ctx.dataset.label + ': ' + ctx.parsed.y.toFixed(1) + '%'; }
-            }
-          }
-        }
-      }
-    });
-  }
-
-  // 3. Tipp-Tendenz (donut)
-  {% if insights %}
-  const tendCtx = document.getElementById('tendencyChart');
-  if (tendCtx) {
-    new Chart(tendCtx, {
-      type: 'doughnut',
-      data: {
-        labels: ['Heimsieg ({{ insights.tendency_pct.home }}%)', 'Unentschieden ({{ insights.tendency_pct.draw }}%)', 'Auswärtssieg ({{ insights.tendency_pct.away }}%)'],
-        datasets: [{
-          data: [{{ insights.tendency_pct.home }}, {{ insights.tendency_pct.draw }}, {{ insights.tendency_pct.away }}],
-          backgroundColor: [green, yellow, blue],
-        }]
-      },
-      options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
-    });
-  }
-  {% endif %}
-
-  // 4. Beliebteste Tipps
-  const tipsCtx = document.getElementById('topTipsChart');
-  if (tipsCtx) {
-    new Chart(tipsCtx, {
-      type: 'bar',
-      data: {
-        labels: {{ top_tip_labels|tojson }},
-        datasets: [{
-          label: 'Anzahl',
-          data: {{ top_tip_data|tojson }},
-          backgroundColor: purple,
-        }]
-      },
-      options: {
-        responsive: true,
-        plugins: { legend: { display: false } },
-        scales: { y: { beginAtZero: true } }
-      }
-    });
-  }
-
-  // 5. Joker-Erfolg
-  const jokerCtx = document.getElementById('jokerChart');
-  if (jokerCtx) {
-    new Chart(jokerCtx, {
-      type: 'doughnut',
-      data: {
-        labels: ['Erfolgreich ({{ joker_success }})', 'Daneben ({{ joker_fail }})'],
-        datasets: [{
-          data: [{{ joker_success }}, {{ joker_fail }}],
-          backgroundColor: [yellow, red],
-        }]
-      },
-      options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
-    });
-  }
-
-  // 6. KI-Bot Vergleich
-  const botCtx = document.getElementById('botChart');
-  if (botCtx) {
-    new Chart(botCtx, {
-      type: 'bar',
-      data: {
-        labels: {{ bot_chart_labels|tojson }},
-        datasets: [{
-          label: 'Punkte',
-          data: {{ bot_chart_data|tojson }},
-          backgroundColor: {{ bot_chart_colors|tojson }},
-        }]
-      },
-      options: {
-        responsive: true,
-        plugins: { legend: { display: false } },
-        scales: { y: { beginAtZero: true } }
-      }
-    });
-  }
-});
-</script>
+<script type="application/json" id="stats-chart-data">{{ {
+    'rank_datasets': rank_chart_datasets,
+    'rank_labels': rank_chart_labels,
+    'rank_max': rank_chart_max or 1,
+    'md_labels': md_labels_all,
+    'md_data': md_data_all,
+    'acc_labels': acc_labels,
+    'acc_exact': acc_exact,
+    'acc_diff': acc_diff,
+    'acc_tendency': acc_tendency,
+    'acc_wrong': acc_wrong,
+  }|tojson }}</script>
+<script src="{{ url_for('static', filename='js/stats_dashboard.js', v=asset_version) }}"></script>
 {% endblock %}

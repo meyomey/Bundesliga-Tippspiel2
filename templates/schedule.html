@@ -5,9 +5,9 @@
   <span class="form-stripe small">
   {% for f in form_list|reverse %}
     {% if f is mapping %}
-      <span class="form-dot form-{{ f.result }}" title="{{ f.opponent.short_name if f.opponent else '' }} {{ f.score }}">{{ f.result }}</span>
+      <span class="form-dot form-{{ f.result }}" title="{{ f.opponent.short_name if f.opponent else '' }} {{ f.score }}">{{ {'W':'S','D':'U','L':'N'}.get(f.result, f.result) }}</span>
     {% else %}
-      <span class="form-dot form-{{ f }}">{{ f }}</span>
+      <span class="form-dot form-{{ f }}">{{ {'W':'S','D':'U','L':'N'}.get(f, f) }}</span>
     {% endif %}
   {% endfor %}
   </span>
@@ -33,7 +33,7 @@
         <option value="{{ md }}" {{ 'selected' if md == current_md }}>Spieltag {{ md }}</option>
       {% endfor %}
     </select>
-    <a href="{{ url_for('main.matchday_preview', matchday=current_md) }}" class="btn-ghost btn-sm schedule-action">🔮 <span class="full">Preview</span><span class="short">Vor</span></a>
+    <a href="{{ url_for('main.matchday_preview', matchday=current_md) }}" class="btn-ghost btn-sm schedule-action">🔮 <span class="full">Vorschau</span><span class="short">Vor</span></a>
     <a href="{{ url_for('main.tip_overview', matchday=current_md) }}" class="btn-ghost btn-sm schedule-action">👀 <span class="full">Tippübersicht</span><span class="short">Tipps</span></a>
     <a href="{{ url_for('main.quick_tip', matchday=current_md) }}" class="btn-primary btn-sm schedule-action quicktip-cta">⚡ <span class="full">Schnelltipp</span><span class="short">Schnell</span></a>
   </div>

@@ -50,7 +50,24 @@
         <td>{{ l.admin.username if l.admin else 'System' }}</td>
         <td><code>{{ l.action }}</code></td>
         <td>{% if l.entity_type %}{{ l.entity_type }}{% if l.entity_id %} · {{ l.entity_id }}{% endif %}{% else %}—{% endif %}</td>
-        <td>{{ l.message or '—' }}</td>
+        <td>
+          {{ l.message or '—' }}
+          {% if l.diff %}
+          <details class="audit-diff">
+            <summary>Änderungen ({{ l.diff|length }})</summary>
+            <ul class="audit-diff-list">
+              {% for field, change in l.diff.items() %}
+              <li>
+                <code>{{ field }}</code>:
+                <span class="diff-old">{{ change['from'] if change['from'] is not none else '—' }}</span>
+                <span aria-hidden="true">→</span>
+                <span class="diff-new">{{ change['to'] if change['to'] is not none else '—' }}</span>
+              </li>
+              {% endfor %}
+            </ul>
+          </details>
+          {% endif %}
+        </td>
         <td class="muted small">{{ l.ip_address or '—' }}</td>
       </tr>
       {% endfor %}

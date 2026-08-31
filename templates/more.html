@@ -6,9 +6,19 @@
   <div>
     <p class="eyebrow">Navigation</p>
     <h1>Mehr</h1>
-    <p class="muted">Alles Wichtige an einem Ort: Profil, Sonderfragen, Auswertungen, Preise und Hilfe.</p>
+    <p class="muted">Alles Wichtige an einem Ort: Profil, Sonderfragen, Auswertungen, Gewinne und Hilfe.</p>
   </div>
-  <a href="{{ url_for('main.help_rules') }}" class="btn-primary more-hero-btn">📖 Hilfe &amp; Regeln</a>
+</section>
+
+<section class="card more-shortcuts">
+  <h2>Schnellzugriff</h2>
+  <div class="more-chip-row">
+    <a href="{{ url_for('main.quick_tip') }}"><span class="mc-ico">⚡</span>Schnelltipp</a>
+    <a href="{{ url_for('main.tip_overview') }}"><span class="mc-ico">👀</span>Tippübersicht</a>
+    <a href="{{ url_for('main.matchday_preview') }}"><span class="mc-ico">🔮</span>Vorschau</a>
+    <a href="{{ url_for('main.matchday_recap') }}"><span class="mc-ico">🧾</span>Rückblick</a>
+    <a href="{{ url_for('main.bl_standings') }}"><span class="mc-ico">⚽</span>Liga-Tabelle</a>
+  </div>
 </section>
 
 <div class="more-grid" aria-label="Weitere Bereiche">
@@ -37,9 +47,14 @@
     <strong>Statistiken</strong>
     <small>Formkurve, Volltreffer, Joker und persönliche Auswertung.</small>
   </a>
+  <a class="more-card" href="{{ url_for('main.matchday_preview') }}">
+    <span class="more-icon">🔮</span>
+    <strong>Vorschau &amp; Rückblick</strong>
+    <small>Tippquoten, Top-Spiele und Auswertung des Spieltags.</small>
+  </a>
   <a class="more-card" href="{{ url_for('main.prizes') }}">
     <span class="more-icon">🏆</span>
-    <strong>Preise &amp; Pott</strong>
+    <strong>Gewinne &amp; Pott</strong>
     <small>Einzahlungen, Pott-Aufteilung und Saisonpreise.</small>
   </a>
   <a class="more-card" href="{{ url_for('main.eternal_table') }}">
@@ -58,15 +73,5 @@
     <small>Punkte, Joker, Tippabgabe, Sichtbarkeit und Spieltag erklärt.</small>
   </a>
 </div>
-
-<section class="card more-shortcuts">
-  <h2>Schnellzugriff</h2>
-  <div class="more-chip-row">
-    <a href="{{ url_for('main.tip_overview') }}">👀 Tippübersicht</a>
-    <a href="{{ url_for('main.matchday_preview') }}">🔮 Spieltag-Preview</a>
-    <a href="{{ url_for('main.matchday_recap') }}">🧾 Spieltag-Recap</a>
-    <a href="{{ url_for('main.bl_standings') }}">⚽ Liga-Tabelle</a>
-  </div>
-</section>
 
 {% endblock %}

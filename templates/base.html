@@ -87,7 +87,7 @@
 
           <!-- "Mehr"-Dropdown nur Desktop -->
           <div class="nav-more hidden-mobile">
-            <button type="button" class="nav-link nav-more-btn {{ 'active' if request.endpoint in ['main.more','main.help_rules','main.special_tips','main.eternal_table','main.prizes','main.stats_dashboard','main.season_recap','main.matchday_preview','main.matchday_recap'] }}" id="navMoreBtn" aria-expanded="false">
+            <button type="button" class="nav-link nav-more-btn {{ 'active' if request.endpoint in ['main.more','main.help_rules','main.special_tips','main.eternal_table','main.prizes','main.stats_dashboard','main.season_recap','main.invite_users','main.matchday_preview','main.matchday_recap'] }}" id="navMoreBtn" aria-expanded="false">
               <span class="nav-label">Mehr</span>
               <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
                 <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
@@ -102,21 +102,29 @@
                 <span class="nmi-icon">⭐</span>
                 <div><strong>Sonderfragen</strong><small>Meister · Torschützenkönig</small></div>
               </a>
-              <a href="{{ url_for('main.prizes') }}" class="nav-more-item {{ 'active' if request.endpoint == 'main.prizes' }}">
-                <span class="nmi-icon">🏆</span>
-                <div><strong>Gewinne &amp; Pott</strong><small>Saison-Preise · Zahlung</small></div>
-              </a>
               <a href="{{ url_for('main.stats_dashboard') }}" class="nav-more-item {{ 'active' if request.endpoint == 'main.stats_dashboard' }}">
                 <span class="nmi-icon">📊</span>
                 <div><strong>Statistiken</strong><small>Diagramme & Auswertung</small></div>
               </a>
               <a href="{{ url_for('main.matchday_preview') }}" class="nav-more-item {{ 'active' if request.endpoint in ['main.matchday_preview','main.matchday_recap'] }}">
                 <span class="nmi-icon">🔮</span>
-                <div><strong>Preview &amp; Recap</strong><small>Spieltagstrends & Rückblick</small></div>
+                <div><strong>Vorschau &amp; Rückblick</strong><small>Spieltagstrends & -auswertung</small></div>
+              </a>
+              <a href="{{ url_for('main.prizes') }}" class="nav-more-item {{ 'active' if request.endpoint == 'main.prizes' }}">
+                <span class="nmi-icon">🏆</span>
+                <div><strong>Gewinne &amp; Pott</strong><small>Saison-Preise · Zahlung</small></div>
               </a>
               <a href="{{ url_for('main.eternal_table') }}" class="nav-more-item {{ 'active' if request.endpoint == 'main.eternal_table' }}">
                 <span class="nmi-icon">🏛</span>
-                <div><strong>Ewige Tabelle</strong><small>Aggregat aller Saisons</small></div>
+                <div><strong>Ewige Tabelle</strong><small>Alle Saisons im Vergleich</small></div>
+              </a>
+              <a href="{{ url_for('main.season_recap') }}" class="nav-more-item {{ 'active' if request.endpoint == 'main.season_recap' }}">
+                <span class="nmi-icon">🎬</span>
+                <div><strong>Saisonbericht</strong><small>Rückblick · Highlights</small></div>
+              </a>
+              <a href="{{ url_for('main.invite_users') }}" class="nav-more-item {{ 'active' if request.endpoint == 'main.invite_users' }}">
+                <span class="nmi-icon">✉️</span>
+                <div><strong>Mitspieler einladen</strong><small>Link · E-Mail</small></div>
               </a>
               <a href="{{ url_for('main.help_rules') }}" class="nav-more-item {{ 'active' if request.endpoint == 'main.help_rules' }}">
                 <span class="nmi-icon">📖</span>
@@ -132,7 +140,7 @@
           <a href="{{ url_for('main.tip_overview') }}" class="nav-link hidden-desktop {{ 'active' if request.endpoint == 'main.tip_overview' }}">
             <span class="nav-icon">👀</span><span class="nav-label">Tippübersicht</span>
           </a>
-          <a href="{{ url_for('main.more') }}" class="nav-link hidden-desktop {{ 'active' if request.endpoint in ['main.more','main.help_rules','main.special_tips','main.eternal_table','main.prizes','main.stats_dashboard','main.season_recap','main.matchday_preview','main.matchday_recap','main.profile'] }}">
+          <a href="{{ url_for('main.more') }}" class="nav-link hidden-desktop {{ 'active' if request.endpoint in ['main.more','main.help_rules','main.special_tips','main.eternal_table','main.prizes','main.stats_dashboard','main.season_recap','main.invite_users','main.matchday_preview','main.matchday_recap','main.profile'] }}">
             <span class="nav-icon">☰</span><span class="nav-label">Mehr</span>
           </a>
         </div>
@@ -160,7 +168,7 @@
             <div class="user-info">
               <strong>{{ current_user.username }}</strong>
               <small>{{ current_user.email }}</small>
-              <small class="mobile-season">{{ active_competition_name }} · {{ active_competition_season }}</small>
+              <small class="mobile-season">{{ comp_label(active_competition_name, active_competition_season) }}</small>
             </div>
           </a>
           <button class="btn-icon" onclick="toggleTheme()" title="Theme wechseln">🌙</button>
@@ -189,7 +197,7 @@
           <select onchange="window.location.href='/set-competition/' + this.value" style="padding: 6px 10px; border-radius: 6px; background: var(--bg-app, #1a1f2c); border: 1px solid var(--border, #2d3748); color: var(--text, #e2e8f0); font-size: 12px; font-weight: bold; cursor: pointer; outline: none;">
             {% for comp in all_competitions %}
               <option value="{{ comp.code }}" {% if comp.code == active_competition %}selected{% endif %}>
-                🏆 {{ comp.name }} · {{ comp.season }}
+                🏆 {{ comp_label(comp.name, comp.season) }}
               </option>
             {% endfor %}
           </select>
@@ -296,7 +304,7 @@
   <a href="{{ url_for('main.live_center') }}" class="bt-item bt-live {{ 'active' if request.endpoint == 'main.live_center' }}">
     <span class="bt-icon"><span class="bt-live-dot"></span>LIVE</span><span class="bt-label">Live</span>
   </a>
-  <a href="{{ url_for('main.more') }}" class="bt-item {{ 'active' if request.endpoint in ['main.more','main.help_rules','main.special_tips','main.eternal_table','main.prizes','main.stats_dashboard','main.season_recap','main.profile','main.matchday_preview','main.matchday_recap'] }}">
+  <a href="{{ url_for('main.more') }}" class="bt-item {{ 'active' if request.endpoint in ['main.more','main.help_rules','main.special_tips','main.eternal_table','main.prizes','main.stats_dashboard','main.season_recap','main.invite_users','main.profile','main.matchday_preview','main.matchday_recap'] }}">
     <span class="bt-icon">☰</span><span class="bt-label">Mehr</span>
   </a>
 </nav>

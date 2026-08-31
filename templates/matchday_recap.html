@@ -1,43 +1,88 @@
 {% extends "base.html" %}
-{% block title %}Spieltags-Recap{% endblock %}
+{% set punk_labels = [] %}
+{% set punk_values = [] %}
+{% set punk_colors = [] %}
+{% for r in recap.rows[:15] %}
+  {% set _ = punk_labels.append(r.user.username) %}
+  {% set _ = punk_values.append(r.points) %}
+  {% if r.rank == 1 %}
+    {% set _ = punk_colors.append('#fbbf24') %}
+  {% elif r.user.id == current_user.id %}
+    {% set _ = punk_colors.append('#3b82f6') %}
+  {% else %}
+    {% set _ = punk_colors.append('#14b8a6') %}
+  {% endif %}
+{% endfor %}
+{% block title %}Spieltags-Rückblick{% endblock %}
 {% block content %}
 
 <div class="page-header">
   <div>
     <span class="overline">RÜCKBLICK</span>
-    <h1>📊 Spieltags-Recap</h1>
-    <p class="muted small">Spieltag {{ matchday }} · {{ active_competition_name }} {{ active_competition_season }} · {{ recap.finished_count }}/{{ recap.total_matches }} Spiele beendet</p>
+    <h1>📊 Spieltags-Rückblick</h1>
+    <p class="muted small">Spieltag {{ matchday }} · {{ comp_label(active_competition_name, active_competition_season) }} · {{ recap.finished_count }}/{{ recap.total_matches }} Spiele beendet</p>
   </div>
   <div class="header-actions">
     <select onchange="location.href='{{ url_for('main.matchday_recap') }}/'+this.value">
       {% for md in matchdays %}<option value="{{ md }}" {{ 'selected' if md == matchday }}>Spieltag {{ md }}</option>{% endfor %}
     </select>
-    <a class="btn-ghost btn-sm" href="{{ url_for('main.matchday_preview', matchday=matchday) }}">🔮 Preview</a>
+    <a class="btn-ghost btn-sm" href="{{ url_for('main.matchday_preview', matchday=matchday) }}">🔮 Vorschau</a>
     <a class="btn-ghost btn-sm" href="{{ url_for('main.tip_overview', matchday=matchday, sort='matchday') }}">👀 Tipps</a>
   </div>
 </div>
 
-<div class="stats-grid" style="margin-bottom:16px;">
-  <div class="card stat-kpi"><div class="kpi-num">{% if recap.winner %}{{ recap.winner.user.username }}{% else %}—{% endif %}</div><div class="kpi-lbl">Spieltagsieger</div></div>
+<!-- Kernzahlen des Spieltags -->
+<div class="kpi-grid">
+  <div class="card stat-kpi"><div class="kpi-num">{{ recap.finished_count }}/{{ recap.total_matches }}</div><div class="kpi-lbl">Spiele beendet</div></div>
   <div class="card stat-kpi"><div class="kpi-num">{% if recap.winner %}{{ recap.winner.points }}{% else %}0{% endif %}</div><div class="kpi-lbl">Siegerpunkte</div></div>
   <div class="card stat-kpi"><div class="kpi-num">{% if recap.best_single %}{{ recap.best_single.points }}{% else %}0{% endif %}</div><div class="kpi-lbl">Bester Einzeltipp</div></div>
   <div class="card stat-kpi"><div class="kpi-num">{% if recap.best_joker %}{{ recap.best_joker.points }}{% else %}0{% endif %}</div><div class="kpi-lbl">Bester Joker</div></div>
 </div>
 
-<div class="grid-12">
-  <section class="card span-6">
-    <h2>🏅 Highlights</h2>
-    {% if recap.best_single %}
-      <p>🎯 Bester Einzeltipp: <strong>{{ recap.best_single.user.username }}</strong> mit {{ recap.best_single.points }} Punkten bei {{ recap.best_single.prediction.match.home_team.short_name }} – {{ recap.best_single.prediction.match.away_team.short_name }}.</p>
-    {% endif %}
-    {% if recap.best_joker %}
-      <p>⚡ Bester Joker: <strong>{{ recap.best_joker.user.username }}</strong> mit {{ recap.best_joker.points }} Punkten.</p>
-    {% endif %}
-    {% if not recap.best_single and not recap.best_joker %}<p class="muted">Noch keine Highlights für diesen Spieltag.</p>{% endif %}
-  </section>
+<!-- Highlights + Ergebnisse -->
+<div class="chart-grid">
 
-  <section class="card span-6">
-    <h2>⚽ Ergebnisse</h2>
+  <div class="card">
+    <h3>🏅 Highlights des Spieltags</h3>
+    <div class="hl-list">
+      {% if recap.winner %}
+      <div class="hl-item {{ 'is-me' if recap.winner.user.id == current_user.id }}">
+        <span class="hl-ico">🥇</span>
+        <div>
+          <div class="hl-title">{{ recap.winner.user.username }}</div>
+          <div class="hl-sub">Spieltagsieger</div>
+        </div>
+        <div class="hl-pts">{{ recap.winner.points }} <small>Punkte</small></div>
+      </div>
+      {% endif %}
+      {% if recap.best_single %}
+      <div class="hl-item {{ 'is-me' if recap.best_single.user.id == current_user.id }}">
+        <span class="hl-ico">🎯</span>
+        <div>
+          <div class="hl-title">{{ recap.best_single.user.username }} · {{ recap.best_single.prediction.home_tip }}:{{ recap.best_single.prediction.away_tip }} getippt</div>
+          <div class="hl-sub">Bester Einzeltipp bei {{ recap.best_single.prediction.match.home_team.short_name }} – {{ recap.best_single.prediction.match.away_team.short_name }}</div>
+        </div>
+        <div class="hl-pts">{{ recap.best_single.points }} <small>Punkte</small></div>
+      </div>
+      {% endif %}
+      {% if recap.best_joker %}
+      <div class="hl-item {{ 'is-me' if recap.best_joker.user.id == current_user.id }}">
+        <span class="hl-ico">⚡</span>
+        <div>
+          <div class="hl-title">{{ recap.best_joker.user.username }}</div>
+          <div class="hl-sub">Bester Joker</div>
+        </div>
+        <div class="hl-pts">{{ recap.best_joker.points }} <small>Punkte</small></div>
+      </div>
+      {% endif %}
+      {% if not recap.winner and not recap.best_single and not recap.best_joker %}
+        <p class="muted small">Noch keine Highlights für diesen Spieltag.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>⚽ Ergebnisse</h3>
     <table class="mini-table">
       {% for m in recap.matches %}
       <tr>
@@ -46,18 +91,28 @@
       </tr>
       {% endfor %}
     </table>
-  </section>
+  </div>
+
 </div>
 
-<div class="card" style="overflow:auto;">
-  <h2>🏆 Spieltagswertung</h2>
+{% if recap.rows %}
+<div class="card section-card">
+  <h3>📈 Punkte des Spieltags</h3>
+  <p class="muted small">Punkteverteilung der {% if punk_labels|length < recap.rows|length %}Top {{ punk_labels|length }} {% endif %}Spieler – 🥇 Gold: Spieltagsieger, Blau: du.</p>
+  <div class="chart-box"><canvas id="recapPunkteChart"></canvas></div>
+</div>
+{% endif %}
+
+<!-- Spieltagswertung -->
+<div class="card section-card" style="overflow:auto;">
+  <h3>🏆 Spieltagswertung</h3>
   <table class="table compact extended">
     <thead><tr><th>Rang</th><th>Spieler</th><th class="right">Pkt</th><th class="center">Exakt</th><th class="center">Diff</th><th class="center">Tendenz</th><th class="center">Joker-Pkt</th></tr></thead>
     <tbody>
       {% for r in recap.rows %}
-      <tr class="{{ 'me' if r.user.id == current_user.id }}">
-        <td>{{ r.rank }}</td>
-        <td>{{ r.user.username }}</td>
+      <tr class="{{ 'highlight-row' if r.user.id == current_user.id }}">
+        <td>{% if r.rank == 1 %}🥇{% endif %} {{ r.rank }}</td>
+        <td>{{ r.user.username }} {% if r.user.id == current_user.id %}<span class="badge badge-sm">DU</span>{% endif %}</td>
         <td class="right pts-num">{{ r.points }}</td>
         <td class="center">{{ r.exact }}</td>
         <td class="center">{{ r.diff }}</td>
@@ -68,4 +123,53 @@
     </tbody>
   </table>
 </div>
+{% endblock %}
+
+{% block scripts %}
+{% if recap.rows %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  if (typeof Chart === 'undefined') {
+    console.warn('Chart.js ist nicht geladen; Rückblick-Diagramm wird uebersprungen.');
+    return;
+  }
+  const pCtx = document.getElementById('recapPunkteChart');
+  if (!pCtx) return;
+  new Chart(pCtx, {
+    type: 'bar',
+    data: {
+      labels: {{ punk_labels|tojson }},
+      datasets: [{
+        label: 'Punkte',
+        data: {{ punk_values|tojson }},
+        backgroundColor: {{ punk_colors|tojson }},
+        borderRadius: 6,
+        maxBarThickness: 22
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) { return ' ' + ctx.parsed.x + ' Punkte'; }
+          }
+        }
+      },
+      scales: {
+        x: {
+          beginAtZero: true,
+          grid: { color: 'rgba(148,163,184,0.15)' },
+          ticks: { precision: 0 }
+        },
+        y: { grid: { display: false } }
+      }
+    }
+  });
+});
+</script>
+{% endif %}
 {% endblock %}
