@@ -135,7 +135,7 @@
   overflow: hidden;
 }
 .qt-match-card.closed {
-  opacity: 0.5;
+  opacity: 0.78;
   pointer-events: none;
 }
 .qt-match-card.has-tip {
@@ -387,7 +387,7 @@
   transform: scale(0.92);
 }
 .qt-step-btn[disabled] {
-  opacity: 0.3;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 .qt-stepper-gap {
@@ -1381,3 +1381,42 @@ html[data-theme="light"] .qt-match-card.has-tip.has-joker {
     font-size: 17px;
   }
 }
+
+/* Abgeschlossener Spieltag: Footer-Aktionen sperren */
+.qt-btn-random:disabled,
+.qt-btn-save:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+.qt-btn-random:disabled:hover,
+.qt-btn-save:disabled:hover {
+  transform: none;
+  box-shadow: none;
+}
+.qt-btn-save:disabled {
+  background: var(--surface-2);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+.qt-closed-hint {
+  width: 100%;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  margin: 8px 0 0;
+}
+
+/* Offizielles Ergebnis unter den (gesperrten) Tippfeldern bei beendeten Spielen */
+.qt-final-result {
+  align-self: center;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 10px;
+  white-space: nowrap;
+}
+.qt-final-result strong { color: var(--text); font-variant-numeric: tabular-nums; }
+.qt-final-result .qt-result-pts { color: var(--primary-text, var(--primary)); }
