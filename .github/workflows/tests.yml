@@ -44,3 +44,42 @@ jobs:
           pip install -r requirements.txt
       - name: Testsuite
         run: python -m pytest -q
+
+  audit:
+    name: Security Audit (pip-audit)
+    runs-on: ubuntu-latest
+    env:
+      # Python 3.9 ist auf Netcup die fest vorgegebene Zielversion. Die hier
+      # ignorierten Advisories sind ausschliesslich in Versionen behoben, die
+      # Python >= 3.10 verlangen - auf 3.9 existiert keine gepatchte Version
+      # (z. B. Pillow: Fix erst ab 12.x; pytest: Fix erst ab 9.0.3; bleach:
+      # Fix erst ab 6.4.0). Die Pins stehen deshalb auf der jeweils NEUESTEN
+      # 3.9-kompatiblen Version.
+      # WICHTIG: Sollte Netcup kuenftig Python 3.10+ anbieten, diese Liste
+      # abbauen und die betroffenen Pins anheben!
+      IGNORE_39: >-
+        --ignore-vuln PYSEC-2026-141 --ignore-vuln PYSEC-2026-142
+        --ignore-vuln PYSEC-2026-165 --ignore-vuln PYSEC-2026-1845
+        --ignore-vuln PYSEC-2026-2132 --ignore-vuln PYSEC-2026-2249
+        --ignore-vuln PYSEC-2026-2250 --ignore-vuln PYSEC-2026-2251
+        --ignore-vuln PYSEC-2026-2252 --ignore-vuln PYSEC-2026-2253
+        --ignore-vuln PYSEC-2026-2254 --ignore-vuln PYSEC-2026-2255
+        --ignore-vuln PYSEC-2026-2256 --ignore-vuln PYSEC-2026-2257
+        --ignore-vuln PYSEC-2026-2270 --ignore-vuln PYSEC-2026-2275
+        --ignore-vuln PYSEC-2026-2874 --ignore-vuln PYSEC-2026-3451
+        --ignore-vuln PYSEC-2026-3453 --ignore-vuln PYSEC-2026-3454
+        --ignore-vuln PYSEC-2026-3493 --ignore-vuln PYSEC-2026-3494
+        --ignore-vuln PYSEC-2026-3495 --ignore-vuln PYSEC-2026-3496
+        --ignore-vuln GHSA-gj48-438w-jh9v
+        --ignore-vuln GHSA-8rfp-98v4-mmr6
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: pip-audit installieren
+        run: pip install pip-audit
+      - name: Audit requirements.txt
+        run: pip-audit -r requirements.txt $IGNORE_39
+      - name: Audit requirements_py39.txt
+        run: pip-audit -r requirements_py39.txt $IGNORE_39

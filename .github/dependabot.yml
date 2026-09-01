@@ -1,0 +1,29 @@
+# Dependabot: automatische Update-PRs fuer Abhaengigkeiten.
+#
+# WICHTIG: Python 3.9 ist die feste Netcup-Zielversion (Plesk bietet dort nur
+# 3.9 an). Dependabot-PRs werden von der CI automatisch geprueft: Die Test-
+# Matrix laeuft auf 3.9-3.13 - ein Update, das Python 3.9 nicht mehr
+# unterstuetzt, laesst den 3.9-Job rot werden und ist abzulehnen.
+# (Der Audit-Job mit pip-audit prueft zusaetzlich auf bekannte Schwachstellen.)
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "deps(pip)"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "deps(actions)"

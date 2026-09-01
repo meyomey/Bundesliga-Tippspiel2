@@ -38,7 +38,10 @@ GITHUB_UPLOAD_FILES = [
     "DEPLOY_NETCUP.md",
     "NETCUP_OHNE_SSH.md",
     "requirements.txt",
+    "requirements_py39.txt",
     ".github/workflows/tests.yml",
+    # 01.09.2026: Dependabot + pip-audit (Sicherheits-Automatik)
+    ".github/dependabot.yml",
     # 01.09.2026: DB-Backup + Cron-Heartbeat (Prio 1 Produktions-Absicherung)
     "cron_jobs.py",
     "cron_heartbeat.py",

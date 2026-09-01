@@ -1228,3 +1228,13 @@ faker==28.4.1
 - **Plesk-Aufgaben jetzt per wget:** `*/15 * * * *` → `wget -q -O /dev/null "https://tipp.wulmstorf.net/cron/run?task=all&key=…"`, `15 3 * * *` → `…task=backup&key=…` (PHP-Fallback in der Doku). `cron_jobs.py` bleibt für Umgebungen MIT Python erhalten (Status-Task, Backup, lokale Nutzung).
 - **`maintenance.py`/Wartungscenter:** zeigt jetzt den Cron-HTTP-Status (aktiv/deaktiviert), die fertigen wget-Befehle und warnt, wenn `CRON_SECRET` fehlt.
 - **Tests:** +6 in `tests/test_cron_backup.py` (Secret-Schutz 404/403/400, backup/all-Ausführung mit Heartbeat, Fehlerfall). Teststand: 275 → **281 bestanden**, Coverage **79 %**.
+
+## 2026-09-01 - Sicherheits-Automatik: Dependabot + pip-audit (Pins auf 3.9-Sicherheitsstand)
+
+- **Ausgangslage:** `pip-audit` meldete 36 Advisories in `requirements.txt` und 47 in `requirements_py39.txt` (Flask, Werkzeug, Jinja2, requests, urllib3, python-dotenv, Pillow, click, idna, pytest, bleach).
+- **Pins gehoben — jeweils neueste Python-3.9-taugliche Version** (3.9 = feste Netcup-Vorgabe): Flask 3.0.3→**3.1.3**, Werkzeug 3.0.4→**3.1.7**, Jinja2 3.1.4→**3.1.6** (py39), click→**8.1.8**, blinker→**1.9.0** (für Flask 3.1 nötig), requests→**2.32.5**, urllib3 1.26.20→**2.6.3**, idna→**3.15**, python-dotenv→**1.2.1**, Pillow 10.4.0→**11.3.0**, pytest→**8.4.2**, bleach→**6.2.0**. Alle `requires_python`-Werte per PyPI-Metadaten gegen 3.9 verifiziert; komplette Suite auf neuem Stack grün (281/281, Coverage 79 %).
+- **Bewusst ignorierte Rest-Advisories (26 IDs, im CI-Audit dokumentiert):** deren Fix-Versionen verlangen Python ≥ 3.10 (Pillow-Fixes erst ab 12.x, pytest ab 9.0.3, bleach ab 6.4.0, requests ab 2.33.0, urllib3 ab 2.7.0, click ab 8.3.3, python-dotenv ab 1.2.2). Solange Netcup nur 3.9 anbietet, ist das der maximale Stand; bei 3.10+ Liste abbauen und Pins anheben.
+- **CI neu:** eigener Job **„Security Audit (pip-audit)"** im Workflow (auditiert `requirements.txt` + `requirements_py39.txt`, Exit ≠ 0 = rot; lokal end-to-end simuliert: „No known vulnerabilities found").
+- **Dependabot neu:** `.github/dependabot.yml` — wöchentliche Update-PRs für pip + github-actions, Label `dependencies`. Die CI-Matrix (3.9–3.13) prüft jeden PR automatisch: Updates ohne 3.9-Support werden rot.
+- **`requirements_py39.txt`:** Header korrigiert — die Datei IST die gepflegte Netcup-Datei (Option [1] in `build_vendor.bat`), alle Pins aktualisiert.
+- **Folgeaktion Netcup:** `vendor/` mit `build_vendor.bat` (Option 1) neu bauen + hochladen + Plesk-Restart — erst dadurch wirken die Sicherheitsfixes in Produktion.

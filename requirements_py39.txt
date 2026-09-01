@@ -1,27 +1,26 @@
 # =====================================================
 # Wulmstörper Tipprunde - Dependencies für Python 3.9
 #
-# ⚠️ HINWEIS: Diese Datei wird nicht mehr aktiv gepflegt.
-# Wenn möglich, nutze die normale requirements.txt mit Python 3.10+.
-# (kompatibel mit älterem Netcup-Python)
-#
-# Falls dein Netcup-Plesk Python 3.10 oder neuer anbietet,
-# nutze stattdessen die normale requirements.txt
+# WICHTIG: Dies ist DIE Datei für Netcup/Plesk (dort ist
+# Python 3.9 die einzige wählbare Version) - build_vendor.bat
+# Option [1] nutzt genau diese Datei für den vendor/-Ordner.
+# Alle Pins sind auf die neueste 3.9-kompatible Version
+# gehoben (Sicherheits-Scan pip-audit, Stand 01.09.2026).
 # =====================================================
 
 # Flask-Stack (alle 3.9-kompatibel)
-Flask==3.0.3
+Flask==3.1.3
 Flask-SQLAlchemy==3.1.1
 Flask-Login==0.6.3
 Flask-WTF==1.2.1
 Flask-Mail==0.10.0
 WTForms==3.1.2
 email-validator==2.2.0
-Werkzeug==3.0.4
-Jinja2==3.1.4
+Werkzeug==3.1.7
+Jinja2==3.1.6
 MarkupSafe==2.1.5
-click==8.1.7
-blinker==1.8.2
+click==8.1.8
+blinker==1.9.0
 itsdangerous==2.2.0
 
 # DB
@@ -29,22 +28,22 @@ SQLAlchemy==2.0.36
 typing_extensions==4.12.2
 greenlet==3.1.1
 
-# HTTP - WICHTIG: alte Versionen für Python 3.9
-requests==2.31.0
-urllib3==1.26.20
+# HTTP - letzte 3.9-kompatible Versionen
+requests==2.32.5
+urllib3==2.6.3
 certifi==2024.8.30
 charset-normalizer==3.3.2
-idna==3.10
+idna==3.15
 chardet==5.2.0
 
 # E-Mail
 dnspython==2.6.1
 
 # Sonstiges
-python-dotenv==1.0.1
+python-dotenv==1.2.1
 
 # Optional (kann fehlen falls Probleme)
-Pillow==10.4.0
+Pillow==11.3.0
 reportlab==4.2.2
 
 # Sicherheits-Backports für ältere Python-Versionen
@@ -58,4 +57,4 @@ typing_extensions==4.12.2
 Flask-Limiter==3.5.1
 
 # XSS-Sanitizing für Kommentare
-bleach==6.1.0
+bleach==6.2.0
