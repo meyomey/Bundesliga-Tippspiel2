@@ -37,7 +37,7 @@ idna==3.15
 chardet==5.2.0
 
 # E-Mail
-dnspython==2.6.1
+dnspython==2.8.0
 
 # Sonstiges
 python-dotenv==1.2.1
