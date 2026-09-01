@@ -12,13 +12,13 @@ Flask-Login==0.6.3
 Flask-WTF==1.2.1
 Flask-Mail==0.10.0
 WTForms==3.1.2
-email-validator==2.2.0
-Werkzeug==3.1.7
+email-validator==2.3.0
+Werkzeug==3.1.8
 requests==2.32.5
 python-dotenv==1.2.1
 itsdangerous==2.2.0
 Pillow==11.3.0
-reportlab==4.2.2
+reportlab==5.0.1
 
 # Optional - nur fuer Standalone-Server (NICHT fuer Plesk/Netcup):
 gunicorn==23.0.0

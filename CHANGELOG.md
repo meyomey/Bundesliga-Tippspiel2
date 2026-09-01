@@ -1244,3 +1244,16 @@ faker==28.4.1
 - **Live-Beobachtung nach dem Push (`e7f60f6`):** Dependabot sprang sofort an (10 PRs) und die 3.9-Matrix funktionierte wie geplant — `pillow 12.3.0` (#9), `wtforms 3.2.2` (#6), `flask-caching 2.5.0` (#11) fielen exakt am Python-3.9-Job durch. Lücke dabei entdeckt: PRs, die **nur `requirements_py39.txt`** ändern, liefen „blind grün" (die Test-Matrix installiert nur `requirements.txt`).
 - **Fix:** neuer Step „Python-3.9-Gate" im 3.9-Job — `pip download -r requirements_py39.txt --no-deps` prüft `requires_python` jedes Pins gegen den echten 3.9-Interpreter und bricht bei unpassendem Pin ab. Lokal in beide Richtungen verifiziert: aktueller Stand grün, injiziertes `click==8.5.0` (braucht ≥3.10) rot („No matching distribution found").
 - **GitHub-Stand verifiziert:** main = `e7f60f6` mit dependabot.yml, neuen Pins und Audit-Job; CI-Lauf komplett grün (7/7 inkl. „Security Audit (pip-audit)").
+
+## 2026-09-01 - Dependabot-Runde 1 abgearbeitet (12 PRs verarbeitet, finaler Stack)
+
+- **6 PRs gemergt** (alle via CI verifiziert, inkl. Python-3.9-Matrix und 3.9-Gate): `#1 actions/checkout 5→7`, `#2 actions/setup-python 6→7`, `#4 reportlab 4.2.2→5.0.1` (requires_python `<4,>=3.9` ✓), `#7 MarkupSafe 2.1.5→3.0.3` (nur py39-Datei, ≥3.9 ✓), `#8 email-validator 2.2.0→2.3.0` (≥3.8 ✓), `#10 Werkzeug 3.1.7→3.1.8` (≥3.9 ✓).
+- **6 PRs geschlossen** (Updates brauchen Python ≥ 3.10 — korrekt abgelehnt): `#3 zipp 4.1.0`, `#5 click 8.5.0`, `#6 WTForms 3.2.2`, `#9 Pillow 12.3.0`, `#11 flask-caching 2.5.0`, `#12 dnspython 2.8.0`.
+- **Live verifiziert:** main = `9bf0825`, CI-Lauf auf main komplett grün (Tests 3.9–3.13, Flake8, Audit, 3.9-Gate); lokaler Workspace auf den finalen Stand synchronisiert — Suite **281/281 grün**, pip-audit auf beiden requirements-Dateien sauber (Exit 0).
+- **Netcup:** `vendor/` wurde mit `build_vendor.bat` neu gebaut und per FTP hochgeladen (Nutzer, 01.09.) — die Sicherheitsfixes (Flask 3.1.3, Werkzeug ≥ 3.1.7, Pillow 11.3.0, …) sind damit in Produktion wirksam. Optional: Vendor mit dem finalen Merge-Stand (Werkzeug 3.1.8, email-validator 2.3.0, reportlab 5.0.1) bei Gelegenheit neu bauen — rein inkrementell, nichts Dringendes.
+- **Hinweis:** Dependabot legt die 6 abgelehnten Updates wöchentlich neu auf — optional Ignore-Regeln in `.github/dependabot.yml` eintragen (z. B. click ≥ 8.2, Pillow ≥ 12, zipp ≥ 4, dnspython ≥ 2.8, WTForms ≥ 3.2, flask-caching ≥ 2.4 ignorieren, solange Python 3.9 gilt).
+
+## 2026-09-01 - Dependabot-Ignore-Regeln (3.9-Schutz dauerhaft)
+
+- **`.github/dependabot.yml`:** sechs `ignore`-Regeln unter pip, damit die abgelehnten Updates nicht wöchentlich neu aufgelegt werden: `click >= 8.2`, `wtforms >= 3.2`, `pillow >= 12`, `flask-caching >= 2.4` (2.4.0 verlangt ≥3.10, 2.5.0 sogar ≥3.11), `zipp >= 4`, `dnspython >= 2.8`. Kommentar im File dokumentiert die letzten 3.9-tauglichen Versionen und die Bedingung, die Regeln bei einem künftigen Netcup-Python-3.10+ zu entfernen.
+- **Nebeneffekt gewollt:** für `dnspython` (2.7.0 geht noch auf 3.9) und `zipp` (3.21.0 geht noch auf 3.9) darf Dependabot die 3.9-kompatiblen Zwischenversionen weiter anbieten — solche PRs sind grün und können bedenkenlos gemergt werden (Grenzen per PyPI-`requires_python` verifiziert).

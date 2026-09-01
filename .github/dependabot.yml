@@ -17,6 +17,28 @@ updates:
       - "dependencies"
     commit-message:
       prefix: "deps(pip)"
+    ignore:
+      # Python 3.9 ist die feste Netcup-Zielversion (Plesk bietet dort nur 3.9
+      # an). Die folgenden Pakete brauchen ab den genannten Versionen Python
+      # >= 3.10 (bzw. >= 3.11) - diese Updates wuerden die 3.9-CI rot machen
+      # und sind deshalb zu ignorieren. Die Pins stehen jeweils auf der
+      # neuesten 3.9-tauglichen Version.
+      # WICHTIG: Sollte Netcup kuenftig Python 3.10+ anbieten, diese Regeln
+      # entfernen und die betroffenen Pins anheben!
+      # Letzte 3.9-Versionen: click 8.1.8, WTForms 3.1.2, Pillow 11.3.0,
+      # flask-caching 2.3.0, zipp 3.20.2, dnspython 2.6.1
+      - dependency-name: "click"
+        versions: [">=8.2"]
+      - dependency-name: "wtforms"
+        versions: [">=3.2"]
+      - dependency-name: "pillow"
+        versions: [">=12"]
+      - dependency-name: "flask-caching"
+        versions: [">=2.4"]
+      - dependency-name: "zipp"
+        versions: [">=4"]
+      - dependency-name: "dnspython"
+        versions: [">=2.8"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
