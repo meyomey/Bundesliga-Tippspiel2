@@ -9,7 +9,7 @@ jobs:
     name: Flake8 Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
@@ -34,7 +34,7 @@ jobs:
         # 3.10-3.13 = Abwaertskompatibilitaet
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
@@ -82,7 +82,7 @@ jobs:
         --ignore-vuln GHSA-gj48-438w-jh9v
         --ignore-vuln GHSA-8rfp-98v4-mmr6
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
