@@ -49,4 +49,4 @@ faker==28.4.1
 
 # Rate Limiting (brute-force protection)
 Flask-Limiter==3.5.1
-bleach==6.2.0
+bleach==6.4.0
