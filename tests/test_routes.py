@@ -134,6 +134,20 @@ class TestMainRoutes:
         assert 'vollem Namen und Lieblingsverein'.encode('utf-8') in response.data
         assert 'Smartphone kannst du den Spieler kurz antippen'.encode('utf-8') in response.data
 
+    def test_help_rules_points_section_explains_draw_cases(self, auth_client):
+        """Die Punkte-Hilfe erklaert die Unentschieden-Faelle eindeutig
+        (haeufigstes Missverstaendnis: Remis-Tipp = nur Tendenz, nicht Differenz)."""
+        response = auth_client.get('/hilfe')
+        assert response.status_code == 200
+        for marker in ['nicht kombiniert',          # genau eine Stufe pro Spiel
+                       '0 Punkte',                  # falscher Ausgang
+                       'Tor für Tor',               # exaktes Ergebnis mit Remis-Beispiel
+                       'Gilt auch beim Remis',
+                       'nur bei Siegen',            # Differenz-Stufe nicht bei Remis
+                       'Tipp 1:1, Ergebnis 1:1',
+                       'Tipp 1:1, Ergebnis 2:2']:   # Remis zaehlt als Tendenz
+            assert marker.encode('utf-8') in response.data, f'Punkte-Hilfe unklar: "{marker}" fehlt'
+
     def test_rules_alias_redirectless(self, auth_client):
         """Test: /regeln ist als stabiler Alias erreichbar."""
         response = auth_client.get('/regeln')

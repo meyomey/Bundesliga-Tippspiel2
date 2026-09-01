@@ -1192,3 +1192,14 @@ faker==28.4.1
 - Nebenbei: toten `from badges import check_and_award_badges`-Import in `seed_demo_data` entfernt; alle 8 Dateien flake8-clean (F401/F811/F821/E9/F63/F7/F82).
 - **Kein einziger bestehender Test musste angepasst werden** — die Fassaden halten alle Importpfade und Monkeypatch-Ziele am Leben. Neu dazu: `tests/test_split_facades.py` (5 Vertragstests) sichert die Re-Exports dauerhaft ab (Namenslisten + Identitaet Fassade→Fachmodul + `sync.requests`-Monkeypatch-Ziel + Azyklik).
 - Teststand: 251 → **256 bestanden**. Gesamt-Coverage: **79 %** (unveraendert; die Importkoepfe der neuen Module werden vom Vertragstest abgedeckt).
+## 2026-08-31 - Push & Deploy: Stand komplett live
+
+- **GitHub:** 2 Commits per Desktop gepusht — `89486e7` (Coverage-Runde: export.py & whatsapp.py auf 100 %) und `5b2a925` („sync.py/stats.py Aufteilung"). CI-Lauf Nr. 5 zum Push **gruen (6/6 Jobs)** — via GitHub-API verifiziert.
+- **Netcup:** `03_Deploy_2026-08-31.zip` hochgeladen + Plesk-Restart durchgefuehrt — Status-Monotonie-Fix (30.08.), Coverage-Runde und Prio-7-Split sind damit produktiv.
+- `build_lieferungen.py`: `GITHUB_UPLOAD_FILES` wieder geleert (04 entfaellt, bis der naechste lokale Aenderungsblock ansteht).
+## 2026-09-01 - Hilfe: Punktevergabe verstaendlicher erklaert (Unentschieden-Fokus)
+
+- **Problem (Nutzer-Feedback):** Mehrere Tipper verstanden die Punktevergabe bei Unentschieden falsch — der Punktwert fuer „Richtige Tordifferenz" wird bei Remis nie vergeben, was aus dem alten Hilfetext nicht hervorging.
+- **`templates/help_rules.html` (Sektion „Punkte"):** Einleitung ergaenzt („genau eine Stufe pro Spiel, nichts wird kombiniert, Joker verdoppelt; Ausgang daneben = 0 Punkte"); alle drei Stufen mit klaren Beispielen; Unentschieden kompakt in den Stufen-Texten erklaert (Remis zaehlt nur als Exakt bei exakter Torzahl — Tipp 1:1 = Ergebnis 1:1 —, sonst als Tendenz — Tipp 1:1, Ergebnis 2:2; die Differenz-Stufe gibt es nur bei Siegen). Joker-Sektion mit Rechenbeispiel. (Auf Nutzerwunsch ohne zusaetzliche Akzent-Box — Erklaerung nur in den bestehenden Stufen-Karten.)
+- **Tests:** `test_help_rules_points_section_explains_draw_cases` in `tests/test_routes.py` pinnt die neuen Erklaerungen (11 Marker).
+- Teststand: 256 → **257 bestanden**, Coverage **79 %**.

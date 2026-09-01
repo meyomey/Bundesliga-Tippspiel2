@@ -1,4 +1,4 @@
-GITHUB-UPLOAD-PAKET - fuer GitHub Desktop (Stand 2026-08-31)
+GITHUB-UPLOAD-PAKET - fuer GitHub Desktop (Stand 2026-09-01)
 ====================================================
 
 Dieses Paket enthaelt die Dateien, die auf GitHub fehlen bzw. sich
@@ -17,4 +17,4 @@ DIE CI LAEUFT DANN AUTOMATISCH:
     - pytest auf Python 3.9-3.13 (3.9 = Netcup-Zielversion)
 
 Quelle:  Commit 2982653 (2026-08-31 18:58) + lokale Aenderungen
-Teststand: 256/256 Tests gruen, Coverage 79 %
+Teststand: 257/257 Tests gruen, Coverage 79 %

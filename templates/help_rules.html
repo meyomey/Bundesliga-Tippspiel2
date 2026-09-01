@@ -27,17 +27,18 @@
 
   <section class="card rule-card rule-points" id="punkte">
     <h2>🏅 Punkte</h2>
+    <p>Pro Spiel zählt genau <strong>eine</strong> der drei Stufen — sie werden nicht kombiniert. Setzt du den Joker, verdoppeln sich die Punkte. Liegt der Ausgang daneben, gibt es 0 Punkte.</p>
     <div class="points-list">
-      <div><strong>{{ points.exact }}</strong><span>Exaktes Ergebnis</span><small>Dein Tipp stimmt komplett, z. B. 2:1.</small></div>
-      <div><strong>{{ points.diff }}</strong><span>Richtige Tordifferenz</span><small>Sieger und Differenz stimmen, z. B. Tipp 2:0, Ergebnis 3:1.</small></div>
-      <div><strong>{{ points.tendency }}</strong><span>Richtige Tendenz</span><small>Sieger oder Unentschieden stimmt, Ergebnis aber nicht exakt.</small></div>
+      <div><strong>{{ points.exact }}</strong><span>Exaktes Ergebnis</span><small>Dein Tipp stimmt Tor für Tor: Tipp 2:1, Ergebnis 2:1. Gilt auch beim Remis: Tipp 1:1, Ergebnis 1:1.</small></div>
+      <div><strong>{{ points.diff }}</strong><span>Richtige Tordifferenz</span><small>Sieger und Torabstand stimmen: Tipp 2:0, Ergebnis 3:1 (Differenz +2). Diese Stufe gibt es nur bei Siegen — bei einem Unentschieden nicht.</small></div>
+      <div><strong>{{ points.tendency }}</strong><span>Richtige Tendenz</span><small>Der Ausgang stimmt (richtiger Sieger oder Unentschieden), aber nicht die Torhöhe: Tipp 2:0, Ergebnis 1:0. Auch Tipp 1:1, Ergebnis 2:2 zählt als Tendenz.</small></div>
     </div>
   </section>
 
   <section class="card rule-card" id="joker">
     <h2>🃏 Joker</h2>
     <p>Der Joker verdoppelt die Punkte für das ausgewählte Spiel. Pro Spieltag kannst du einen Joker setzen.</p>
-    <p class="muted small">Wenn ein Spiel falsch getippt ist, bringt auch der Joker keine Punkte. Ein bereits gestartetes Joker-Spiel kann nicht mehr verschoben werden.</p>
+    <p class="muted small">Beispiel: Richtige Tendenz ({{ points.tendency }} Punkte) mit Joker → {{ points.tendency }} × 2 = {{ (points.tendency|int) * 2 }} Punkte. Wenn ein Spiel falsch getippt ist, bringt auch der Joker keine Punkte. Ein bereits gestartetes Joker-Spiel kann nicht mehr verschoben werden.</p>
   </section>
 
   <section class="card rule-card" id="tippabgabe">
