@@ -57,4 +57,4 @@ typing_extensions==4.12.2
 Flask-Limiter==3.5.1
 
 # XSS-Sanitizing für Kommentare
-bleach==6.2.0
+bleach==6.4.0
