@@ -56,6 +56,7 @@
     <summary class="muted" style="cursor:pointer">Details anzeigen</summary>
     <div class="backup-info-box">
       <div><strong>App</strong><span>{{ health.app_root }}</span></div>
+      <div><strong>Python</strong><span>{{ health.python_executable }}</span></div>
       <div><strong>Vendor</strong><span>{{ health.vendor_dir }}</span></div>
       <div><strong>Uploads</strong><span>{{ health.uploads_dir }}</span></div>
       <div><strong>Logos</strong><span>{{ health.logo_dir }}</span></div>
@@ -67,6 +68,64 @@
       {% endfor %}
     </p>
   </details>
+</div>
+
+<div class="admin-section">
+  <h2 class="admin-section-title">⏰ Cron &amp; Backup</h2>
+  <div class="card" style="margin-bottom:16px;">
+    <h3 style="margin:0 0 10px;">Automatik-Status (Heartbeat)</h3>
+    {% set any_never = health.cron | selectattr('state', 'equalto', 'never') | list | length > 0 %}
+    <div class="cron-status-list" style="display:grid; gap:8px;">
+      {% for row in health.cron %}
+        {% set icon = {'ok':'✅','warn':'⚠️','error':'❌','never':'⚪'}[row.state] %}
+        <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+          <span>{{ icon }} <strong>{{ row.label }}</strong></span>
+          <span class="muted small">
+            {% if row.state == 'never' %}noch nie gelaufen
+            {% elif row.state == 'error' and not row.ok %}letzter Lauf fehlgeschlagen{% if row.detail %}: {{ row.detail }}{% endif %}
+            {% else %}vor {{ row.age_minutes|round(0)|int }} min{% if row.detail %}: {{ row.detail }}{% endif %}{% endif %}
+          </span>
+        </div>
+      {% endfor %}
+    </div>
+    {% if any_never %}
+      <div class="flash flash-warning" style="margin-top:12px;">
+        <strong>Plesk-Cron noch nicht eingerichtet?</strong> Netcup führt geplante Aufgaben
+        im chroot aus (kein Python verfügbar) — deshalb rufen die Aufgaben die App per URL auf.
+        Lege in Plesk (Websites &amp; Domains → deine Domain → Geplante Aufgaben) zwei Aufgaben an:
+        <ol style="margin:6px 0 0 18px; display:grid; gap:8px;">
+          <li>Alle 15 Minuten (<code>*/15 * * * *</code>):<br><code>wget -q -O /dev/null "{{ health.cron_base_url or 'https://DEINE-DOMAIN' }}/cron/run?task=all&amp;key=DEIN_SECRET"</code></li>
+          <li>Täglich 03:15 Uhr (<code>15 3 * * *</code>):<br><code>wget -q -O /dev/null "{{ health.cron_base_url or 'https://DEINE-DOMAIN' }}/cron/run?task=backup&amp;key=DEIN_SECRET"</code></li>
+        </ol>
+        <span class="muted small"><code>DEIN_SECRET</code> = Wert von <code>CRON_SECRET</code> in <code>.env</code>.
+        Falls wget nicht verfügbar: <code>php -r 'file_get_contents("https://…/cron/run?task=all&amp;key=…");'</code>
+        Details in <code>DEPLOY_NETCUP.md</code> → Schritt 8.</span>
+      </div>
+    {% endif %}
+    <p class="muted small" style="margin-top:10px;">
+      Cron-HTTP-Zugang: <strong>{{ '✅ aktiv' if health.cron_secret_set else '❌ deaktiviert (CRON_SECRET in .env fehlt)' }}</strong>
+      · App-Python: <code>{{ health.python_executable }}</code> (in der Cron-chroot nicht verfügbar)
+    </p>
+    <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+      <form method="post" action="{{ url_for('admin.maintenance_backup_now') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn-primary btn-sm">💾 Jetzt Backup erstellen</button>
+      </form>
+      <span class="muted small">{{ health.backups_total }} Backups vorhanden
+        {% if health.backups %}(neuestes: {{ health.backups[0].name }}, {{ (health.backups[0].size / 1024) | round(0) | int }} KB){% endif %}</span>
+    </div>
+    {% if health.backups %}
+      <details style="margin-top:10px;">
+        <summary class="muted small" style="cursor:pointer">Letzte Backups anzeigen</summary>
+        <div class="backup-info-box" style="margin-top:8px;">
+          {% for b in health.backups[:5] %}
+            <div><strong>{{ b.mtime }}</strong><span>{{ b.name }} ({{ (b.size / 1024) | round(0) | int }} KB)</span></div>
+          {% endfor %}
+        </div>
+        <p class="muted small">Backups liegen auf dem Server in <code>backups/</code> — für echten Schutz regelmäßig per FTP herunterladen (Offsite-Kopie).</p>
+      </details>
+    {% endif %}
+  </div>
 </div>
 
 <div class="admin-section">

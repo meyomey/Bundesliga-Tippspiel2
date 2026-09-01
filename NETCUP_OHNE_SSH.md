@@ -72,10 +72,17 @@ Etwa **30–60 MB** (je nach Pillow-Variante). FTP-Upload dauert ~5–10 Minuten
 - Per FTP hochladen
 - Plesk Filemanager öffnen → Rechtsklick → "Entpacken"
 
+### Cron-Automatik & Backup
+Netcup führt Cronjobs im **chroot ohne Python** aus — deshalb rufen die Aufgaben die App per URL auf (Route `/cron/run`, geschützt durch `CRON_SECRET` in `.env`). Zwei geplante Aufgaben in Plesk anlegen („Geplante Aufgaben" → Aufgabe hinzufügen):
+1. `*/15 * * * *` → `wget -q -O /dev/null "https://tipp.wulmstorf.net/cron/run?task=all&key=<CRON_SECRET>"` (Sync + Bots + Reminder)
+2. `15 3 * * *` → `wget -q -O /dev/null "https://tipp.wulmstorf.net/cron/run?task=backup&key=<CRON_SECRET>"` (tägliches DB-Backup nach `backups/`, Rotation 14 Stück)
+
+Jeder Lauf schreibt einen Heartbeat — Status und „Jetzt Backup erstellen"-Button finden sich im Admin-Wartungscenter („Cron & Backup"); dort stehen auch die fertigen wget-Befehle. Details: `DEPLOY_NETCUP.md` → Schritt 8.
+
 ### Welche Python-Version?
-Wähle in Plesk **Python 3.11** aus. Die Vendor-Pakete sind kompatibel.
-Falls Plesk eine andere Version vorgibt: in `build_vendor.bat`
-die Zeile `--python-version=3.11` entsprechend anpassen.
+Auf dem Netcup-Webhosting ist in Plesk aktuell **nur Python 3.9** auswählbar — das ist die feste Rahmenbedingung, wähle also **Python 3.9**. Die Vendor-Pakete dafür baust du mit `build_vendor.bat` Option **[1] Python 3.9** (nutzt `requirements_py39.txt`).
+
+Python 3.9 ist seit Okt. 2025 offiziell EOL (keine Security-Patches mehr vom Python-Team) — für diese private Tipprunde akzeptiert: die CI testet 3.9 als Zielversion, alle Pins in `requirements.txt` bleiben 3.9-kompatibel, und app-seitige Härtung (Security-Gate, Rate-Limiting, CSRF) federt das ab. Falls Netcup künftig neuere Versionen anbietet: `build_vendor.bat` Option [2]/[3] und die CI-Matrix (3.10–3.13) sind bereits vorbereitet.
 
 ### "ImportError" trotz vendor/?
 Falls eines der Pakete (z.B. Pillow) **C-Extensions** braucht und auf
@@ -107,7 +114,7 @@ dann globalen Python — was zuerst Flask findet, wird genutzt.
 | Application URL | `/` |
 | Application Startup File | `passenger_wsgi.py` |
 | Application Entry Point | `application` |
-| Python Version | `3.11` (empfohlen) |
+| Python Version | `3.9` (einzige wählbare Version) |
 | Application Mode | `Production` |
 
 ---

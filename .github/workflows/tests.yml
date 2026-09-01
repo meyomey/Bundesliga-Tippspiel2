@@ -30,7 +30,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 3.9 = Netcup/Plesk-Zielversion; 3.10-3.13 = Abwaertskompatibilitaet
+        # 3.9 = einzige auf Netcup/Plesk waehlbare Version (Zielversion);
+        # 3.10-3.13 = Abwaertskompatibilitaet
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v5

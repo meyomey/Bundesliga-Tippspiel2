@@ -844,6 +844,14 @@ def maintenance_run():
     return _admin_maintenance_run()
 
 
+@admin_bp.route("/maintenance/backup-now", methods=["POST"])
+@login_required
+@admin_required
+def maintenance_backup_now():
+    from admin_maintenance_routes import _admin_cron_backup_now
+    return _admin_cron_backup_now()
+
+
 @admin_bp.route("/cache")
 @login_required
 @admin_required

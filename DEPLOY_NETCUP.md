@@ -28,8 +28,9 @@ start.bat          :: startet die App auf http://localhost:5000
 
 **Login:** `admin@tippspiel.local` / `admin123`
 
-> Bei Problemen: stelle sicher, dass Python 3.10+ installiert ist und beim
-> Setup "Add Python to PATH" aktiviert war.
+> Bei Problemen: stelle sicher, dass Python 3.9 oder neuer installiert ist und
+> beim Setup "Add Python to PATH" aktiviert war (lokal unterstützt die App
+> 3.9–3.13; auf Netcup gilt 3.9).
 
 ---
 
@@ -52,7 +53,7 @@ start.bat          :: startet die App auf http://localhost:5000
 
 | Feld | Wert |
 |------|------|
-| Python-Version | **3.10** oder **3.11** |
+| Python-Version | **3.9** |
 | Application Mode | **Production** |
 | Application Root | `/httpdocs` (oder eigener Pfad) |
 | Application URL | `/` |
@@ -60,6 +61,8 @@ start.bat          :: startet die App auf http://localhost:5000
 | Application Entry Point | `application` |
 
 4. **Apply / Übernehmen** klicken
+
+> ⚠️ **Wichtig:** Auf dem Netcup-Webhosting ist in Plesk aktuell **nur Python 3.9** auswählbar — das ist die feste Rahmenbedingung dieser App. Alle Abhängigkeiten bleiben deshalb 3.9-kompatibel (`requirements.txt`-Pins, CI testet 3.9 als Zielversion). Python 3.9 ist seit Okt. 2025 offiziell EOL (keine Security-Patches mehr vom Python-Team); für diese private Runde akzeptiert und durch app-seitige Härtung (Security-Gate, Rate-Limiting, CSRF) abgefedert. Vendor-Pakete mit `build_vendor.bat` Option **[1] Python 3.9** bauen. Falls Netcup künftig neuere Versionen anbietet, sind Option [2]/[3] und die CI-Matrix (3.10–3.13) bereits vorbereitet.
 
 > Plesk legt jetzt im Hintergrund eine virtuelle Umgebung (venv) an, z. B. unter
 > `/var/www/vhosts/deinedomain.de/.python-venvs/tippspiel/`.
@@ -149,6 +152,10 @@ MAIL_DEFAULT_SENDER=tippspiel@deinedomain.de
 # football-data.org Token (kostenlos: football-data.org/client/register)
 FOOTBALL_DATA_TOKEN=
 
+# Cron-Zugang: Secret fuer den HTTP-Cron (/cron/run?key=...) - langen Zufallswert setzen!
+# Ohne diesen Wert sind die Plesk-Cron-Aufgaben wirkungslos (Route deaktiviert).
+CRON_SECRET=df4335bed8617c1f3f999ef9c5e254da
+
 # Datenbank
 # SQLite reicht fuer kleine Tippspiele (bis ~100 User).
 # Fuer mehr: PostgreSQL/MySQL bei Netcup im Plesk anlegen, dann hier eintragen:
@@ -192,27 +199,54 @@ Beim ersten Aufruf werden automatisch:
 
 ---
 
-## ⏰ Schritt 8: Cron-Jobs einrichten (für Reminder + API-Sync)
+## ⏰ Schritt 8: Cron-Jobs einrichten (für Reminder + API-Sync + Backup)
 
-Im Plesk auf **"Geplante Aufgaben"** (oder "Cron"):
+**Wichtig:** Netcup führt geplante Aufgaben in einer **chroot-Umgebung ohne
+Python** aus (`/usr/bin/python3: No such file or directory`). Die Aufgaben
+rufen deshalb die App **per URL** auf — die App (läuft unter Passenger mit
+Python 3.9 + `vendor/`) erledigt die Arbeit selbst und schreibt die
+Heartbeats. Dafür gibt es die Route **`/cron/run`** (geschützt per
+`CRON_SECRET` aus Schritt 5).
 
-### Job 1: Ergebnisse alle 15 Min syncen
+Im Plesk auf **„Geplante Aufgaben"** (Websites & Domains → deine Domain →
+Geplante Aufgaben → „Aufgabe hinzufügen"). **Zwei Aufgaben** anlegen:
+
+### Aufgabe 1: Automatik alle 15 Minuten (Sync + Bots + Reminder)
 | Feld | Wert |
 |------|------|
-| Befehl | `/var/www/vhosts/deinedomain.de/.python-venvs/tippspiel/bin/python /var/www/vhosts/deinedomain.de/tippspiel.deinedomain.de/cron_jobs.py sync` |
+| Aufgabe aktiviert | ✅ |
+| Befehl | `wget -q -O /dev/null "https://tipp.wulmstorf.net/cron/run?task=all&key=df4335bed8617c1f3f999ef9c5e254da"` |
 | Ausführung | `*/15 * * * *` (alle 15 Min) |
+| Benachrichtigen bei Fehlern | ✅ (per E-Mail) |
 
-### Job 2: Reminder alle 10 Min prüfen
+### Aufgabe 2: Datenbank-Backup täglich um 03:15 Uhr
 | Feld | Wert |
 |------|------|
-| Befehl | wie oben, nur am Ende `cron_jobs.py reminder` |
-| Ausführung | `*/10 * * * *` |
+| Aufgabe aktiviert | ✅ |
+| Befehl | `wget -q -O /dev/null "https://tipp.wulmstorf.net/cron/run?task=backup&key=df4335bed8617c1f3f999ef9c5e254da"` |
+| Ausführung | `15 3 * * *` (täglich 03:15 Uhr) |
+| Benachrichtigen bei Fehlern | ✅ |
 
-> **Pfade anpassen!** Die genauen Pfade siehst du in Plesk → Python:
-> *"Python Interpreter"* (für die venv) und *"Application Root"*.
+> **`&` in Plesk:** Sollte Plesk das `&` im Befehl beanstanden, den Befehl in
+> Anführungszeichen setzen (wie oben) — oder als Aufgabe-Typ „URL abrufen"
+> anlegen (falls Plesk das anbietet) mit der URL aus dem Befehl.
 
-> **Tipp:** Im Cron-Output kannst du Logs einsehen → Plesk schickt sie dir per
-> Mail oder zeigt sie im Aufgaben-Log.
+> **Fallback ohne wget:** `php -r 'file_get_contents("https://tipp.wulmstorf.net/cron/run?task=all&key=df4335bed8617c1f3f999ef9c5e254da");'`
+> (PHP ist im chroot verfügbar).
+
+> **Sofort testen:** Plesk bietet bei jeder Aufgabe einen „Ausführen"-Button (▶).
+> Danach im Admin-Bereich → **Wartungscenter → „Cron & Backup"** prüfen: Alle
+> Aufgaben zeigen ✅ mit „vor X min". Dort gibt es auch den Button
+> **„💾 Jetzt Backup erstellen"** für einen sofortigen Test. Die Seite zeigt
+> außerdem die fertigen wget-Befehle an und warnt, falls `CRON_SECRET` fehlt.
+
+> **Offsite-Kopie:** Die Backups liegen in `backups/` auf demselben Server wie
+> die App. Für echten Schutz **regelmäßig (mind. wöchentlich) per FTP
+> herunterladen** — so überlebt die Tipprunde auch einen Serverausfall.
+
+> **Überwachung:** Jeder Lauf schreibt einen Heartbeat in die Datenbank.
+> Das Wartungscenter warnt automatisch, wenn eine Aufgabe überfällig ist
+> oder der letzte Lauf fehlgeschlagen ist. So stirbt der Cron nie unbemerkt.
 
 ---
 

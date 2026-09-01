@@ -19,6 +19,9 @@ tippspiel.db
 instance/
 .env
 
+# --- Cron-Backups (nicht ins Repo) ---
+backups/
+
 # --- Lokal erzeugte Build-Artefakte ---
 _lieferungen/
 vendor/

@@ -43,6 +43,8 @@ class Config:
     FOOTBALL_DATA_BASE = "https://api.football-data.org/v4"
     PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "")
     TELEGRAM_WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
+    # Secret fuer den HTTP-Cron-Zugang (/cron/run?key=...); ohne Secret deaktiviert
+    CRON_SECRET = os.environ.get("CRON_SECRET", "")
 
     # Saison (Bundesliga 2025/26)
     SEASON = "2025"

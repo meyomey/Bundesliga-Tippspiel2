@@ -2,6 +2,9 @@
 # Wulmstörper Tipprunde - Core Dependencies
 # Funktioniert auf Windows, Linux und Netcup Shared Hosting
 # =====================================================
+# WICHTIG: Alle Pins muessen Python 3.9 unterstuetzen!
+# Netcup-Plesk bietet aktuell nur 3.9 als waehlbare Version;
+# die CI testet 3.9 deshalb als Zielversion (Matrix 3.9-3.13).
 
 Flask==3.0.3
 Flask-SQLAlchemy==3.1.1

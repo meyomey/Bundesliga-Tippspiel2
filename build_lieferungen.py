@@ -34,9 +34,25 @@ NOT_RUNTIME = DEV_PY | {"build_lieferungen.py"}              # nur in 02, nicht 
 # solange keine offenen GitHub-Aenderungen existieren. Beim naechsten lokalen
 # Aenderungsblock einfach wieder befuellen.
 GITHUB_UPLOAD_FILES = [
-    # 01.09.2026: Punkte-Hilfe (Unentschieden-Erklaerung, ohne Akzent-Box)
-    "templates/help_rules.html",
-    "tests/test_routes.py",
+    # 01.09.2026: Python 3.9 als feste Netcup-Rahmenbedingung dokumentiert
+    "DEPLOY_NETCUP.md",
+    "NETCUP_OHNE_SSH.md",
+    "requirements.txt",
+    ".github/workflows/tests.yml",
+    # 01.09.2026: DB-Backup + Cron-Heartbeat (Prio 1 Produktions-Absicherung)
+    "cron_jobs.py",
+    "cron_heartbeat.py",
+    "backup.py",
+    "maintenance.py",
+    "admin_maintenance_routes.py",
+    "routes_admin.py",
+    "templates/admin/maintenance.html",
+    "tests/test_cron_backup.py",
+    # 01.09.2026: HTTP-Cron für Plesk-chroot (kein Python im Cron)
+    "main_cron_routes.py",
+    "app.py",
+    "config.py",
+    ".gitignore",
     "CHANGELOG.md",
     "build_lieferungen.py",
 ]
@@ -71,7 +87,7 @@ def manifest_01(commit: str, commit_date: str) -> str:
 Build-Datum:   {TODAY}
 Quelle:        git clone meyomey/Bundesliga-Tippspiel2
 Commit:        {commit} ({commit_date})
-Teststand:     257/257 Tests gruen, Coverage 79 %
+Teststand:     281/281 Tests gruen, Coverage 79 %
 Python-Ziel:   3.9 (Netcup/Plesk), kompatibel bis 3.13
 
 INHALT (ZIP direkt in den Application Root entpacken):
@@ -97,7 +113,7 @@ def manifest_02(commit: str, commit_date: str) -> str:
 Build-Datum:   {TODAY}
 Quelle:        git clone meyomey/Bundesliga-Tippspiel2
 Commit:        {commit} ({commit_date})
-Teststand:     257/257 Tests gruen, Coverage 79 %
+Teststand:     281/281 Tests gruen, Coverage 79 %
 
 INHALT:
 - Doku:      README.md, CHANGELOG.md, FEATURES.md, OPTIMIZATION_ROADMAP.md,
@@ -128,7 +144,7 @@ def manifest_deploy(commit: str, commit_date: str) -> str:
 Build-Datum:   {TODAY}
 Quelle:        git clone meyomey/Bundesliga-Tippspiel2
 Commit:        {commit} ({commit_date}) + lokale Aenderungen
-Teststand:     257/257 Tests gruen, Coverage 79 %
+Teststand:     281/281 Tests gruen, Coverage 79 %
 
 WAS IST DRIN:
 Der KOMPLETTE aktuelle Runtime-Stand: alle Python-Module, templates/,
@@ -209,7 +225,7 @@ DIE CI LAEUFT DANN AUTOMATISCH:
     - pytest auf Python 3.9-3.13 (3.9 = Netcup-Zielversion)
 
 Quelle:  Commit {commit} ({commit_date}) + lokale Aenderungen
-Teststand: 257/257 Tests gruen, Coverage 79 %
+Teststand: 281/281 Tests gruen, Coverage 79 %
 """
 
 

@@ -264,6 +264,20 @@ def run_health_check() -> dict:
     if not checks["logos_writable"]:
         warnings.append("Logo-Verzeichnis ist nicht beschreibbar.")
 
+    # Cron-Heartbeat + Backups
+    from cron_heartbeat import get_cron_status, cron_any_never_or_error
+    from backup import list_backups
+    from main_cron_routes import _cron_secret
+    cron_rows = get_cron_status()
+    backups = list_backups()
+    cron_secret = _cron_secret()
+    if cron_any_never_or_error(cron_rows):
+        warnings.append("Cron-Aufgabe überfällig oder noch nie gelaufen - bitte prüfen (Plesk-Cron + Backups).")
+    if not cron_secret:
+        warnings.append("Cron-HTTP-Zugang ist ohne Secret deaktiviert (CRON_SECRET in .env fehlt) - die Plesk-Cron-Aufgaben können so nichts ausführen.")
+    cron_base_url = (get_setting("public_base_url", current_app.config.get("PUBLIC_BASE_URL", ""))
+                     or "").rstrip("/")
+
     return {
         "teams_total": teams_total,
         "remote_logos": remote_logos,
@@ -273,6 +287,8 @@ def run_health_check() -> dict:
         "comments": comments,
         "db_ok": True,
         "python_version": sys.version.split()[0],
+        "python_executable": sys.executable,
+        "python_prefix": getattr(sys, "prefix", ""),
         "app_root": app_root,
         "vendor_dir": vendor_dir,
         "uploads_dir": uploads_dir,
@@ -282,6 +298,11 @@ def run_health_check() -> dict:
         "packages": packages,
         "checks": checks,
         "warnings": warnings,
+        "cron": cron_rows,
+        "backups": backups,
+        "backups_total": len(backups),
+        "cron_secret_set": bool(cron_secret),
+        "cron_base_url": cron_base_url,
     }
 
 

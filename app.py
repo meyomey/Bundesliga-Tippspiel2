@@ -37,6 +37,7 @@ import main_pwa_routes  # noqa: F401
 import main_profile_routes  # noqa: F401
 import main_export_routes  # noqa: F401
 import main_telegram_routes  # noqa: F401
+import main_cron_routes  # noqa: F401
 from routes_auth import auth_bp
 from routes_admin import admin_bp
 from routes_api import api_bp
