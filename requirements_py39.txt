@@ -44,7 +44,7 @@ python-dotenv==1.2.1
 
 # Optional (kann fehlen falls Probleme)
 Pillow==11.3.0
-reportlab==4.2.2
+reportlab==5.0.1
 
 # Sicherheits-Backports für ältere Python-Versionen
 importlib_metadata==8.5.0
