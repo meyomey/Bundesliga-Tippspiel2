@@ -54,7 +54,7 @@ zipp==3.20.2
 typing_extensions==4.12.2
 
 # Rate Limiting
-Flask-Limiter==3.5.1
+Flask-Limiter==4.1.1
 
 # XSS-Sanitizing für Kommentare
 bleach==6.2.0
