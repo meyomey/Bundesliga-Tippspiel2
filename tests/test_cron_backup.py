@@ -243,6 +243,69 @@ def test_cron_jobs_heartbeat_bei_fehler(monkeypatch):
     assert records == [("sync", False, "RuntimeError: kaputt")]
 
 
+# ------------------------------------------------- Doppel-Heartbeat (Fix)
+# Frueher schrieb create_database_backup() den Heartbeat (mit Detail) und
+# _run_task_safe direkt danach ein zweites Mal (ohne Detail) - der zweite
+# Write ueberschrieb das nuetzliche Detail im Wartungscenter.
+
+def test_run_task_safe_doppelt_backup_heartbeat_nicht(monkeypatch):
+    """Genau EIN Heartbeat pro Backup-Lauf - der mit Detail aus backup.py."""
+    import cron_heartbeat as ch
+    import cron_jobs
+    records = []
+    monkeypatch.setattr("cron_heartbeat.record_cron_run",
+                        lambda task, ok=True, detail=None: records.append((task, ok, detail)))
+
+    def fake_backup_task():
+        # wie backup.py: Fachmodul schreibt den Heartbeat selbst
+        ch.record_cron_run("backup", ok=True, detail="tippspiel_x.db (999 Bytes)")
+        return True
+
+    assert cron_jobs._run_task_safe("backup", fake_backup_task) is True
+    assert records == [("backup", True, "tippspiel_x.db (999 Bytes)")]
+
+
+def test_run_task_safe_schreibt_heartbeat_fuer_andere_tasks(monkeypatch):
+    """Tasks ohne eigenen Heartbeat (sync/bots/reminder) bekommen ihn weiterhin."""
+    import cron_jobs
+    records = []
+    monkeypatch.setattr("cron_heartbeat.record_cron_run",
+                        lambda task, ok=True, detail=None: records.append((task, ok, detail)))
+    assert cron_jobs._run_task_safe("sync", lambda: True) is True
+    assert records == [("sync", True, None)]
+
+
+def test_run_task_safe_backup_fehler_vor_fachmodul(monkeypatch):
+    """Sicherheitsnetz: crasht run_backup VOR backup.py (z. B. ImportError),
+    schreibt _run_task_safe trotzdem den Fehler-Heartbeat."""
+    import cron_jobs
+    records = []
+    monkeypatch.setattr("cron_heartbeat.record_cron_run",
+                        lambda task, ok=True, detail=None: records.append((task, ok, detail)))
+    monkeypatch.setattr(cron_jobs, "run_backup",
+                        lambda: (_ for _ in ()).throw(ImportError("flask fehlt")))
+    assert cron_jobs._run_task_safe("backup", cron_jobs.run_backup) is False
+    assert records == [("backup", False, "ImportError: flask fehlt")]
+
+
+def test_dispatch_backup_erhaelt_heartbeat_detail(app, db, file_db, monkeypatch):
+    """End-to-End: echtes Backup ueber den Task-Wrapper - Detail (Dateiname +
+    Groesse) uebersteht _run_task_safe und ist im Wartungscenter sichtbar."""
+    import cron_jobs
+
+    def run_backup_im_testkontext():
+        # wie cron_jobs.run_backup, nur mit der Test-App statt app.app
+        with app.app_context():
+            return create_database_backup()["ok"]
+
+    assert cron_jobs._run_task_safe("backup", run_backup_im_testkontext) is True
+    with app.app_context():
+        status = get_cron_status({"backup": cron_heartbeat.CRON_TASKS["backup"]})
+    assert status[0]["state"] == "ok"
+    assert "tippspiel_" in status[0]["detail"]
+    assert "Bytes" in status[0]["detail"]
+
+
 def test_bootstrap_noop_wenn_flask_importierbar():
     """Mit Flask im Pfad (lokal/venv) darf der Bootstrap nichts veraendern."""
     import cron_jobs
@@ -289,7 +352,10 @@ def test_cron_http_backup_laeuft_mit_key(client, app, db, monkeypatch):
     called = []
 
     def fake_backup():
+        # Vertrag wie backup.py: die Backup-Task schreibt ihren Heartbeat
+        # selbst (inkl. Detail) - _run_task_safe doppelt ihn nicht.
         called.append("backup")
+        record_cron_run("backup", ok=True, detail="tippspiel_fake.db (123 Bytes)")
         return True
 
     monkeypatch.setattr(cron_jobs, "run_backup", fake_backup)
@@ -300,6 +366,8 @@ def test_cron_http_backup_laeuft_mit_key(client, app, db, monkeypatch):
     with app.app_context():
         status = get_cron_status({"backup": cron_heartbeat.CRON_TASKS["backup"]})
         assert status[0]["ok"] is True  # Heartbeat wurde geschrieben
+        # Regression Doppel-Heartbeat: Detail bleibt erhalten
+        assert status[0]["detail"] == "tippspiel_fake.db (123 Bytes)"
 
 
 def test_cron_http_all_fuehrt_sync_bots_reminder_aus(client, app, db, monkeypatch):

@@ -24,7 +24,8 @@ Verfuegbare Tasks:
   python cron_jobs.py status     -> Heartbeat-Status aller Aufgaben ausgeben
 
 Jeder Lauf schreibt einen Heartbeat (cron_last_run:<task> in der Settings-
-Tabelle). Das Admin-Wartungscenter zeigt Alter und Status der letzten Laeufe.
+Tabelle); beim Backup schreibt backup.py ihn selbst inkl. Dateiname/Groesse.
+Das Admin-Wartungscenter zeigt Alter und Status der letzten Laeufe.
 """
 import sys
 import os
@@ -110,13 +111,27 @@ def _bootstrap_dependencies():
 _bootstrap_dependencies()
 
 
+# Tasks, deren Fachmodul den Heartbeat selbst schreibt (mit Detailtext, z. B.
+# Dateiname + Groesse beim Backup). Fuer diese Tasks schreibt _run_task_safe im
+# Erfolgsfall KEINEN zweiten Heartbeat - der wuerde den detailreichen Eintrag
+# des Fachmoduls direkt wieder ueberschreiben (Doppel-Heartbeat). Der
+# Fehlerpfad unten bleibt als Sicherheitsnetz fuer Abbrueche VOR dem
+# Fachmodul-Aufruf (z. B. ImportError) immer aktiv.
+SELF_HEARTBEAT_TASKS = frozenset({"backup"})
+
+
 def _run_task_safe(task, fn):
-    """Fuehrt eine Aufgabe aus und schreibt den Heartbeat (ok/fehler)."""
+    """Fuehrt eine Aufgabe aus und schreibt den Heartbeat (ok/fehler).
+
+    Ausnahme: Tasks in SELF_HEARTBEAT_TASKS schreiben ihren Heartbeat im
+    Erfolgs- wie im Fehlerfall selbst (inkl. Detail) - hier nicht doppeln.
+    """
     from cron_heartbeat import record_cron_run
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     try:
         result = fn()
-        record_cron_run(task, ok=result if isinstance(result, bool) else True)
+        if task not in SELF_HEARTBEAT_TASKS:
+            record_cron_run(task, ok=result if isinstance(result, bool) else True)
         return result
     except Exception as e:
         record_cron_run(task, ok=False, detail=f"{type(e).__name__}: {e}")

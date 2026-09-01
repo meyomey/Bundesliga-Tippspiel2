@@ -16,5 +16,5 @@ DIE CI LAEUFT DANN AUTOMATISCH:
     - Flake8-Gate (Syntaxfehler/undefinierte Namen)
     - pytest auf Python 3.9-3.13 (3.9 = Netcup-Zielversion)
 
-Quelle:  Commit 2982653 (2026-08-31 18:58) + lokale Aenderungen
+Quelle:  Commit 3062d9c (2026-09-01 22:20) + lokale Aenderungen
 Teststand: 281/281 Tests gruen, Coverage 79 %

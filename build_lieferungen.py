@@ -27,39 +27,17 @@ BROKEN_AVATARS = set()  # veraltet: kaputte Avatar-Stubs wurden aus dem Repo ent
 NOT_RUNTIME = DEV_PY | {"build_lieferungen.py"}              # nur in 02, nicht auf den Server
 
 # Dateien, die auf GitHub fehlen bzw. seit dem letzten Stand geaendert sind
-# (fuer 04_GitHub_Upload). Nach dem GitHub-Push (Commit 445dcf2) kamen lokal
-# dazu: Coverage-Suite, CHANGELOG-Eintrag, build_lieferungen.py v2 (04-Skip).
-# Nach dem naechsten Push wieder leeren.
-# Nach dem Push (31.08. abends) geleert: 04_GitHub_Upload entfaellt automatisch,
-# solange keine offenen GitHub-Aenderungen existieren. Beim naechsten lokalen
-# Aenderungsblock einfach wieder befuellen.
+# (fuer 04_GitHub_Upload). Nach jedem Push wieder leeren - 04 entfaellt dann
+# automatisch, solange keine offenen GitHub-Aenderungen existieren.
+# Die alte 18-Dateien-Liste (Backup/Heartbeat/HTTP-Cron/Dependabot) wurde mit
+# den Pushes bis main `3062d9c` konsumiert und am 01.09. abends entfernt.
 GITHUB_UPLOAD_FILES = [
-    # 01.09.2026: Python 3.9 als feste Netcup-Rahmenbedingung dokumentiert
-    "DEPLOY_NETCUP.md",
-    "NETCUP_OHNE_SSH.md",
-    "requirements.txt",
-    "requirements_py39.txt",
-    ".github/workflows/tests.yml",
-    # 01.09.2026: Dependabot + pip-audit (Sicherheits-Automatik)
-    ".github/dependabot.yml",
-    # 01.09.2026: README-Badges/-Teststand aktualisiert (281/281, 79 %)
-    "README.md",
-    # 01.09.2026: DB-Backup + Cron-Heartbeat (Prio 1 Produktions-Absicherung)
+    # 01.09.2026 (abends): Doppel-Heartbeat beim Backup beseitigt (Kosmetik)
     "cron_jobs.py",
-    "cron_heartbeat.py",
-    "backup.py",
-    "maintenance.py",
-    "admin_maintenance_routes.py",
-    "routes_admin.py",
-    "templates/admin/maintenance.html",
     "tests/test_cron_backup.py",
-    # 01.09.2026: HTTP-Cron für Plesk-chroot (kein Python im Cron)
-    "main_cron_routes.py",
-    "app.py",
-    "config.py",
-    ".gitignore",
     "CHANGELOG.md",
-    "build_lieferungen.py",
+    "README.md",              # Badges/Teststand 281->285
+    "build_lieferungen.py",   # diese Liste aktualisiert
 ]
 
 def tracked_files() -> list:
