@@ -1229,6 +1229,10 @@ faker==28.4.1
 - **`maintenance.py`/Wartungscenter:** zeigt jetzt den Cron-HTTP-Status (aktiv/deaktiviert), die fertigen wget-Befehle und warnt, wenn `CRON_SECRET` fehlt.
 - **Tests:** +6 in `tests/test_cron_backup.py` (Secret-Schutz 404/403/400, backup/all-Ausführung mit Heartbeat, Fehlerfall). Teststand: 275 → **281 bestanden**, Coverage **79 %**.
 
+## 2026-09-01 - README: Badges und Teststand aktualisiert
+
+- **README:** Badges (Tests 134/134 → **281/281**, Coverage 65 % → **79 %**) und Teststand-Textabsatz aktualisiert (Warnings sind jetzt 3 harmlose LegacyAPIWarnings statt der alten reportlab-Warnung).
+
 ## 2026-09-01 - Sicherheits-Automatik: Dependabot + pip-audit (Pins auf 3.9-Sicherheitsstand)
 
 - **Ausgangslage:** `pip-audit` meldete 36 Advisories in `requirements.txt` und 47 in `requirements_py39.txt` (Flask, Werkzeug, Jinja2, requests, urllib3, python-dotenv, Pillow, click, idna, pytest, bleach).

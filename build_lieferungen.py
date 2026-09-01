@@ -42,6 +42,8 @@ GITHUB_UPLOAD_FILES = [
     ".github/workflows/tests.yml",
     # 01.09.2026: Dependabot + pip-audit (Sicherheits-Automatik)
     ".github/dependabot.yml",
+    # 01.09.2026: README-Badges/-Teststand aktualisiert (281/281, 79 %)
+    "README.md",
     # 01.09.2026: DB-Backup + Cron-Heartbeat (Prio 1 Produktions-Absicherung)
     "cron_jobs.py",
     "cron_heartbeat.py",
