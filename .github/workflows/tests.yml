@@ -42,6 +42,15 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+      - name: "Python-3.9-Gate: requirements_py39.txt installierbar?"
+        if: matrix.python-version == '3.9'
+        # requirements_py39.txt wird von den Tests NICHT installiert - ohne
+        # dieses Gate wuerden Dependabot-PRs, die nur die 3.9-Datei aendern
+        # (z. B. click 8.5.0), "blind gruen" laufen. pip download prueft
+        # requires_python jedes Pins gegen den echten 3.9-Interpreter und
+        # bricht bei unpassendem Pin ab (Job wird rot = PR ablehnen).
+        run: |
+          pip download -r requirements_py39.txt --no-deps -d /tmp/py39check
       - name: Testsuite
         run: python -m pytest -q
 

@@ -1238,3 +1238,9 @@ faker==28.4.1
 - **Dependabot neu:** `.github/dependabot.yml` — wöchentliche Update-PRs für pip + github-actions, Label `dependencies`. Die CI-Matrix (3.9–3.13) prüft jeden PR automatisch: Updates ohne 3.9-Support werden rot.
 - **`requirements_py39.txt`:** Header korrigiert — die Datei IST die gepflegte Netcup-Datei (Option [1] in `build_vendor.bat`), alle Pins aktualisiert.
 - **Folgeaktion Netcup:** `vendor/` mit `build_vendor.bat` (Option 1) neu bauen + hochladen + Plesk-Restart — erst dadurch wirken die Sicherheitsfixes in Produktion.
+
+## 2026-09-01 - CI-Härtung: 3.9-Gate für requirements_py39.txt (nach Live-Beobachtung)
+
+- **Live-Beobachtung nach dem Push (`e7f60f6`):** Dependabot sprang sofort an (10 PRs) und die 3.9-Matrix funktionierte wie geplant — `pillow 12.3.0` (#9), `wtforms 3.2.2` (#6), `flask-caching 2.5.0` (#11) fielen exakt am Python-3.9-Job durch. Lücke dabei entdeckt: PRs, die **nur `requirements_py39.txt`** ändern, liefen „blind grün" (die Test-Matrix installiert nur `requirements.txt`).
+- **Fix:** neuer Step „Python-3.9-Gate" im 3.9-Job — `pip download -r requirements_py39.txt --no-deps` prüft `requires_python` jedes Pins gegen den echten 3.9-Interpreter und bricht bei unpassendem Pin ab. Lokal in beide Richtungen verifiziert: aktueller Stand grün, injiziertes `click==8.5.0` (braucht ≥3.10) rot („No matching distribution found").
+- **GitHub-Stand verifiziert:** main = `e7f60f6` mit dependabot.yml, neuen Pins und Audit-Job; CI-Lauf komplett grün (7/7 inkl. „Security Audit (pip-audit)").
