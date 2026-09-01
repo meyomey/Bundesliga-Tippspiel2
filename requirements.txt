@@ -48,5 +48,5 @@ faker==28.4.1
 # This ensures maximum compatibility on shared hosting environments like Netcup, Plesk, etc.
 
 # Rate Limiting (brute-force protection)
-Flask-Limiter==3.5.1
+Flask-Limiter==4.1.1
 bleach==6.2.0
