@@ -48,7 +48,7 @@ reportlab==4.2.2
 
 # Sicherheits-Backports für ältere Python-Versionen
 importlib_metadata==8.5.0
-zipp==3.20.2
+zipp==4.1.0
 
 # WTForms-Abhängigkeit für ältere Python
 typing_extensions==4.12.2
