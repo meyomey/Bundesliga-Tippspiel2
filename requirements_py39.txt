@@ -43,7 +43,7 @@ dnspython==2.6.1
 python-dotenv==1.2.1
 
 # Optional (kann fehlen falls Probleme)
-Pillow==11.3.0
+Pillow==12.3.0
 reportlab==4.2.2
 
 # Sicherheits-Backports für ältere Python-Versionen
