@@ -1283,3 +1283,9 @@ faker==28.4.1
 - **Nutzer-Feedback 2 (Überschriften):** Auf dem Admin-Dashboard sahen die Gruppentitel („⚽ Spielbetrieb" …) genauso aus wie die Unterpunkte — die Links waren mit `font-weight:850` sogar fetter als die h3-Titel. **Fix:** Gruppentitel als dezente GROSSBUCHSTABEN-Labels (11.5px, gesperrt, muted) mit Icon-Chip in Gruppen-Akzentfarbe; jede Gruppe bekommt eine 3px-Akzentlinie oben (Spielbetrieb Teal, Mitspieler Violett, Wartung Amber, Saisonabschluss Blau — via `--ams-accent`-Custom-Properties, Dark-/Light-Mode-tauglich). Dashboard-Link umbenannt: „💾 Backups — Erstellen, herunterladen, wiederherstellen"; Wartungscenter-Untertitel aktualisiert.
 - **Tests:** +3 (Backup-Seite bündelt alle Funktionen; Automatik-Lauf-Detail sichtbar; Dashboard-Gruppen mit Akzent-Klassen + neuer Link-Text), 2 angepasst (Wartungscenter ohne Backup-Button, backup-now-Redirect auf Backup-Seite). Teststand **288/288**, Coverage 79 %.
 - **Deploy-FTP:** `routes_admin.py`, `admin_maintenance_routes.py`, `templates/admin/backup.html`, `templates/admin/maintenance.html`, `templates/admin/dashboard.html`, `static/css/style.css` + Plesk-Restart.
+
+## 2026-09-02 - Mehr-Seite: Schnellzugriff-Chip „Spiele & Tipps"
+
+- **Nutzerwunsch:** „Spiele & Tipps" (Spielplan, `main.schedule`) als sechster Chip im Schnellzugriff der Mehr-Seite — eingefügt direkt nach „Schnelltipp", damit die Tipp-Aktionen beieinander stehen (Reihenfolge: Schnelltipp · Spiele & Tipps · Tippübersicht · Vorschau · Rückblick · Liga-Tabelle). Layout ist flex-wrap, keine CSS-Änderung nötig.
+- **Test:** +1 `test_mehr_schnellzugriff_chips` (alle 6 Chips + Spielplan-Link). Teststand **289/289**, Coverage 79 %.
+- **Deploy-FTP:** nur `templates/more.html`.

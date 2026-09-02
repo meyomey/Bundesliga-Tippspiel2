@@ -40,6 +40,9 @@ GITHUB_UPLOAD_FILES = [
     "templates/admin/dashboard.html",
     "static/css/style.css",
     "tests/test_cron_backup.py",
+    # 02.09.2026: Mehr-Seite - Schnellzugriff-Chip "Spiele & Tipps"
+    "templates/more.html",
+    "tests/test_player_smoke.py",
     "CHANGELOG.md",
     "build_lieferungen.py",   # diese Liste aktualisiert
 ]

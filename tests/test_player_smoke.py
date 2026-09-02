@@ -43,6 +43,18 @@ def test_central_pages_render_200(client, db, user, url, marker):
         assert marker.encode('utf-8') in resp.data, f'{url}: Marker {marker!r} fehlt'
 
 
+def test_mehr_schnellzugriff_chips(client, db, user):
+    """Schnellzugriff auf der Mehr-Seite: alle 6 Chips inkl. 'Spiele & Tipps'
+    (Nutzerwunsch 02.09.) mit Link auf den Spielplan."""
+    _login(client, user)
+    resp = client.get('/mehr')
+    assert resp.status_code == 200
+    for chip in ['Schnelltipp', 'Spiele &amp; Tipps', 'Tippübersicht',
+                 'Vorschau', 'Rückblick', 'Liga-Tabelle']:
+        assert chip.encode('utf-8') in resp.data, f'Chip fehlt: {chip}'
+    assert b'href="/spielplan"' in resp.data
+
+
 # (URL, Liste der statischen Assets, die referenziert sein muessen)
 ASSET_PAGES = [
     ('/schnelltipp', ['css/quick_tip.css', 'js/quick_tip.js']),
