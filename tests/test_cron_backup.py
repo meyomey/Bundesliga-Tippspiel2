@@ -161,12 +161,37 @@ def test_wartungscenter_zeigt_cron_status_und_hinweis(client, db, admin_user):
     resp = client.get("/admin/maintenance")
     assert resp.status_code == 200
     for marker in ["Automatik-Status (Heartbeat)", "noch nie gelaufen",
-                   "Jetzt Backup erstellen",
                    "Plesk-Cron noch nicht eingerichtet?",
                    "cron/run?task=all", "cron/run?task=backup",
                    "wget -q -O /dev/null",
-                   "CRON_SECRET"]:
+                   "CRON_SECRET",
+                   "Backups verwalten"]:
         assert marker.encode("utf-8") in resp.data, f"fehlt: {marker}"
+    # Zusammenfuehrung: Backup-AKTIONEN leben auf /admin/backup, nicht mehr hier
+    assert "Jetzt Backup erstellen".encode("utf-8") not in resp.data
+
+
+def test_backup_seite_buendelt_alle_backup_funktionen(client, db, admin_user):
+    """Regression Zusammenfuehrung: /admin/backup zeigt Server-Backups
+    (erstellen + Automatik-Status), Download UND Restore auf einer Seite."""
+    _login_admin(client, admin_user)
+    resp = client.get("/admin/backup")
+    assert resp.status_code == 200
+    for marker in ["Server-Backups", "Jetzt Backup erstellen",
+                   "noch nie gelaufen",          # Automatik-Status (Heartbeat backup)
+                   "Backup herunterladen",
+                   "Backup wiederherstellen"]:
+        assert marker.encode("utf-8") in resp.data, f"fehlt: {marker}"
+
+
+def test_backup_seite_zeigt_letzten_automatik_lauf(client, app, db, admin_user):
+    _login_admin(client, admin_user)
+    with app.app_context():
+        record_cron_run("backup", ok=True, detail="tippspiel_x.db (999 Bytes)")
+    resp = client.get("/admin/backup")
+    assert resp.status_code == 200
+    assert "tippspiel_x.db (999 Bytes)".encode("utf-8") in resp.data
+    assert "letzter Lauf vor".encode("utf-8") in resp.data
 
 
 def test_wartungscenter_backup_now_erfolg(client, db, admin_user, monkeypatch):
@@ -181,6 +206,8 @@ def test_wartungscenter_backup_now_erfolg(client, db, admin_user, monkeypatch):
     resp = client.post("/admin/maintenance/backup-now", follow_redirects=True)
     assert resp.status_code == 200
     assert "Backup erstellt".encode("utf-8") in resp.data
+    # Redirect fuehrt seit der Zusammenfuehrung auf die Backup-Seite
+    assert "Server-Backups".encode("utf-8") in resp.data
 
 
 def test_wartungscenter_backup_now_fehler(client, db, admin_user, monkeypatch):
@@ -194,6 +221,18 @@ def test_wartungscenter_backup_now_fehler(client, db, admin_user, monkeypatch):
     resp = client.post("/admin/maintenance/backup-now", follow_redirects=True)
     assert resp.status_code == 200
     assert "Backup fehlgeschlagen".encode("utf-8") in resp.data
+
+
+def test_admin_dashboard_gruppentitel_und_backup_link(client, db, admin_user):
+    """Dashboard: Gruppen mit Akzent-Klassen + Icon-Chip (Hierarchie-Fix) und
+    der Wartungs-Link heisst jetzt 'Backups' statt 'Backup & Restore'."""
+    _login_admin(client, admin_user)
+    resp = client.get("/admin/")
+    assert resp.status_code == 200
+    for marker in ["ams-play", "ams-people", "ams-tools", "ams-season",
+                   "ams-ico", "💾 Backups</span>"]:
+        assert marker.encode("utf-8") in resp.data, f"fehlt: {marker}"
+    assert "Backup &amp; Restore".encode("utf-8") not in resp.data
 
 
 # ---------------------------------------------------------------- cron_jobs.py

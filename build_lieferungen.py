@@ -29,14 +29,18 @@ NOT_RUNTIME = DEV_PY | {"build_lieferungen.py"}              # nur in 02, nicht 
 # Dateien, die auf GitHub fehlen bzw. seit dem letzten Stand geaendert sind
 # (fuer 04_GitHub_Upload). Nach jedem Push wieder leeren - 04 entfaellt dann
 # automatisch, solange keine offenen GitHub-Aenderungen existieren.
-# Die alte 18-Dateien-Liste (Backup/Heartbeat/HTTP-Cron/Dependabot) wurde mit
-# den Pushes bis main `3062d9c` konsumiert und am 01.09. abends entfernt.
+# Nach dem Push (01.09. abends, Commits 207b85c + f528bc3: Doppel-Heartbeat)
+# geleert; diese Datei selbst wandert mit dem naechsten Aenderungsblock mit.
 GITHUB_UPLOAD_FILES = [
-    # 01.09.2026 (abends): Doppel-Heartbeat beim Backup beseitigt (Kosmetik)
-    "cron_jobs.py",
+    # 02.09.2026: Adminbereich - Backups zusammengefuehrt + Gruppen-Hierarchie
+    "routes_admin.py",
+    "admin_maintenance_routes.py",
+    "templates/admin/backup.html",
+    "templates/admin/maintenance.html",
+    "templates/admin/dashboard.html",
+    "static/css/style.css",
     "tests/test_cron_backup.py",
     "CHANGELOG.md",
-    "README.md",              # Badges/Teststand 281->285
     "build_lieferungen.py",   # diese Liste aktualisiert
 ]
 

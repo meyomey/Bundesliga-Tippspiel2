@@ -71,7 +71,7 @@
 </div>
 
 <div class="admin-section">
-  <h2 class="admin-section-title">⏰ Cron &amp; Backup</h2>
+  <h2 class="admin-section-title">⏰ Automatik (Cron)</h2>
   <div class="card" style="margin-bottom:16px;">
     <h3 style="margin:0 0 10px;">Automatik-Status (Heartbeat)</h3>
     {% set any_never = health.cron | selectattr('state', 'equalto', 'never') | list | length > 0 %}
@@ -107,24 +107,10 @@
       · App-Python: <code>{{ health.python_executable }}</code> (in der Cron-chroot nicht verfügbar)
     </p>
     <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-      <form method="post" action="{{ url_for('admin.maintenance_backup_now') }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button class="btn-primary btn-sm">💾 Jetzt Backup erstellen</button>
-      </form>
-      <span class="muted small">{{ health.backups_total }} Backups vorhanden
-        {% if health.backups %}(neuestes: {{ health.backups[0].name }}, {{ (health.backups[0].size / 1024) | round(0) | int }} KB){% endif %}</span>
+      <a href="{{ url_for('admin.backup_page') }}" class="btn-ghost btn-sm">💾 Backups verwalten →</a>
+      <span class="muted small">{{ health.backups_total }} Server-Backups vorhanden
+        {% if health.backups %}(neuestes: {{ health.backups[0].name }}){% endif %}</span>
     </div>
-    {% if health.backups %}
-      <details style="margin-top:10px;">
-        <summary class="muted small" style="cursor:pointer">Letzte Backups anzeigen</summary>
-        <div class="backup-info-box" style="margin-top:8px;">
-          {% for b in health.backups[:5] %}
-            <div><strong>{{ b.mtime }}</strong><span>{{ b.name }} ({{ (b.size / 1024) | round(0) | int }} KB)</span></div>
-          {% endfor %}
-        </div>
-        <p class="muted small">Backups liegen auf dem Server in <code>backups/</code> — für echten Schutz regelmäßig per FTP herunterladen (Offsite-Kopie).</p>
-      </details>
-    {% endif %}
   </div>
 </div>
 

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Backup & Restore · Admin{% endblock %}
+{% block title %}Backups · Admin{% endblock %}
 {% block content %}
 
 <a href="{{ url_for('admin.dashboard') }}" class="back-link">← Admin</a>
@@ -7,10 +7,55 @@
 <div class="page-header">
   <div>
     <span class="overline">WARTUNG</span>
-    <h1>💾 Backup &amp; Restore</h1>
-    <p class="muted small">Sichere deine Tipprunden-Datenbank oder stelle ein Backup wieder her.</p>
+    <h1>💾 Backups</h1>
+    <p class="muted small">Alles an einem Ort: Server-Backups erstellen, Datenbank herunterladen oder wiederherstellen.</p>
   </div>
 </div>
+
+<section class="card" style="margin-bottom:18px">
+  <h2>🖥 Server-Backups (backups/)</h2>
+  <p class="muted small">
+    Das nächtliche Cron-Backup und der Button hier legen konsistente Kopien der Datenbank
+    im Server-Ordner <code>backups/</code> ab (automatische Rotation, 14 Stück).
+  </p>
+
+  {% set icon = {'ok':'✅','warn':'⚠️','error':'❌','never':'⚪'}[backup_cron.state] %}
+  <div class="backup-info-box">
+    <div><strong>Automatik</strong>
+      <span>{{ icon }}
+        {% if backup_cron.state == 'never' %}noch nie gelaufen — Cron-Status im <a href="{{ url_for('admin.maintenance_center') }}">Wartungscenter</a> prüfen
+        {% elif backup_cron.state == 'error' and not backup_cron.ok %}letzter Lauf fehlgeschlagen{% if backup_cron.detail %}: {{ backup_cron.detail }}{% endif %}
+        {% else %}letzter Lauf vor {{ backup_cron.age_minutes|round(0)|int }} min{% if backup_cron.detail %}: {{ backup_cron.detail }}{% endif %}{% endif %}
+      </span>
+    </div>
+    <div><strong>Bestand</strong><span>{{ backups_total }} Backups auf dem Server</span></div>
+  </div>
+
+  <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+    <form method="post" action="{{ url_for('admin.maintenance_backup_now') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn-primary btn-sm">💾 Jetzt Backup erstellen</button>
+    </form>
+    {% if backups %}
+      <span class="muted small">neuestes: {{ backups[0].name }} ({{ (backups[0].size / 1024) | round(0) | int }} KB)</span>
+    {% endif %}
+  </div>
+
+  {% if backups %}
+    <details style="margin-top:10px;">
+      <summary class="muted small" style="cursor:pointer">Letzte Backups anzeigen</summary>
+      <div class="backup-info-box" style="margin-top:8px;">
+        {% for b in backups[:5] %}
+          <div><strong>{{ b.mtime }}</strong><span>{{ b.name }} ({{ (b.size / 1024) | round(0) | int }} KB)</span></div>
+        {% endfor %}
+      </div>
+    </details>
+  {% endif %}
+  <p class="muted small" style="margin-top:10px;">
+    Server-Backups liegen auf demselben Server wie die App — für echten Schutz regelmäßig
+    ein Backup herunterladen (Offsite-Kopie), z.&nbsp;B. über den Download rechts unten.
+  </p>
+</section>
 
 <div class="grid-12">
   <section class="card span-6">
@@ -62,6 +107,7 @@
 <div class="card" style="margin-top:18px">
   <h3>💡 Hinweise</h3>
   <ul class="backup-hints">
+    <li>Das nächtliche Server-Backup läuft automatisch per Cron (Status aller Automatik-Aufgaben im <a href="{{ url_for('admin.maintenance_center') }}">Wartungscenter</a>).</li>
     <li>Nach einem Restore solltest du die App einmal in Plesk neu starten.</li>
     <li>Die Restore-Funktion ist für SQLite gedacht. Bei MySQL/PostgreSQL bitte externes Hosting-Backup nutzen.</li>
     <li>Backup-Dateien können sensible Daten enthalten: E-Mail-Adressen, Telefonnummern, Bezahlstatus.</li>

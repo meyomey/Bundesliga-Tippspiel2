@@ -1,4 +1,4 @@
-GITHUB-UPLOAD-PAKET - fuer GitHub Desktop (Stand 2026-09-01)
+GITHUB-UPLOAD-PAKET - fuer GitHub Desktop (Stand 2026-09-02)
 ====================================================
 
 Dieses Paket enthaelt die Dateien, die auf GitHub fehlen bzw. sich
@@ -16,5 +16,5 @@ DIE CI LAEUFT DANN AUTOMATISCH:
     - Flake8-Gate (Syntaxfehler/undefinierte Namen)
     - pytest auf Python 3.9-3.13 (3.9 = Netcup-Zielversion)
 
-Quelle:  Commit 3062d9c (2026-09-01 22:20) + lokale Aenderungen
+Quelle:  Commit f528bc3 (2026-09-01 23:08) + lokale Aenderungen
 Teststand: 281/281 Tests gruen, Coverage 79 %

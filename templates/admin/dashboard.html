@@ -73,8 +73,8 @@
     </div>
 
     <div class="admin-menu-grid">
-      <div class="admin-menu-section">
-        <h3>⚽ Spielbetrieb</h3>
+      <div class="admin-menu-section ams-play">
+        <h3><span class="ams-ico">⚽</span> Spielbetrieb</h3>
         <div class="admin-link-list compact">
           <a href="{{ url_for('admin.matches') }}"><span>📅 Spiele &amp; Ergebnisse</span><small>Spielplan und Resultate</small></a>
           <a href="{{ url_for('admin.admin_open_tips') }}"><span>🔔 Offene Tipps</span><small>Fehlende Tipps und Reminder</small></a>
@@ -85,8 +85,8 @@
         </div>
       </div>
 
-      <div class="admin-menu-section">
-        <h3>👥 Mitspieler &amp; Pott</h3>
+      <div class="admin-menu-section ams-people">
+        <h3><span class="ams-ico">👥</span> Mitspieler &amp; Pott</h3>
         <div class="admin-link-list compact">
           <a href="{{ url_for('admin.users') }}"><span>👥 Spieler</span><small>Bearbeiten, Rollen, Zahlung markieren</small></a>
           <a href="{{ url_for('admin.invitations') }}"><span>✉️ Einladungen</span><small>Codes prüfen, erstellen und deaktivieren</small></a>
@@ -94,21 +94,21 @@
         </div>
       </div>
 
-      <div class="admin-menu-section">
-        <h3>⚙ Wartung</h3>
+      <div class="admin-menu-section ams-tools">
+        <h3><span class="ams-ico">⚙</span> Wartung</h3>
         <div class="admin-link-list compact">
           <a href="{{ url_for('admin.settings') }}"><span>🛠 Einstellungen</span><small>Punkte, Pott, Mail, APIs, Push</small></a>
-          <a href="{{ url_for('admin.maintenance_center') }}"><span>🧰 Wartungscenter</span><small>Logos, Punkte, Badges neu berechnen</small></a>
+          <a href="{{ url_for('admin.maintenance_center') }}"><span>🧰 Wartungscenter</span><small>Systemstatus, Cron, Logos, Reparaturen</small></a>
           <a href="{{ url_for('admin.integrity') }}"><span>🧪 Datenintegrität</span><small>Joker, Tipps, Pott und Saison prüfen</small></a>
           <a href="{{ url_for('admin.schema_center') }}"><span>🧬 DB-/Schema-Wartung</span><small>Migrationen und Tabellen prüfen</small></a>
-          <a href="{{ url_for('admin.backup_page') }}"><span>💾 Backup &amp; Restore</span><small>Datenbank sichern/wiederherstellen</small></a>
+          <a href="{{ url_for('admin.backup_page') }}"><span>💾 Backups</span><small>Erstellen, herunterladen, wiederherstellen</small></a>
           <a href="{{ url_for('admin.admin_cache') }}"><span>⚡ Cache</span><small>Monitoring und Cache leeren</small></a>
           <a href="{{ url_for('admin.activity_log') }}"><span>📜 Activity Log</span><small>Admin-Aktionen nachvollziehen</small></a>
         </div>
       </div>
 
-      <div class="admin-menu-section admin-menu-section-season">
-        <h3>🏁 Saisonabschluss</h3>
+      <div class="admin-menu-section admin-menu-section-season ams-season">
+        <h3><span class="ams-ico">🏁</span> Saisonabschluss</h3>
         <div class="admin-link-list compact">
           <a href="{{ url_for('admin.season_awards') }}"><span>🎤 Siegerehrung</span><small>Podium, Preise, PDF</small></a>
           <a href="{{ url_for('admin.new_season') }}"><span>🏁 Saisonwechsel</span><small>Archivieren und neue Saison starten</small></a>

@@ -5920,19 +5920,42 @@ html[data-theme="light"] .bottom-tabbar {
 .admin-menu-section {
   min-width: 0;
   border: 1px solid var(--border);
+  border-top: 3px solid var(--ams-accent, var(--primary));
   border-radius: 16px;
   background: var(--surface-2);
   overflow: hidden;
 }
+/* Gruppentitel klar von den (fetten) Unterpunkten abgesetzt:
+   dezentes GROSSBUCHSTABEN-Label + Icon-Chip in der Gruppen-Akzentfarbe */
 .admin-menu-section h3 {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   margin: 0;
-  padding: 12px 14px;
+  padding: 11px 14px;
   border-bottom: 1px solid var(--border);
-  font-size: 15px;
+  font-size: 11.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  color: var(--text-muted);
 }
+.admin-menu-section .ams-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  background: var(--ams-accent-soft, var(--primary-soft));
+  font-size: 13px;
+  letter-spacing: 0;
+  flex: 0 0 auto;
+}
+.ams-play   { --ams-accent: var(--primary); --ams-accent-soft: var(--primary-soft); }
+.ams-people { --ams-accent: #8b5cf6; --ams-accent-soft: rgba(139, 92, 246, .16); }
+.ams-tools  { --ams-accent: var(--warning); --ams-accent-soft: rgba(245, 158, 11, .16); }
+.ams-season { --ams-accent: #3b82f6; --ams-accent-soft: rgba(59, 130, 246, .16); }
 .admin-link-list.compact {
   padding: 0;
 }

@@ -186,10 +186,17 @@ def _sqlite_db_path():
 @login_required
 @admin_required
 def backup_page():
+    """Zentrale Backup-Seite: Server-Backups, Download, Restore."""
+    from backup import list_backups
+    from cron_heartbeat import CRON_TASKS, get_cron_status
     db_path = _sqlite_db_path()
     exists = bool(db_path and os.path.exists(db_path))
     size = os.path.getsize(db_path) if exists else 0
-    return render_template("admin/backup.html", db_path=db_path, exists=exists, size=size)
+    backups = list_backups()
+    backup_cron = get_cron_status({"backup": CRON_TASKS["backup"]})[0]
+    return render_template("admin/backup.html", db_path=db_path, exists=exists,
+                           size=size, backups=backups,
+                           backups_total=len(backups), backup_cron=backup_cron)
 
 
 @admin_bp.route("/backup/download")

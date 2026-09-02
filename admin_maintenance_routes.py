@@ -32,4 +32,5 @@ def _admin_cron_backup_now():
     else:
         log_admin_action("backup_now", "backup", None, f"Backup fehlgeschlagen: {result['error']}", result)
         flash(f"❌ Backup fehlgeschlagen: {result['error']}", "danger")
-    return redirect(url_for("admin.maintenance_center"))
+    # Der Button lebt seit der Zusammenfuehrung auf der Backup-Seite
+    return redirect(url_for("admin.backup_page"))
