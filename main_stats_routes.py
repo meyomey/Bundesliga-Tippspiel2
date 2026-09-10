@@ -451,6 +451,10 @@ def _live_center():
         for p in Prediction.query.filter_by(user_id=current_user.id).all()
         if p.match_id in [m.id for m in live_matches]
     }
+    # Live-Uhr fuer das Erstrendering (Feed-Minute oder strukturierte
+    # Naeherung ab Anstoss) - dieselbe Logik wie /api/live/center.
+    from routes_api import live_clock_for
+    live_clock = {m.id: live_clock_for(m, now) for m in live_matches}
 
     is_today = bool(live_matches and live_matches[0].kickoff.date() == now.date())
     has_live = any(m.status == "live" for m in live_matches)
@@ -460,6 +464,7 @@ def _live_center():
         matches=live_matches,
         leaderboard=leaderboard,
         user_preds=user_preds,
+        live_clock=live_clock,
         is_today=is_today,
         has_live=has_live,
         shown_date=shown_date,

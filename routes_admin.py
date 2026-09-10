@@ -787,6 +787,14 @@ def admin_bots_toggle_auto():
     return _admin_bots_toggle_auto()
 
 
+@admin_bp.route("/bots/toggle-jokers", methods=["POST"])
+@login_required
+@admin_required
+def admin_bots_toggle_jokers():
+    from admin_bots_routes import _admin_bots_toggle_jokers
+    return _admin_bots_toggle_jokers()
+
+
 @admin_bp.route("/bots/seed", methods=["POST"])
 @login_required
 @admin_required

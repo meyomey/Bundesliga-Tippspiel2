@@ -37,18 +37,14 @@
     leaderboard: {},  // user_id → {rank, points}
   };
 
-  function estimateInitialLiveMinutes() {
-    document.querySelectorAll('.live-match-card.status-live .lm-status').forEach(badge => {
-      if (badge.textContent.includes('Min')) return;
-      const raw = badge.dataset.kickoff;
-      if (!raw) return;
-      const ko = new Date(raw);
-      if (Number.isNaN(ko.getTime())) return;
-      const minute = Math.max(1, Math.min(90, Math.floor((Date.now() - ko.getTime()) / 60000) + 1));
-      badge.innerHTML = `<span class="live-dot small"></span> LIVE · ${minute}. Min`;
-    });
-  }
-  estimateInitialLiveMinutes();
+  // Bezugswert beim Seitenaufruf (Nutzerfeedback 06.09.): Trendpfeile und
+  // +Punkte bleiben dauerhaft sichtbar und zeigen die Veraenderung seit dem
+  // Oeffnen der Seite - nicht nur den letzten 30s-Poll, der nach 8s verblasste.
+  let baseLb = {};  // user_id -> {rank, points}
+
+  // Bewusst keine Spielminute ab Anstosszeit schaetzen: gezeigt wird nur,
+  // was der Live-Feed liefert (via /api/live/center, alle 30s). Ohne Feed-
+  // Minute steht nur "LIVE", in der Halbzeit "Halbzeitpause".
 
   // Erstinitialisierung aus dem DOM
   document.querySelectorAll('.live-match-card').forEach(el => {
@@ -60,10 +56,12 @@
     };
   });
   document.querySelectorAll('.live-lb-row').forEach(el => {
-    lastSnapshot.leaderboard[el.dataset.userId] = {
+    const b = {
       rank: parseInt(el.dataset.rank),
       points: parseInt(el.dataset.points),
     };
+    lastSnapshot.leaderboard[el.dataset.userId] = b;
+    baseLb[el.dataset.userId] = { ...b };
   });
 
   function relTime(d) {
@@ -78,6 +76,12 @@
     if (lastSyncEl) lastSyncEl.textContent = `· ${relTime(lastSyncTs)}`;
   }
   setInterval(updateSyncTimer, 1000);
+
+  function setPersistent(el, html) {
+    // Nur bei echter Aenderung neu einsetzen: die CSS-Einblend-Animation
+    // laeuft so nicht bei jedem 30s-Poll erneut.
+    if (el && el.innerHTML !== html) el.innerHTML = html;
+  }
 
   function flashElement(el, cls = 'flash-update') {
     el.classList.add(cls);
@@ -104,22 +108,42 @@
       flashElement(awayEl, 'score-change');
     }
 
-    // Status-Klasse + Badge inklusive Spielminute
+    // Status-Klasse + Badge - dasselbe Prinzip wie serverseitig:
+    // Feed-Werte (minute/halftime) sind verbindlich; die abgeleitete
+    // Struktur-Uhr (minute_derived) wird mit '≈' als Naeherung markiert.
     card.classList.remove('status-scheduled', 'status-live', 'status-finished');
     card.classList.add(`status-${m.status}`);
     const badge = card.querySelector('.lm-status');
     if (badge) {
       badge.className = `lm-status status-${m.status}`;
-      let minute = m.minute;
-      if (m.status === 'live' && (!minute || Number.isNaN(Number(minute))) && m.kickoff) {
-        const ko = new Date(m.kickoff);
-        if (!Number.isNaN(ko.getTime())) {
-          minute = Math.max(1, Math.min(90, Math.floor((Date.now() - ko.getTime()) / 60000) + 1));
+      const halft = m.halftime;
+      let html;
+      if (m.status === 'live') {
+        if (halft === 'feed') {
+          html = '⏸ Halbzeitpause';
+          badge.removeAttribute('title');
+        } else if (m.minute) {
+          const approx = m.minute_derived ? '≈ ' : '';
+          const val = (m.overtime && m.minute_derived) ? '90+' : m.minute;
+          html = `<span class="live-dot small"></span> LIVE · ${approx}${val}. Min`;
+          if (m.minute_derived) {
+            badge.setAttribute('title', 'Minute näherungsweise aus der Anstosszeit (Halbzeit berücksichtigt, ohne Nachspielzeit)');
+          } else {
+            badge.removeAttribute('title');
+          }
+        } else {
+          html = halft === 'derived' ? '⏸ Halbzeit ≈' : '<span class="live-dot small"></span> LIVE';
+          if (halft === 'derived') {
+            badge.setAttribute('title', 'Halbzeitpause aus der Anstosszeit abgeleitet');
+          } else {
+            badge.removeAttribute('title');
+          }
         }
+      } else {
+        html = m.status === 'finished' ? '✓ ENDE' : 'geplant';
+        badge.removeAttribute('title');
       }
-      badge.innerHTML = m.status === 'live'    ? `<span class="live-dot small"></span> LIVE${minute ? ` · ${minute}. Min` : ''}`
-                       : m.status === 'finished' ? '✓ ENDE'
-                       : 'geplant';
+      badge.innerHTML = html;
     }
 
     lastSnapshot.matches[m.id] = { home: newHome, away: newAway, status: m.status };
@@ -169,30 +193,30 @@
         row.classList.toggle('top1', r.rank === 1);
       }
 
-      // Rang-Veränderung anzeigen
+      // Persistenter Vergleich zur Seitenbasis: wer stieg seit dem Oeffnen
+      // wie viele Plaetze, wer bekam wie viele Punkte. Blinken nur bei
+      // frischer Aenderung (letzter Poll), die Anzeige selbst bleibt stehen.
+      const base = baseLb[r.user_id] || { rank: r.rank, points: r.points };
+      baseLb[r.user_id] = base;
+      const rankDelta = base.rank - r.rank;    // positiv: aufgestiegen
+      const ptsDelta = r.points - base.points; // positiv: Punkte dazubekommen
+
       const rankEl = row.querySelector('.rank-change');
+      setPersistent(rankEl,
+        rankDelta > 0 ? `<span class="rank-up" title="Rang seit Seitenöffnung +${rankDelta}">▲ ${rankDelta}</span>`
+        : rankDelta < 0 ? `<span class="rank-down" title="Rang seit Seitenöffnung ${rankDelta}">▼ ${-rankDelta}</span>`
+        : '');
       if (rankBefore !== undefined && rankBefore !== r.rank) {
-        const diff = rankBefore - r.rank; // positive: aufgestiegen
-        if (diff > 0) {
-          rankEl.innerHTML = `<span class="rank-up">▲ ${diff}</span>`;
-          flashElement(row, 'row-up');
-        } else {
-          rankEl.innerHTML = `<span class="rank-down">▼ ${-diff}</span>`;
-          flashElement(row, 'row-down');
-        }
-        // Nach 8s ausblenden
-        setTimeout(() => { rankEl.innerHTML = ''; }, 8000);
+        flashElement(row, rankBefore > r.rank ? 'row-up' : 'row-down');
       }
 
-      // Punkte-Veränderung
       const pointsEl = row.querySelector('.points-delta');
+      setPersistent(pointsEl,
+        ptsDelta > 0 ? `<span class="points-up" title="Punkte seit Seitenöffnung">+${ptsDelta}</span>`
+        : ptsDelta < 0 ? `<span class="points-down" title="Punkte seit Seitenöffnung">${ptsDelta}</span>`
+        : '');
       if (pointsBefore !== undefined && pointsBefore !== r.points) {
-        const diff = r.points - pointsBefore;
-        if (diff > 0) {
-          pointsEl.innerHTML = `<span class="points-up">+${diff}</span>`;
-          flashElement(row.querySelector('.points-num'), 'points-flash');
-        }
-        setTimeout(() => { pointsEl.innerHTML = ''; }, 8000);
+        flashElement(row.querySelector('.points-num'), 'points-flash');
       }
 
       fragment.appendChild(row);

@@ -68,3 +68,45 @@ def test_tip_overview_live_api_returns_points(client, db, user, finished_match):
     row = next(r for r in data['rows'] if r['user_id'] == user.id)
     assert row['total_points'] >= 4
     assert row['matchday_points'] >= 4
+
+
+# ------------------------------------------------------------- Auffindbarkeit (Navigation)
+
+def _css_text():
+    import pathlib
+    return (pathlib.Path(__file__).resolve().parents[1]
+            / "static" / "css" / "style.css").read_text(encoding="utf-8")
+
+
+def test_primary_nav_shows_tip_overview_on_all_devices(auth_client):
+    """Der Link haette frueher ein hidden-desktop trug -> auf Desktop unsichtbar.
+
+    Jetzt fester Prim\u00e4r-Punkt "Tipps" (ohne hidden-*), plus eigener Tab in der
+    mobilen Bottom-Tabbar.
+    """
+    html = auth_client.get("/", follow_redirects=True).get_data(as_text=True)
+    assert '<a href="/tipps" class="nav-link' in html  # kein hidden-desktop mehr
+    assert "Tippübersicht: alle Tipps" in html  # Titel-Tooltip erklaert den Kurz-Label
+    assert '<span class="bt-icon">👀</span><span class="bt-label">Tipps</span>' in html
+
+
+def test_bottom_tabbar_grid_has_five_columns():
+    """Es gibt zwei .bottom-tabbar-Regeln (Basis: display none; Media: Grid).
+    Die 5-Spalten-Regel muss zur Tabbar-Blockdefinition gehoeren."""
+    css = _css_text()
+    idx = css.index("grid-template-columns: repeat(5, 1fr);")
+    opener = css.rindex(".bottom-tabbar {", 0, idx)
+    assert 0 < idx - opener < 400
+
+
+def test_tip_overview_marks_nav_active(auth_client):
+    html = auth_client.get("/tipps").get_data(as_text=True)
+    assert '<a href="/tipps" class="nav-link active' in html
+
+
+def test_manifest_shortcut_targets_tip_overview(client):
+    """PWA-Verknuepfung (Long-Press aufs App-Icon) zeigt direkt zur Tippuebersicht."""
+    resp = client.get("/manifest.json")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert any(s.get("url") == "/tipps" for s in data.get("shortcuts", []))

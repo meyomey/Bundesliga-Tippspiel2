@@ -16,7 +16,7 @@ from match_results import apply_match_update
 from sync_shared import (
     current_sync_season_code, _resolve_or_create_team_from_olb, _ensure_competition_team,
     _find_existing_match, _purge_stale_matches_for_comp, _OLB_TEAM_MAP,
-    store_sync_result, _olb_get, _olb_team_name,
+    store_sync_result, _olb_get, _olb_team_name, purge_summary_suffix,
 )
 from sync_football_data import sync_with_football_data
 
@@ -195,6 +195,7 @@ def sync_with_openligadb():
         msg += f", {new_teams} Team(s) angelegt"
     if purged_stale:
         msg += f", {purged_stale} veraltete Spiele entfernt"
+    msg += purge_summary_suffix()
     if skipped:
         msg += f", {skipped} übersprungen"
     return {

@@ -55,6 +55,55 @@ def test_mehr_schnellzugriff_chips(client, db, user):
     assert b'href="/spielplan"' in resp.data
 
 
+def test_rangliste_ohne_sparklines(client, db, user):
+    """Nutzerwunsch 06.09.: die gruenen Mini-Sparklines in der Rangliste sind
+    raus (Template + CSS) - nur die ▲/▼-Trendpillen bleiben."""
+    _login(client, user)
+    resp = client.get('/tabelle')
+    assert resp.status_code == 200
+    assert b'lb-sparkline' not in resp.data
+
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parent.parent
+    html = (root / 'templates' / 'leaderboard.html').read_text(encoding='utf-8')
+    assert 'sparkline' not in html
+    css = (root / 'static' / 'css' / 'style.css').read_text(encoding='utf-8')
+    assert '.lb-sparkline' not in css
+    # Trendpillen durfen nicht mit rausgeflogen sein
+    assert 'lb-trend' in css
+
+
+def test_rangliste_mobile_karte_gibt_dem_namen_die_zeile(client, db, user):
+    """Nutzerfeedback 06.09.: Namen waren auf Smartphone fast nur als 'Meh...'
+    lesbar. Der Card-Kopf trennt deshalb Name (eigene Zeile, volle Breite) und
+    Vereinslogo/Trend (kleine Subzeile)."""
+    from models import Team
+    user.favorite_team = Team.query.filter_by(name='FC Bayern München').first() \
+        or Team(name='FC Bayern München', short_name='FCB', logo='bayern.png')
+    db.session.commit()
+
+    _login(client, user)
+    resp = client.get('/tabelle')
+    assert resp.status_code == 200
+    data = resp.data.decode('utf-8')
+    # Namensblock mit eigener Zeile + Subzeile (Logo/Trend)
+    assert 'lb-card-id' in data
+    assert 'lb-card-sub' in data
+    idx_head = data.index('class="lb-card-user')
+    idx_name = data.index('<strong>testuser</strong>', idx_head)
+    idx_sub = data.index('lb-card-sub', idx_head)
+    assert idx_name < idx_sub, 'Name muss vor der Subzeile stehen'
+
+    # CSS-Regression: Name nowrap+ellipsis in voller Spaltenbreite, Trend/Logo
+    # kompakt in der Subzeile statt seitlich am Namen.
+    import pathlib
+    css = (pathlib.Path(__file__).resolve().parent.parent
+           / 'static' / 'css' / 'style.css').read_text(encoding='utf-8')
+    assert '.lb-card-id strong' in css
+    assert '.lb-card-sub .lb-fav-mini' in css
+    assert '.lb-card-sub .lb-trend' in css
+
+
 # (URL, Liste der statischen Assets, die referenziert sein muessen)
 ASSET_PAGES = [
     ('/schnelltipp', ['css/quick_tip.css', 'js/quick_tip.js']),

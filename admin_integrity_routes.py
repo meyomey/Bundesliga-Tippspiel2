@@ -138,6 +138,34 @@ def build_integrity_report():
         "repairable": False,
     })
 
+    no_tips_q = (
+        db.session.query(Match.id, Match.matchday)
+        .outerjoin(Prediction, Prediction.match_id == Match.id)
+        .filter(Match.status == "finished")
+    )
+    if comp:
+        no_tips_q = no_tips_q.filter(Match.competition_id == comp.id)
+    no_tips = (
+        no_tips_q.group_by(Match.id, Match.matchday)
+        .having(func.count(Prediction.id) == 0)
+        .all()
+    )
+    if no_tips:
+        md_list = ", ".join(f"ST {r[1]}" for r in no_tips[:5])
+        msg = (f"{len(no_tips)} beendete Spiele ohne einzigen Tipp ({md_list}"
+               f"{' ...' if len(no_tips) > 5 else ''}). Typisch, wenn der Sync Spiele "
+               f"neu angelegt und alte Zeilen entfernt hat - Tipps pruefen/ergaenzen.")
+    else:
+        msg = "Alle beendeten Spiele haben mindestens einen Tipp."
+    checks.append({
+        "id": "finished_without_tips",
+        "level": "warn" if no_tips else "ok",
+        "title": "Beendete Spiele ohne Tipps",
+        "message": msg,
+        "count": len(no_tips),
+        "repairable": False,
+    })
+
     return checks
 
 

@@ -68,8 +68,13 @@
             <div class="lm-top">
               <span class="lm-time">{{ m.kickoff|de_local('%H:%M') }}</span>
               <span class="lm-md">ST {{ m.matchday }}</span>
-              <span class="lm-status status-{{ m.status }}" data-kickoff="{{ m.kickoff.isoformat() }}Z">
-                {% if m.status == 'live' %}<span class="live-dot small"></span> LIVE{% if m.minute %} · {{ m.minute }}. Min{% endif %}
+              <span class="lm-status status-{{ m.status }}"
+                    {% set lc = live_clock.get(m.id) %}
+                    {% if lc and lc.derived and (lc.minute or lc.halftime) %}title="Minute naeherungsweise aus der Anstosszeit (Halbzeit beruecksichtigt, ohne Nachspielzeit)"{% endif %}>
+                {% if m.status == 'live' and lc and lc.halftime == 'feed' %}⏸ Halbzeitpause
+                {% elif m.status == 'live' and lc and lc.halftime == 'derived' %}⏸ Halbzeit ≈
+                {% elif m.status == 'live' and lc and lc.minute %}<span class="live-dot small"></span> LIVE · {% if lc.overtime and lc.derived %}≈ 90+{% elif lc.derived %}≈ {{ lc.minute }}{% else %}{{ lc.minute }}{% endif %}. Min
+                {% elif m.status == 'live' %}<span class="live-dot small"></span> LIVE
                 {% elif m.status == 'finished' %}✓ ENDE
                 {% else %}geplant{% endif %}
               </span>

@@ -23,33 +23,97 @@ from competition_helpers import get_active_competition, active_match_query, filt
 api_bp = Blueprint("api", __name__)
 
 
-def _live_minute_for_match(match, now=None):
-    """Liefert eine anzeigbare Spielminute fuer Live-Spiele.
+# Standardstruktur eines Fussballspiels fuer die Notfall-Uhr (Minuten).
+_LIVE_H1_END = 47      # 1. Halbzeit inkl. 1-2 Min Nachspielzeit vor der Pause
+_LIVE_HALF_END = 63    # Halbzeitpause bis ca. 15 Min + Anstossverzug
+_LIVE_FULL_END = 108   # spaetestens hier ist (inkl. 2. Nachspielzeit) Schluss
+_LIVE_BREAK = 15       # Dauer der Halbzeitpause
 
-    Wenn die Datenquelle eine Minute liefert, nutzen wir diese. Falls nicht,
-    schaetzen wir aus der Anstosszeit. Das ist fuer die Anzeige besser als gar
-    keine Minute und wird beim naechsten API-Update wieder aktualisiert.
+
+def live_clock_for(match, now=None):
+    """Live-Anzeige fuer ein Spiel als dict: minute / derived / halftime / overtime.
+
+    Grundsatze (Nutzerfeedback 02.+06.09.2026):
+    1. Echte Feed-Daten haben Vorrang: der football-data-Sync schreibt die
+       gemeldete Minute (Match.minute) und Phase (Match.live_phase; 'PAUSED'
+       = Halbzeitpause laut Liveticker -> verbindlich).
+    2. Das FREE-Tier von football-data.org liefert die echte Minute haeufig
+       nicht (Live-Scores nur verzoegert). Damit nicht ueberhaupt keine Minute
+       steht, zaehlt dann eine strukturierte Uhr ab Anstoss: 1. Halbzeit bis
+       ~47, Pause (Uhr steht still), 2. Halbzeit, ab ~108 Stille statt
+       Falschanzeige. Dieser Wert ist Naeherung und wird in der UI mit '≈'
+       gekennzeichnet - ehrlicher als die alte blinde Stoppuhr, die Halbzeit
+       und Nachspielzeit ignorierte und bis 90 weiterlief.
     """
+    info = {"minute": None, "derived": False, "halftime": None, "overtime": False}
     if not match or match.status != "live":
-        return None
+        return info
+
+    # 1) Pause laut Liveticker ist verbindlich: keine Minute, klarer Hinweis.
+    if getattr(match, "live_phase", None) == "PAUSED":
+        info["halftime"] = "feed"
+        return info
+
+    # 2) Feed-Minute: verbindlich, wenn vorhanden.
     if match.minute is not None:
         try:
-            return max(1, int(match.minute))
+            info["minute"] = max(1, int(match.minute))
+            if info["minute"] >= 90:
+                info["overtime"] = True
+            return info
         except (TypeError, ValueError):
             pass
+
+    # 3) Struktur-Uhr ab Anstoss (nur als Naeherung -> UI zeigt '≈').
     kickoff = match.kickoff
     if not kickoff:
-        return None
+        return info
     now = now or datetime.now(timezone.utc)
     if kickoff.tzinfo is None:
-        now_cmp = now.replace(tzinfo=None)
+        now = now.replace(tzinfo=None)
+    elapsed = int((now - kickoff).total_seconds() // 60)
+    if elapsed < 0 or elapsed > _LIVE_FULL_END:
+        return info  # vor Anstoss oder laengst vorbei: ehrlich ohne Zahl
+    info["derived"] = True
+    if elapsed <= _LIVE_H1_END:
+        info["minute"] = min(elapsed + 1, 47)
+    elif elapsed < _LIVE_HALF_END:
+        info["halftime"] = "derived"
     else:
-        now_cmp = now
-    minutes = int((now_cmp - kickoff).total_seconds() // 60) + 1
-    if minutes < 1:
-        return None
-    # Ohne echte Nachspiel-/Pauseninformationen nur eine robuste Anzeige.
-    return min(minutes, 90)
+        minute = elapsed + 1 - _LIVE_BREAK
+        if minute >= 90:
+            info["minute"] = 90
+            info["overtime"] = True
+        else:
+            info["minute"] = minute
+    return info
+
+
+def _live_minute_for_match(match, now=None):
+    """Kompatibilitaets-Facade: nur die Minute aus live_clock_for()."""
+    return live_clock_for(match, now)["minute"]
+
+
+def _center_match_payload(m, now=None):
+    """Ein Match-Dict fuer das Live-Center inkl. kompletter Uhr-Info."""
+    lc = live_clock_for(m, now) if m.status == "live" else {
+        "minute": None, "derived": False, "halftime": None, "overtime": False,
+    }
+    return {
+        "id": m.id, "matchday": m.matchday,
+        "home_id": m.home_team_id, "home_name": m.home_team.name,
+        "home_short": m.home_team.short_name, "home_logo": m.home_team.logo,
+        "away_id": m.away_team_id, "away_name": m.away_team.name,
+        "away_short": m.away_team.short_name, "away_logo": m.away_team.logo,
+        "kickoff": m.kickoff.isoformat() + "Z",
+        "home_score": m.home_score, "away_score": m.away_score,
+        "status": m.status,
+        "minute": lc["minute"],
+        "minute_derived": lc["derived"],
+        "halftime": lc["halftime"],
+        "overtime": lc["overtime"],
+        "live_phase": (m.live_phase if m.status == "live" else None),
+    }
 
 
 @api_bp.route("/leaderboard")
@@ -196,24 +260,17 @@ def api_live_center():
         if p.match_id in [m.id for m in matches]
     }
 
+    center_matches = []
+    for m in matches:
+        d = _center_match_payload(m, now)
+        d["user_pred"] = user_preds.get(m.id)
+        center_matches.append(d)
+
     return jsonify({
         "ok": True,
         "fetched_at": now.isoformat() + "Z",
         "sync_info": " | ".join(sync_info),
-        "matches": [
-            {
-                "id": m.id, "matchday": m.matchday,
-                "home_id": m.home_team_id, "home_name": m.home_team.name,
-                "home_short": m.home_team.short_name, "home_logo": m.home_team.logo,
-                "away_id": m.away_team_id, "away_name": m.away_team.name,
-                "away_short": m.away_team.short_name, "away_logo": m.away_team.logo,
-                "kickoff": m.kickoff.isoformat() + "Z",
-                "home_score": m.home_score, "away_score": m.away_score,
-                "status": m.status, "minute": _live_minute_for_match(m, now),
-                "user_pred": user_preds.get(m.id),
-            }
-            for m in matches
-        ],
+        "matches": center_matches,
         "leaderboard": [
             {
                 "rank": r["rank"], "user_id": r["user"].id,
@@ -254,14 +311,15 @@ def api_live_matchday(matchday):
         "updated": res.get("updated", 0),
         "live_count": res.get("live", 0),
         "matches": [
-            {
+            dict({
                 "id": m.id, "home": m.home_team.short_name,
                 "away": m.away_team.short_name,
                 "home_logo": m.home_team.logo, "away_logo": m.away_team.logo,
                 "kickoff": m.kickoff.isoformat(),
                 "home_score": m.home_score, "away_score": m.away_score,
-                "status": m.status, "minute": _live_minute_for_match(m),
-            }
+                "status": m.status,
+                "live_phase": (m.live_phase if m.status == "live" else None),
+            }, **live_clock_for(m))
             for m in matches
         ],
     })

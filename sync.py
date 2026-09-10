@@ -228,6 +228,7 @@ def auto_migrate_schema():
             ("competition_id",  "INTEGER",            "1"),
             ("is_live",         "BOOLEAN",            "0"),
             ("minute",          "INTEGER",            "NULL"),
+            ("live_phase",      "VARCHAR(20)",        "NULL"),
             ("events",          "TEXT",               "NULL"),
         ],
         "predictions": [

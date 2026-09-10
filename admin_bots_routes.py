@@ -97,6 +97,18 @@ def _admin_bots_view():
     ).filter(Prediction.user_id.in_(bot_ids)).group_by(Prediction.user_id).all()
     stats_map = {s.user_id: s for s in stats_rows}
 
+    open_matches = active_match_query().filter_by(status="scheduled").count()
+
+    # Tipps pro Bot fuer den AKTUELLEN Spieltag - damit eine verpasste Runde
+    # (z. B. Bot nicht aktiv, Auto-Tipp aus oder Tipp-Lauf fehlgeschlagen)
+    # auf einen Blick sichtbar wird statt erst in der Rangliste aufzufallen.
+    md_tips_rows = db.session.query(
+        Prediction.user_id, func.count(Prediction.id)
+    ).join(Match, Prediction.match_id == Match.id).filter(
+        Prediction.user_id.in_(bot_ids), Match.matchday == matchday
+    ).group_by(Prediction.user_id).all()
+    md_tips_map = {uid: cnt for uid, cnt in md_tips_rows}
+
     bot_list = []
     for b in bots:
         s = stats_map.get(b.id)
@@ -108,6 +120,8 @@ def _admin_bots_view():
             "name": b.username,
             "level": BOT_LEVELS.get(b.username, 1),
             "tips": s.tips if s else 0,
+            "md_tips": md_tips_map.get(b.id, 0),
+            "missed_round": bool(active) and md_tips_map.get(b.id, 0) == 0 and open_matches > 0,
             "exact": int(s.exact or 0) if s else 0,
             "points": int(s.pts or 0) if s else 0,
             "active": active,
@@ -115,14 +129,15 @@ def _admin_bots_view():
         })
     bot_list.sort(key=lambda x: x["points"], reverse=True)
     total_tips = sum(b["tips"] for b in bot_list)
-    open_matches = active_match_query().filter_by(status="scheduled").count()
     active_count = sum(1 for b in bot_list if b["active"])
+    from ai_opponent import bot_jokers_enabled
     return render_template(
         "admin/bots.html", bots=bot_list, current_matchday=matchday,
         total_tips=total_tips, open_matches=open_matches, active_count=active_count,
         bot_names=BOT_NAMES, missing_bots=missing_bots,
         bot_profiles=BOT_PROFILES,
         auto_tip_active=auto_tip_active,
+        bot_jokers_active=bot_jokers_enabled(),
     )
 
 
@@ -144,7 +159,10 @@ def _admin_bots_tip_all():
             msg += f" für Spieltag {matchday}."
             if skipped:
                 msg += f" ({skipped} übersprungen)"
-            log_admin_action("bots_tip_all", "matchday", matchday, msg, {"tipped": tipped, "overwritten": overwritten, "skipped": skipped})
+            errors = sum(v.get("errors", 0) for v in summary.values())
+            if errors:
+                msg += f" ⚠️ {errors} Bot-Fehler beim Tippen (Details im Server-Log)."
+            log_admin_action("bots_tip_all", "matchday", matchday, msg, {"tipped": tipped, "overwritten": overwritten, "skipped": skipped, "errors": errors})
             flash(msg, "success")
         else:
             log_admin_action("bots_tip_all", "matchday", matchday, f"Keine neuen Tipps fuer Spieltag {matchday}", {"skipped": skipped})
@@ -170,19 +188,32 @@ def _admin_bots_tip_single():
             return redirect(url_for("admin.admin_bots"))
         matches = active_match_query().filter_by(matchday=matchday, status="scheduled").all()
         tipped = 0
+        joker_cands = []
+        # Frische Statistiken fuer diese Runde (siehe AIOpponent.invalidate_stats_cache)
+        opponent.invalidate_stats_cache()
+        finished = active_match_query().filter_by(status="finished").order_by(Match.kickoff.desc()).all()
         for match in matches:
             existing = Prediction.query.filter_by(user_id=bot_id, match_id=match.id).first()
             if not existing:
-                home_tip, away_tip = opponent.get_tip(match)
-                db.session.add(Prediction(
+                home_tip, away_tip = opponent.get_tip(match, finished)
+                pred = Prediction(
                     user_id=bot_id, match_id=match.id,
                     home_tip=home_tip, away_tip=away_tip,
                     joker=False, points=0,
-                ))
+                )
+                db.session.add(pred)
+                # Kandidat fuer den Runden-Joker (Paritaet: ein Joker pro
+                # Spieltag wie bei den menschlichen Spielern).
+                joker_cands.append((pred, opponent.joker_score(match, finished)))
                 tipped += 1
+        joker_set = False
+        if matches:
+            from ai_opponent import place_bot_joker
+            joker_set = place_bot_joker(bot_id, matchday, joker_cands, matches[0].competition_id)
         db.session.commit()
         log_admin_action("bot_tip_single", "user", bot_id, f"{bot_name}: {tipped} Tipps fuer Spieltag {matchday}", {"matchday": matchday, "tipped": tipped})
-        flash(f"✅ {bot_name}: {tipped} Tipps für Spieltag {matchday} abgegeben.", "success")
+        flash(f"✅ {bot_name}: {tipped} Tipps für Spieltag {matchday} abgegeben"
+              + (", inkl. Joker-Setzung." if joker_set else "."), "success")
     except Exception as e:
         flash(f"❌ Fehler: {e}", "error")
     return redirect(url_for("admin.admin_bots"))
@@ -240,6 +271,18 @@ def _admin_bots_toggle_auto():
     status = "aktiviert" if new_val else "deaktiviert"
     log_admin_action("bot_auto_toggle", "setting", "bot_auto_tip_active", f"Automatische Bot-Tipps {status}")
     flash(f"🤖 Automatische Tipps aktiver Bots {status}.", "success")
+    return redirect(url_for("admin.admin_bots"))
+
+
+def _admin_bots_toggle_jokers():
+    """Bot-Joker an/aus (Setting 'bot_use_jokers', Standard: an)."""
+    from scoring import get_setting, set_setting, _truthy_setting
+    current = _truthy_setting(get_setting("bot_use_jokers", "1"), default=True)
+    new_val = "0" if current else "1"
+    set_setting("bot_use_jokers", new_val)
+    status = "aktiviert" if new_val == "1" else "deaktiviert"
+    log_admin_action("bot_jokers_toggle", "setting", "bot_use_jokers", f"Bot-Joker {status}")
+    flash(f"🃏 Bot-Joker {status}.", "success")
     return redirect(url_for("admin.admin_bots"))
 
 

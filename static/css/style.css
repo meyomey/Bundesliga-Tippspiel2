@@ -1730,8 +1730,8 @@ label.check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 
 /* Header (= summary - immer sichtbar) */
 .lb-card-head {
-  display: flex; align-items: center; gap: 10px;
-  padding: 12px 14px;
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px;
   cursor: pointer;
   list-style: none;
   user-select: none;
@@ -1740,7 +1740,7 @@ label.check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .lb-card-head::marker { content: ""; }
 .lb-card-head:hover { background: rgba(255,255,255,.02); }
 
-.lb-card-rank { font-size: 22px; min-width: 36px; flex-shrink: 0; }
+.lb-card-rank { font-size: 22px; min-width: 30px; flex-shrink: 0; }
 .lb-card-rank .rank-num { font-size: 14px; color: var(--text-muted); font-weight: 700; }
 .lb-card-user { flex: 1; display: flex; align-items: center; gap: 10px; min-width: 0; }
 .lb-card-user img, .lb-card-user .avatar-fallback {
@@ -1749,8 +1749,26 @@ label.check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .lb-card-user strong {
   flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* Mobile-Namensblock: eigene Zeile fuer den Namen (Lesbarkeit, 02.09.),
+   Lieblingsverein + Trend darunter in kleiner Zeile - der Name hat damit
+   die ganze Restbreite und wird nicht mehr von Logo/Pills eingeklemmt. */
+.lb-card-id {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
+}
+.lb-card-id strong {
+  flex: none; max-width: 100%;
+  font-size: 15px; line-height: 1.15;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.lb-card-sub {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-width: 0; max-width: 100%;
+}
+.lb-card-sub .lb-fav-mini { width: 14px; height: 14px; margin-left: 0; }
+.lb-card-sub .lb-trend { font-size: 10px; padding: 2px 6px; gap: 4px; }
 .lb-card-points {
-  text-align: right; font-size: 24px; font-weight: 800; color: var(--primary-text);
+  text-align: right; font-size: 22px; font-weight: 800; color: var(--primary-text);
   line-height: 1; flex-shrink: 0;
   font-variant-numeric: tabular-nums;
 }
@@ -2901,6 +2919,7 @@ label.check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
   display: block; font-size: 10px; font-weight: 700; height: 12px;
 }
 .points-up { color: var(--primary); animation: bounceUp .5s; }
+.points-down { color: var(--danger); animation: bounceDown .5s; }
 
 /* === Animationen === */
 @keyframes bounceUp {
@@ -3563,15 +3582,9 @@ html[data-team] .lp-orb.orb-1 {
 .lb-trend.down  { background: rgba(239,68,68,.12); color: var(--danger); }
 .lb-trend.same  { color: var(--text-muted); }
 
-.lb-sparkline {
-  display: inline-block; vertical-align: middle;
-  width: 60px; height: 20px;
-  margin-left: 6px;
-}
-.lb-sparkline path { fill: none; stroke-width: 1.8; }
-.lb-sparkline .sl-line { stroke: var(--primary); }
-.lb-sparkline .sl-area { fill: rgba(20,184,166,.15); stroke: none; }
-.lb-sparkline circle { fill: var(--primary); }
+/* Sparkline-Minigrafiken in der Rangliste entfernt (Nutzerwunsch 06.09.2026:
+   "Diese grünen Grafiken mag ich nicht und müssen nicht sein."); die ▲/▼-
+   Trendpillen (.lb-trend) bleiben. */
 
 /* ============================================================
    MATCH-DETAIL: Tipp-Verteilung (Vergleich zum Durchschnitt)
@@ -4151,9 +4164,10 @@ body.ios-installed .pwa-install-btn { display: none !important; }
     left: 0; right: 0; bottom: 0;
     z-index: 1000;
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    /* 5 Tabs: Tippen / Tipps / Rangliste / LIVE / Mehr */
+    grid-template-columns: repeat(5, 1fr);
     gap: 2px;
-    padding: 7px 8px calc(7px + env(safe-area-inset-bottom, 0px));
+    padding: 7px 5px calc(7px + env(safe-area-inset-bottom, 0px));
     background: var(--navbar-bg);
     border-top: 1px solid var(--border);
     box-shadow: 0 -10px 28px rgba(0,0,0,.22);

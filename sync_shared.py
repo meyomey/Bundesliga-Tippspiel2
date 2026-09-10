@@ -12,6 +12,23 @@ from extensions import db
 from models import Team, Match, Prediction, Comment, Competition, CompetitionTeam
 from scoring import get_setting, set_setting
 
+# Kennzahlen des letzten Sync-Purges ( fuer Sync-Meldungen/Logs; pro Aufruf gesetzt).
+LAST_PURGE_STATS = {"deleted": 0, "migrated_predictions": 0,
+                    "migrated_comments": 0, "kept_with_tips": 0}
+
+
+def purge_summary_suffix():
+    """Zusatztext fuer Sync-Meldungen, wenn der Purge Nutzerdaten gerettet hat."""
+    st = LAST_PURGE_STATS
+    parts = []
+    if st.get("migrated_predictions"):
+        parts.append(f"{st['migrated_predictions']} Tipps zu Ersatz-Spielen umgezogen")
+    if st.get("migrated_comments"):
+        parts.append(f"{st['migrated_comments']} Kommentare mitgenommen")
+    if st.get("kept_with_tips"):
+        parts.append(f"{st['kept_with_tips']} Spiele mit Tipps statt Loeschung behalten")
+    return (", " + ", ".join(parts)) if parts else ""
+
 BUNDESLIGA_TEAMS = [
     ("FC Bayern München",       "FCB", 5,   "https://crests.football-data.org/5.png",   "#DC052D"),
     ("Borussia Dortmund",       "BVB", 4,   "https://crests.football-data.org/4.png",   "#FDE100"),
@@ -191,13 +208,26 @@ def _find_existing_match(comp_id, ext_id, matchday, home_team, away_team, source
 def _purge_stale_matches_for_comp(comp_id, current_ext_ids):
     """Loescht Spiele des aktiven Wettbewerbs, die nicht in einem Vollsync vorkommen.
 
-    Sicherheitsbremse: Wenn lokal bereits viele Spiele existieren, die API aber
-    nur eine offensichtlich unvollstaendige Teilmenge liefert, wird NICHT
-    geloescht. Sonst koennte ein temporaerer API-/Saisonfehler echte Tipps
-    entfernen.
+    Sicherheitsbremsen:
+    1. Bei offensichtlich unvollstaendiger API-Auslieferung wird gar nicht erst
+       geloescht (temporaerer API-/Saisonfehler entfernt sonst echte Tipps).
+    2. Bekommt ein Spiel vom Provider nur eine neue externe ID (Re-Keying),
+       legt der Sync eine Ersatzzeile an. Vor dem Loeschen der Altzeile werden
+       ihre Tipps und Kommentare auf die Ersatzzeile umgezogen.
+    3. Eine Altzeile mit Benutzertipps/Kommentaren, fuer die es keine Ersatz-
+       zeile gibt, wird NIE geloescht - ein Datendefekt im Sync darf nicht
+       unwiederbringliche Tipps kosten (Vorfall 06.09.2026: drei Spieltag-1-
+       Tippsaetze verschwanden kommentlos). Die Zeile bleibt inkl. Warnung im Log.
+
+    Rueckgabe: Anzahl geloeschter Spiele. Detailzahlen in LAST_PURGE_STATS.
     """
+    def _reset_stats(deleted=0, mig_p=0, mig_c=0, kept=0):
+        LAST_PURGE_STATS.update(deleted=deleted, migrated_predictions=mig_p,
+                                migrated_comments=mig_c, kept_with_tips=kept)
+        return deleted
+
     if not comp_id or not current_ext_ids:
-        return 0
+        return _reset_stats()
 
     local_count = Match.query.filter(Match.competition_id == comp_id).count()
     incoming_count = len(current_ext_ids)
@@ -212,7 +242,7 @@ def _purge_stale_matches_for_comp(comp_id, current_ext_ids):
             )
         except Exception:
             pass
-        return 0
+        return _reset_stats()
 
     stale = Match.query.filter(
         Match.competition_id == comp_id,
@@ -222,12 +252,63 @@ def _purge_stale_matches_for_comp(comp_id, current_ext_ids):
         )
     ).all()
     if not stale:
-        return 0
+        return _reset_stats()
     stale_ids = [m.id for m in stale]
-    Prediction.query.filter(Prediction.match_id.in_(stale_ids)).delete(synchronize_session=False)
-    Comment.query.filter(Comment.match_id.in_(stale_ids)).delete(synchronize_session=False)
-    Match.query.filter(Match.id.in_(stale_ids)).delete(synchronize_session=False)
-    return len(stale_ids)
+
+    migrated_preds = 0
+    migrated_comments = 0
+    kept = 0
+    deletable = []
+    for m in stale:
+        pred_count = Prediction.query.filter(Prediction.match_id == m.id).count()
+        comment_count = Comment.query.filter(Comment.match_id == m.id).count()
+        if not pred_count and not comment_count:
+            deletable.append(m.id)
+            continue
+        replacement = None
+        if m.matchday is not None and m.home_team_id and m.away_team_id:
+            replacement = Match.query.filter(
+                Match.competition_id == m.competition_id,
+                Match.matchday == m.matchday,
+                Match.home_team_id == m.home_team_id,
+                Match.away_team_id == m.away_team_id,
+                ~Match.id.in_(stale_ids),
+            ).first()
+        if replacement is None:
+            kept += 1
+            try:
+                current_app.logger.warning(
+                    f"Sync-Purge: Spiel #{m.id} (ST {m.matchday}) nicht geloescht - "
+                    f"daran haengen {pred_count} Tipps / {comment_count} Kommentare "
+                    f"und der Feed liefert keine Ersatzzeile. Manuell pruefen."
+                )
+            except Exception:
+                pass
+            continue
+        for p in Prediction.query.filter(Prediction.match_id == m.id).all():
+            if Prediction.query.filter_by(user_id=p.user_id, match_id=replacement.id).first():
+                db.session.delete(p)  # auf dem Ersatzspiel wurde schon getippt: neuerraegt
+                continue
+            p.match_id = replacement.id
+            migrated_preds += 1
+        for c in Comment.query.filter(Comment.match_id == m.id).all():
+            c.match_id = replacement.id
+            migrated_comments += 1
+        deletable.append(m.id)
+
+    if migrated_preds or migrated_comments:
+        db.session.flush()
+    if deletable:
+        Prediction.query.filter(Prediction.match_id.in_(deletable)).delete(synchronize_session=False)
+        Comment.query.filter(Comment.match_id.in_(deletable)).delete(synchronize_session=False)
+        Match.query.filter(Match.id.in_(deletable)).delete(synchronize_session=False)
+    if kept:
+        try:
+            current_app.logger.warning(f"Sync-Purge: {kept} Spiele wegen vorhandener Tipps behalten.")
+        except Exception:
+            pass
+    return _reset_stats(deleted=len(deletable), mig_p=migrated_preds,
+                        mig_c=migrated_comments, kept=kept)
 
 
 def _resolve_or_create_team_from_olb(team_dict):

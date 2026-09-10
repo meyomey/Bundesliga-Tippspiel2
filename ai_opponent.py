@@ -105,6 +105,19 @@ class AIOpponent:
         self.user_id = user_id  # Falls als "User" in DB gespeichert
         self._model_trained = False
         self._team_stats_cache: Dict[int, TeamStats] = {}
+
+    def invalidate_stats_cache(self):
+        """Leert die Team-Statistik-Cache.
+
+        Wichtig: Der AIManager haengt als Singleton an einem langlebigen
+        Passenger-Worker. Ohne diesen Reset wuerden die Bots mit dem
+        Statistik-Stand ihrer allerersten Tipp-Runde spielen - zu Saisonbeginn
+        also mit LEERER Tabelle (alle Teams "durchschnittlich") und diesen
+        neutralen Werten bis zum Mai denken. Das war der Hauptgrund, warum auch
+        der MasterBot wie ein Zufallsbot tippte (Nutzerfrage 06.09.: "Warum ist
+        der so schlecht?"). Vor jeder neuen Tipp-Runde wird die Cache geleert.
+        """
+        self._team_stats_cache.clear()
     
     def get_tip(self, match: Match, all_matches: List[Match] = None) -> Tuple[int, int]:
         """Generiert Tipp fuer ein Spiel.
@@ -140,8 +153,9 @@ class AIOpponent:
             all_matches = q.order_by(Match.kickoff.desc()).all()
         
         team_matches = [
-            m for m in all_matches 
-            if m.home_team_id == team_id or m.away_team_id == team_id
+            m for m in all_matches
+            if (m.home_team_id == team_id or m.away_team_id == team_id)
+            and m.home_score is not None and m.away_score is not None
         ]
         
         # Form berechnen (letzte 5)
@@ -283,6 +297,8 @@ class AIOpponent:
         h2h_home_wins = 0
         h2h_q = Match.query.filter(
             Match.status == "finished",
+            Match.home_score.isnot(None),
+            Match.away_score.isnot(None),
             ((Match.home_team_id == home.team_id) & (Match.away_team_id == away.team_id)) |
             ((Match.home_team_id == away.team_id) & (Match.away_team_id == home.team_id))
         )
@@ -310,6 +326,67 @@ class AIOpponent:
             away_goals = 1
         
         return min(max(int(home_goals), 0), 5), min(max(int(away_goals), 0), 5)
+
+    def joker_score(self, match: Match, all_matches: List[Match] = None) -> float:
+        """Vertrauens-Score fuer die Joker-Wahl (0..1 plus Bot-Lautstärke).
+
+        Basis: dieselbe Staerke-Differenz (Heim-/Auswaertsstaerke + Form,
+        plus Heimvorteil), die auch die harten Strategien verwenden. Je
+        klarer ein Team favorisiert ist, desto eher lohnt der x2-Multiplikator.
+        Der Rausch-Faktor ist Teil des Charakters: ein EASY-Bot setzt seinen
+        Joker eher wild als der MasterBot.
+        """
+        home = self._get_team_stats(match.home_team_id, all_matches)
+        away = self._get_team_stats(match.away_team_id, all_matches)
+        hs = home.home_strength * 0.6 + home.form_score * 0.4
+        as_ = away.away_strength * 0.6 + away.form_score * 0.4
+        confidence = min(1.0, abs(hs + 0.08 - as_) * 2)
+        noise = {
+            Difficulty.EASY: 0.5, Difficulty.MEDIUM: 0.3,
+            Difficulty.HARD: 0.15, Difficulty.EXPERT: 0.05,
+        }.get(self.difficulty, 0.2)
+        return confidence + random.uniform(-noise, noise)
+
+
+# ------------------------------------------------------------ Bot-Joker ----
+def bot_jokers_enabled() -> bool:
+    """Bot-Joker sind Standard an (Paritaet zu den menschlichen Spielern);
+    Admin -> Bots kann das abschalten (Setting 'bot_use_jokers')."""
+    from utils import get_setting
+    from scoring import _truthy_setting
+    return _truthy_setting(get_setting("bot_use_jokers", "1"), default=True)
+
+
+def place_bot_joker(user_id: int, matchday: int, candidates, competition_id: int = None) -> bool:
+    """Setzt genau EINEN Joker pro Bot und Spieltag - auf den Tipp mit dem
+    besten joker_score. Wie beim Menschen gilt: ist der Joker an diesem
+    Spieltag schon (ausserhalb der Kandidaten) vergeben, bleibt er stehen.
+
+    :param candidates: Liste (Prediction, score) der frischen Ueberschriebenen
+        oder neu angelegten Tipps des Bots fuer diesen Spieltag.
+    """
+    if not candidates or not bot_jokers_enabled():
+        return False
+    from models import Prediction as _Pred
+    used_q = (
+        db.session.query(_Pred.id)
+        .join(Match, _Pred.match_id == Match.id)
+        .filter(
+            _Pred.user_id == user_id,
+            _Pred.joker.is_(True),
+            Match.matchday == matchday,
+        )
+    )
+    fresh_ids = [p.id for p, _ in candidates if p.id is not None]
+    if fresh_ids:
+        used_q = used_q.filter(~_Pred.id.in_(fresh_ids))
+    if competition_id:
+        used_q = used_q.filter(Match.competition_id == competition_id)
+    if used_q.first():
+        return False  # Joker diese Runde schon genutzt - Paritaet: nur einer pro Spieltag
+    pred, _score = max(candidates, key=lambda t: t[1])
+    pred.joker = True
+    return True
 
 
 class AIManager:
@@ -409,12 +486,26 @@ class AIManager:
             results.summary_by_bot = summary
             return results
         
-        # Alle beendete Spiele fuer Statistiken laden
-        all_finished = active_match_query().filter_by(status="finished").all()
+        # Frischer Statistik-Blick pro Runde (siehe invalidate_stats_cache):
+        # ohne das hier wuerden Bots den ganzen Saisonverlauf mit den Werten
+        # ihres allerersten Tips spielen.
+        for opponent in self.opponents:
+            opponent.invalidate_stats_cache()
+
+        # Alle beendete Spiele fuer Statistiken laden - neueste zuerst, damit
+        # "Form der letzten 5" auch wirklich die letzten 5 Spiele sind.
+        all_finished = (
+            active_match_query().filter_by(status="finished")
+            .order_by(Match.kickoff.desc()).all()
+        )
         
+        # (user_id, matchday) -> [(Prediction, joker_score)] fuer die
+        # Joker-Setzung nach dem Tipp-Loop (genau einer pro Bot+Spieltag).
+        joker_cands: Dict[tuple, list] = {}
+
         for match in matches:
             for opponent in self.opponents:
-                summary.setdefault(opponent.name, {"tipped": 0, "skipped": 0, "overwritten": 0})
+                summary.setdefault(opponent.name, {"tipped": 0, "skipped": 0, "overwritten": 0, "errors": 0})
                 # Pruefe ob Bot aktiv ist
                 from scoring import _truthy_setting
                 is_active = _truthy_setting(get_setting(f"bot_active_{opponent.name}", False), default=False)
@@ -431,33 +522,56 @@ class AIManager:
                     summary[opponent.name]["skipped"] += 1
                     continue
 
-                home_tip, away_tip = opponent.get_tip(match, all_finished)
-                if existing and overwrite:
-                    existing.home_tip = home_tip
-                    existing.away_tip = away_tip
-                    existing.joker = False
-                    existing.points = 0
-                    summary[opponent.name]["overwritten"] += 1
-                    action = "overwritten"
-                else:
-                    prediction = Prediction(
-                        user_id=opponent.user_id,
-                        match_id=match.id,
-                        home_tip=home_tip,
-                        away_tip=away_tip,
-                        joker=False,
-                        points=0,
-                    )
-                    db.session.add(prediction)
-                    summary[opponent.name]["tipped"] += 1
-                    action = "tipped"
+                # Ein aussetzender Bot darf nie die ganze Runde kosten
+                # (Produktionsfall 06.09.: MasterBot ohne Tipps, Runde evtl.
+                # komplett fehlgeschlagen wegen eines Crashes kurz vor commit).
+                try:
+                    home_tip, away_tip = opponent.get_tip(match, all_finished)
+                    if existing and overwrite:
+                        existing.home_tip = home_tip
+                        existing.away_tip = away_tip
+                        existing.joker = False
+                        existing.points = 0
+                        summary[opponent.name]["overwritten"] += 1
+                        action = "overwritten"
+                        target = existing
+                    else:
+                        prediction = Prediction(
+                            user_id=opponent.user_id,
+                            match_id=match.id,
+                            home_tip=home_tip,
+                            away_tip=away_tip,
+                            joker=False,
+                            points=0,
+                        )
+                        db.session.add(prediction)
+                        summary[opponent.name]["tipped"] += 1
+                        action = "tipped"
+                        target = prediction
 
-                results.append({
-                    'bot': opponent.name,
-                    'match': f"{match.home_team.name} vs {match.away_team.name}",
-                    'tip': f"{home_tip}:{away_tip}",
-                    'action': action,
-                })
+                    # Kandidat fuer den Runden-Joker dieses Bots (Statistik-Cache
+                    # ist durch get_tip bereits gefuellt -> kein zusaetzlicher Query).
+                    joker_cands.setdefault(
+                        (opponent.user_id, match.matchday, match.competition_id), []
+                    ).append((target, opponent.joker_score(match, all_finished)))
+
+                    results.append({
+                        'bot': opponent.name,
+                        'match': f"{match.home_team.name} vs {match.away_team.name}",
+                        'tip': f"{home_tip}:{away_tip}",
+                        'action': action,
+                    })
+                except Exception as e:  # noqa: BLE001 - Bot-Ausfall ist erwartbar
+                    summary[opponent.name]["errors"] += 1
+                    current_app.logger.error(
+                        f"Bot-Tipp {opponent.name} @ Spiel {match.id} (ST {match.matchday}) fehlgeschlagen: {e}",
+                        exc_info=True,
+                    )
+                    continue
+        
+        # Joker je Bot+Spieltag auf den vertrauenswuerdigsten frischen Tipp.
+        for (uid, md, comp_id), cands in joker_cands.items():
+            place_bot_joker(uid, md, cands, comp_id)
         
         db.session.commit()
         try:

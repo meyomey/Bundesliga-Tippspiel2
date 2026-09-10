@@ -161,7 +161,9 @@ def test_purge_safety_blocks_on_incomplete_api_payload(db):
     assert Match.query.filter_by(competition_id=bl1_comp.id).count() == 55
 
 
-def test_purge_removes_stale_match_with_prediction_and_comment(db, user):
+def test_purge_keeps_stale_match_with_prediction_and_comment(db, user):
+    """Altverhalten war: mitgeloescht. Seit 06.09.2026 gilt Datensicherheit -
+    ohne Ersatzzeile bleibt das Spiel samt Tipps/Kommentaren erhalten."""
     bl1_comp = Competition(code="PURG_DEL", name="Purge-Test-2", season="2026",
                            matchdays=34, teams_count=18, is_active=True)
     db.session.add(bl1_comp)
@@ -184,11 +186,11 @@ def test_purge_removes_stale_match_with_prediction_and_comment(db, user):
 
     stale_id, keep_id = stale.id, keep.id
     removed = sync._purge_stale_matches_for_comp(bl1_comp.id, {"fd:keep"})
-    assert removed == 1
-    assert Match.query.filter_by(id=stale_id).count() == 0
+    assert removed == 0  # kein Ersatzspiel vorhanden -> Zeile bleibt
+    assert Match.query.filter_by(id=stale_id).count() == 1
     assert Match.query.filter_by(id=keep_id).count() == 1
-    assert Prediction.query.filter_by(match_id=stale_id).count() == 0
-    assert Comment.query.filter_by(match_id=stale_id).count() == 0
+    assert Prediction.query.filter_by(match_id=stale_id).count() == 1
+    assert Comment.query.filter_by(match_id=stale_id).count() == 1
 
 
 # ---------------------------------------------------------------- OpenLigaDB-Fallback

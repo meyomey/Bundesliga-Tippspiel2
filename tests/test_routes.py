@@ -916,6 +916,21 @@ def test_live_center_uses_polling_not_sse(client, user):
     assert 'EventSource' not in js
 
 
+def test_live_center_ranklist_trend_persistiert():
+    """Nutzerfeedback 06.09.: Rang-Trend und +Punkte der Live-Rangliste durften
+    nicht mehr nach 8s verblassen, sondern müssen dauerhaft die Änderung seit
+    Seitenöffnung zeigen (Basis: baseLb; keine setTimeout-Loescher mehr)."""
+    import pathlib
+    js = (pathlib.Path(__file__).resolve().parent.parent
+          / 'static' / 'js' / 'live.js').read_text(encoding='utf-8')
+    assert 'baseLb' in js
+    assert 'setPersistent' in js
+    assert '}, 8000);' not in js, 'Delta-Anzeige darf nicht mehr nach 8s geloescht werden'
+    css = (pathlib.Path(__file__).resolve().parent.parent
+           / 'static' / 'css' / 'style.css').read_text(encoding='utf-8')
+    assert '.points-down' in css
+
+
 def test_live_center_stream_does_not_block_worker(client, user):
     """Der alte SSE-Endpunkt antwortet sofort, damit keine Worker blockieren."""
     client.post('/auth/login', data={'email': user.email, 'password': 'testpass123'}, follow_redirects=True)

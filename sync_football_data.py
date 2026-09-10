@@ -16,7 +16,7 @@ from match_results import apply_match_update
 
 from sync_shared import (
     current_sync_season_code, _resolve_or_create_team_from_fd, _ensure_competition_team,
-    _find_existing_match, _purge_stale_matches_for_comp,
+    _find_existing_match, _purge_stale_matches_for_comp, purge_summary_suffix,
 )
 
 # ============================================================ football-data.org -
@@ -144,10 +144,22 @@ def _process_football_data(data, comp_id, source="football-data.org"):
         status_map = {
             "SCHEDULED": "scheduled", "TIMED": "scheduled",
             "IN_PLAY": "live", "PAUSED": "live",
+            "EXTRA_TIME": "live", "PENALTY_SHOOTOUT": "live",
             "FINISHED": "finished", "POSTPONED": "scheduled",
             "SUSPENDED": "scheduled", "CANCELLED": "scheduled",
         }
         our_status = status_map.get(status, "scheduled")
+
+        # Echte Spielminute aus dem Feed (KEINE Schaetzung ab Anstosszeit!).
+        # football-data.org liefert bei Live-Spielen `minute`; fehlt sie oder
+        # ist sie unsinnig, bleibt minute leer und die UI zeigt nur "LIVE".
+        raw_minute = md.get("minute")
+        try:
+            real_minute = int(raw_minute) if raw_minute is not None else None
+        except (TypeError, ValueError):
+            real_minute = None
+        if real_minute is not None and real_minute < 1:
+            real_minute = None
 
         score = md.get("score", {})
         full_time = score.get("fullTime", {})
@@ -193,8 +205,15 @@ def _process_football_data(data, comp_id, source="football-data.org"):
                 affected_match_ids.add(existing.id)
             created += 1
 
-        if our_status == "live":
+        # Live-Metadaten: Phase (PAUSED = Halbzeit) + echte Minute. Die UI
+        # zeigt nur an, was der Feed wirklich liefert - keine Stoppuhr ab Anpfiff.
+        if our_status == "live" and existing is not None:
             live_count += 1
+            existing.live_phase = status or None
+            if real_minute is not None:
+                existing.minute = real_minute
+        elif existing is not None and (existing.live_phase is not None or existing.minute is not None):
+            existing.live_phase = None
 
     purged_stale = 0
     if source == "football-data.org" and current_ext_ids:
@@ -213,7 +232,7 @@ def _process_football_data(data, comp_id, source="football-data.org"):
 
     return {
         "ok": True,
-        "msg": f"✅ {source}: {created} neu, {updated} aktualisiert, {live_count} live",
+        "msg": f"✅ {source}: {created} neu, {updated} aktualisiert, {live_count} live{purge_summary_suffix()}",
         "created": created,
         "updated": updated,
         "live": live_count,

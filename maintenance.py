@@ -331,6 +331,16 @@ def run_repair_tasks(task: str) -> dict:
     if task == "points":
         recalculate_all_points()
         return {"ok": True, "message": "Punkte neu berechnet"}
+    if task == "tips_restore_preview":
+        from tip_restore import preview_restore
+        r = preview_restore()
+        return {"ok": bool(r.get("ok")), "message": r.get("message", ""),
+                "details": r.get("details", []), "used_backup": r.get("used")}
+    if task == "tips_restore":
+        from tip_restore import run_restore
+        r = run_restore()
+        return {"ok": bool(r.get("ok")), "message": r.get("message", ""),
+                "used_backup": r.get("used")}
     if task == "badges":
         check_and_award_badges()
         return {"ok": True, "message": "Badges neu geprueft"}

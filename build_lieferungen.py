@@ -43,6 +43,43 @@ GITHUB_UPLOAD_FILES = [
     # 02.09.2026: Mehr-Seite - Schnellzugriff-Chip "Spiele & Tipps"
     "templates/more.html",
     "tests/test_player_smoke.py",
+    # 06.09.2026: LIVE - echte Spielminute aus dem Feed + Halbzeitpause statt Schaetzung
+    "models.py",
+    "sync.py",
+    "sync_football_data.py",
+    "routes_api.py",
+    "templates/live.html",
+    "static/js/live.js",
+    "tests/test_live_minutes.py",
+    # 06.09.2026 (2): LIVE - Struktur-Uhr mit Feed-Vorrang (Free-Tier-Fix)
+    "main_stats_routes.py",
+    # 06.09.2026 (3): Live-Rangliste - Trend/+Punkte persistent statt 8s-Blur
+    "tests/test_routes.py",
+    # 06.09.2026 (4): KI-Bots - Stats-Cache pro Runde frisch (MasterBot-Fix)
+    "ai_opponent.py",
+    "admin_bots_routes.py",
+    "tests/test_ai_opponent.py",
+    # 06.09.2026 (6): Bot-Joker + Admin-Schalter
+    "templates/admin/bots.html",
+    "tests/test_bot_joker.py",
+    # 06.09.2026 (7): Bot-Runden robust + verpasste Runden sichtbar
+    "cron_jobs.py",
+    # 06.09.2026 (8): Sync-Purge - Tipps-Umzug auf Ersatz-Spiele + Integritaetscheck
+    "sync_shared.py",
+    "sync_openligadb.py",
+    "admin_integrity_routes.py",
+    "tests/test_sync_mocked.py",
+    "tests/test_sync_purge_tips.py",
+    # 06.09.2026 (8)/(10.09.): Sync-Purge-Fix braucht Wartungsaufgaben-Registrierung
+    "maintenance.py",
+    # 10.09.2026 (2): Rettung verlorener Tipps aus Tages-Backups
+    "tip_restore.py",
+    "tests/test_tip_restore.py",
+    # 10.09.2026 (3): Tippuebersicht - fester Navi-Punkt + mobiler Tab
+    "templates/base.html",
+    "tests/test_tip_overview.py",
+    # 06.09.2026: Rangliste Mobile - Namensblock mit eigener Zeile
+    "templates/leaderboard.html",
     "CHANGELOG.md",
     "build_lieferungen.py",   # diese Liste aktualisiert
 ]

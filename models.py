@@ -174,7 +174,8 @@ class Match(db.Model):
     
     # Live-Scoring Felder
     is_live = db.Column(db.Boolean, default=False)
-    minute = db.Column(db.Integer, nullable=True)  # Aktuelle Minute
+    minute = db.Column(db.Integer, nullable=True)  # Aktuelle Minute (echter Feed-Wert; None = unbekannt)
+    live_phase = db.Column(db.String(20), nullable=True)  # Live-Phase des Feeds: IN_PLAY / PAUSED (Halbzeit) / EXTRA_TIME / PENALTY_SHOOTOUT
     events = db.Column(db.Text, nullable=True)  # JSON: Tore, Karten, etc.
 
     home_team = db.relationship("Team", foreign_keys=[home_team_id])

@@ -115,6 +115,39 @@
 </div>
 
 <div class="admin-section">
+  <h2 class="admin-section-title">🛟 Tipps aus Backup retten</h2>
+  <p class="muted small">
+    Falls der Sync Spiele neu angelegt und dabei die alten Tipps geloescht hat
+    (Symptom: fertig angezeigte Spiele ohne einzigen Tipp in der
+    Tippuebersicht), holt diese Aktion <strong>nur die fehlenden Tipp- und
+    Kommentarzeilen</strong> aus einem Tages-Backup zurueck. Die Live-DB wird
+    dabei NICHT ueberschrieben – alles seit dem Backup-Stand bleibt erhalten.
+    Geprueft wird automatisiert vom neuesten zum aeltesten Backup; nur
+    Spiele ohne jegliche Tipps werden befuellt, Duplikate uebersprungen.
+    Passende Backups: <a href="{{ url_for('admin.backup_page') }}">💾 Backups verwalten</a>.
+  </p>
+  <div class="admin-grid-3">
+    <form method="post" action="{{ url_for('admin.maintenance_run') }}" class="admin-tile">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="task" value="tips_restore_preview">
+      <div class="t-icon">🔍</div>
+      <h3>Vorschau: Rettbares finden</h3>
+      <p>Read-only: zeigt, welches Backup wie viele Tipps zurueckbringen wuerde (Ergebnis im Flash + Activity-Log).</p>
+      <button class="btn-ghost btn-sm" type="submit">Vorschau starten</button>
+    </form>
+    <form method="post" action="{{ url_for('admin.maintenance_run') }}" class="admin-tile"
+          onsubmit="return confirm('Fehlende Tipps aus dem aeltesten verwertbaren Backup zurueckholen und Punkte neu berechnen? Die Live-DB wird dabei nicht ueberschrieben.');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="task" value="tips_restore">
+      <div class="t-icon">🧯</div>
+      <h3>Restore ausfuehren</h3>
+      <p>Fuegt die fehlenden Tipps + Kommentare ein und berechnet alle Punkte neu. Mehrfachausfuehrung gefahrlos.</p>
+      <button class="btn-ghost btn-sm" type="submit">Restore ausfuehren</button>
+    </form>
+  </div>
+</div>
+
+<div class="admin-section">
   <h2 class="admin-section-title">🖼️ Logos</h2>
   <div class="admin-grid-3">
     <form method="post" action="{{ url_for('admin.maintenance_run') }}" class="admin-tile">

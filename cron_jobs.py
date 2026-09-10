@@ -180,7 +180,11 @@ def run_bot_tips():
         summary = getattr(results, "summary_by_bot", {})
         tipped = sum(v.get("tipped", 0) for v in summary.values())
         skipped = sum(v.get("skipped", 0) for v in summary.values())
-        print(f"[{ts}] BOTS: Spieltag {matchday}, {tipped} Tipps, {skipped} uebersprungen")
+        errors = sum(v.get("errors", 0) for v in summary.values())
+        msg = f"[{ts}] BOTS: Spieltag {matchday}, {tipped} Tipps, {skipped} uebersprungen"
+        if errors:
+            msg += f", {errors} FEHLER (Details im App-Log)"
+        print(msg)
         return True
 
 

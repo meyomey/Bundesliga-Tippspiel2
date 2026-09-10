@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 from ai_opponent import AIOpponent, Difficulty, AIManager
 from models import Match, Prediction
+from scoring import set_setting
 
 
 class TestAIOpponent:
@@ -268,3 +269,140 @@ def test_admin_only_not_counted_in_pot(db):
     assert pot['total_count'] == 1
     assert pot['paid_count'] == 1
     assert pot['missing_count'] == 0
+
+
+def test_bots_tippen_mit_frischen_stats_pro_runde(app, db, competition, teams):
+    """Nutzerfrage 06.09. ('Warum ist der MasterBot so schlecht?'):
+    Der Statistik-Cache der Bots wurde frueher nie geleert - ein langlebiger
+    Worker fror den Saisonstart-Zustand (leere Bilanz => alle Teams
+    'durchschnittlich') fuer die ganze Saison ein. Seit dem Fix raeumt
+    tip_all_matches die Cache vor jeder Runde und sieht frische Form.
+    """
+    with app.app_context():
+        now = datetime.now(timezone.utc)
+        # Aeltere Klatsche zuerst, dann 5 Siege - 'Form' muss die NEUESTEN 5
+        # treffen, also nur Siege sehen.
+        db.session.add(Match(
+            competition_id=competition.id, matchday=0,
+            home_team_id=teams[0].id, away_team_id=teams[3].id,
+            kickoff=now - timedelta(days=30), status='finished',
+            home_score=0, away_score=4))
+        for i in range(5):
+            db.session.add(Match(
+                competition_id=competition.id, matchday=1,
+                home_team_id=teams[0].id, away_team_id=teams[1].id,
+                kickoff=now - timedelta(days=20 - i), status='finished',
+                home_score=3, away_score=0))
+        db.session.add(Match(
+            competition_id=competition.id, matchday=2,
+            home_team_id=teams[0].id, away_team_id=teams[2].id,
+            kickoff=now + timedelta(days=1)))
+        db.session.commit()
+
+        manager = AIManager()
+        from scoring import set_setting
+        for opponent in manager.opponents:
+            set_setting(f'bot_active_{opponent.name}', '1')
+            # Vergiftete Cache: simulierte einen zurueckgefrorenen
+            # Saisonstart-Zustand (wie im Produktionsfehler).
+            opponent._team_stats_cache[teams[0].id] = 'MUELL_VOM_SAISONSTART'
+
+        manager.tip_all_matches(matchday=2)
+
+        master = manager.get_opponent('MasterBot')
+        stats = master._team_stats_cache.get(teams[0].id)
+        assert stats not in (None, 'MUELL_VOM_SAISONSTART'), \
+            'Stats-Cache muss vor jeder Tipp-Runde geleert und neu gefuellt werden'
+        assert stats.form[:5] == ['W'] * 5, 'Form muss die neuesten 5 Spiele sein'
+        assert stats.form_score > 0.5
+
+
+# ---------- Runden-Robustheit (Nutzerfall 06.09.: MasterBot ohne ST2-Tipps) --
+
+def _open_md_match(db, competition, teams, matchday, home_i=0, away_i=1):
+    m = Match(
+        competition_id=competition.id, matchday=matchday,
+        home_team_id=teams[home_i].id, away_team_id=teams[away_i].id,
+        kickoff=datetime.now(timezone.utc) + timedelta(days=1),
+        status='scheduled',
+    )
+    db.session.add(m)
+    db.session.commit()
+    return m
+
+
+def test_null_ergebnisse_crashen_die_runde_nicht(app, db, competition, teams):
+    """Reproduktion des Verdachts aus der Produktion: ein 'finished' gemeldetes
+    Spiel OHNE Ergebnis (z. B. Mainz-Gladbach nicht ausgetragen) liess bisher
+    den h2h-Vergleich des EXPERT-Bots mit TypeError aufschlagen und kostete so
+    die halbe Runde. NULL-Zeilen werden jetzt gefiltert."""
+    with app.app_context():
+        # Verfallenes Duell M05<->HSV als finished ohne Tore
+        db.session.add(Match(
+            competition_id=competition.id, matchday=1,
+            home_team_id=teams[1].id, away_team_id=teams[0].id,
+            kickoff=datetime.now(timezone.utc) - timedelta(days=7),
+            status='finished', home_score=None, away_score=None))
+        _open_md_match(db, competition, teams, 2, home_i=1, away_i=0)
+        db.session.commit()
+
+        manager = AIManager()
+        for opp in manager.opponents:
+            set_setting(f'bot_active_{opp.name}', '1')
+        results = manager.tip_all_matches(matchday=2)
+        summary = results.summary_by_bot
+        assert all(v.get('errors', 0) == 0 for v in summary.values()), \
+            f'NULL-Ergebnis darf keinen Bot zum Crash bringen: {summary}'
+        for opp in manager.opponents:
+            assert Prediction.query.filter_by(user_id=opp.user_id).count() == 1
+
+
+def test_crash_eines_bots_kostet_nicht_den_ganzen_lauf(app, db, competition, teams, monkeypatch):
+    """Isolation: wirft EIN Bot (hier RookieBot) beim Tippen, bekommen die
+    anderen trotzdem ihre Tipps + Joker und der Fehler wird nur gesummuert."""
+    with app.app_context():
+        _open_md_match(db, competition, teams, 2)
+        manager = AIManager()
+        for opp in manager.opponents:
+            set_setting(f'bot_active_{opp.name}', '1')
+
+        original = AIOpponent.get_tip
+
+        def boom(self, match, all_matches=None):
+            if self.name == 'RookieBot':
+                raise RuntimeError('kuenstlicher Crash')
+            return original(self, match, all_matches)
+
+        monkeypatch.setattr(AIOpponent, 'get_tip', boom)
+        results = manager.tip_all_matches(matchday=2)
+        summary = results.summary_by_bot
+        assert summary['RookieBot'].get('errors', 0) == 1
+        assert summary['MasterBot']['tipped'] == 1
+        assert Prediction.query.join(
+            Match, Prediction.match_id == Match.id
+        ).filter(Prediction.user_id == manager.get_opponent('RookieBot').user_id).count() == 0
+        # Die anderen vier haben getippt (und je einen Joker gesetzt)
+        assert Prediction.query.count() == 4
+        assert Prediction.query.filter(Prediction.joker.is_(True)).count() == 4
+
+
+def test_admin_bots_seite_zeigt_verpasste_runde(app, db, admin_user, competition, teams):
+    """Neue Spalte 'ST n': aktiver Bot ohne Tipps fuer den aktuellen Spieltag
+    wird auf der Bots-Seite ausdruecklich gewarnt (Sichtbarkeit des Falls)."""
+    with app.app_context():
+        _open_md_match(db, competition, teams, 1)
+        from models import User
+        from scoring import set_setting as _ss
+        manager = AIManager()  # legt Bot-User an
+        master = manager.get_opponent('MasterBot')
+        _ss('bot_active_MasterBot', '1')
+        db.session.expire_all()
+
+        client = app.test_client()
+        admin = User.query.filter_by(username='admin').first()
+        client.post('/auth/login', data={'email': admin.email, 'password': 'admin123'},
+                    follow_redirects=True)
+        resp = client.get('/admin/bots')
+        assert resp.status_code == 200
+        assert b'ST 1' in resp.data
+        assert 'ohne Tipps für Spieltag 1'.encode('utf-8') in resp.data

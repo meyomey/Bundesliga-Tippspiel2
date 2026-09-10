@@ -65,8 +65,17 @@
       <span class="muted">{{ open_matches }} offene Spiele</span>
       <p class="muted small" style="margin:5px 0 0">
         „Aktive Bots tippen lassen“ berücksichtigt nur aktivierte Bots. Inaktive Bots werden übersprungen.
-        Auto-Tipp läuft nur, wenn Plesk-Cron <code>cron_jobs.py all</code> oder <code>cron_jobs.py bots</code> ausführt.
+        Auto-Tipp läuft nur, wenn Plesk-Cron <code>cron_jobs.py all</code> oder <code>cron_jobs.py bots</code> ausführt
+        <em>und</em> der Schalter „Auto-Tipp“ hier aktiv ist.
       </p>
+      {% set missed = bots | selectattr('missed_round') | list %}
+      {% if missed %}
+      <p class="small" style="margin:6px 0 0;color:#ef4444">
+        ⚠️ <strong>{{ missed | map(attribute='name') | join(', ') }}</strong
+        > {{ 'ist' if missed|length == 1 else 'sind' }} aktiv, aber ohne Tipps für Spieltag {{ current_matchday }} —
+        Auto-Tipp prüfen oder unten per „Tippen“ nachholen (solange Spiele noch nicht angepfiffen sind).
+      </p>
+      {% endif %}
     </div>
     <div style="display:flex; gap:8px; align-items:center;">
       <form method="post" action="{{ url_for('admin.admin_bots_seed') }}" style="display:inline"
@@ -78,6 +87,12 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn-xs" title="Automatisch per Cron: cron_jobs.py all oder bots">
           {% if auto_tip_active %}🟢 Auto-Tipp aktiv{% else %}⚪ Auto-Tipp aus{% endif %}
+        </button>
+      </form>
+      <form method="post" action="{{ url_for('admin.admin_bots_toggle_jokers') }}" style="display:inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-xs" title="Bots setzen pro Spieltag genau einen Joker auf ihren stärksten Tipp – wie die menschlichen Spieler.">
+          {% if bot_jokers_active %}🃏 Bot-Joker an{% else %}🚫 Bot-Joker aus{% endif %}
         </button>
       </form>
       <form method="post" action="{{ url_for('admin.admin_bots_tip_all') }}" style="display:inline">
@@ -112,6 +127,10 @@
 
       <div class="bot-mobile-stats">
         <div class="bot-mobile-stat"><strong>{{ bot.tips }}</strong><small>Tipps</small></div>
+        <div class="bot-mobile-stat">
+          <strong {% if bot.missed_round %}style="color:#ef4444"{% endif %}>{{ bot.md_tips }}</strong>
+          <small>ST {{ current_matchday }}{{ ' ⚠️' if bot.missed_round }}</small>
+        </div>
         <div class="bot-mobile-stat"><strong>{{ bot.exact }}</strong><small>Exakt</small></div>
         <div class="bot-mobile-stat"><strong>{{ bot.points }}</strong><small>Punkte</small></div>
       </div>
@@ -146,6 +165,7 @@
         <th>Stärke</th>
         <th>Kurzprofil</th>
         <th>Tipps</th>
+        <th title="Tipps für den aktuellen Spieltag {{ current_matchday }} — 0 bei aktivem Bot = Runde verpasst">ST {{ current_matchday }}</th>
         <th>Exakt</th>
         <th>Punkte</th>
         <th>Status</th>
@@ -168,6 +188,13 @@
           </span>
         </td>
         <td>{{ bot.tips }}</td>
+        <td>
+          {% if bot.missed_round %}
+            <span style="color:#ef4444;font-weight:700" title="Bot ist aktiv, hat aber für diesen Spieltag noch keine Tipps — Auto-Tipp prüfen oder manuell tippen lassen.">0 ⚠️</span>
+          {% else %}
+            {{ bot.md_tips }}
+          {% endif %}
+        </td>
         <td>{{ bot.exact }}</td>
         <td>{{ bot.points }}</td>
         <td>

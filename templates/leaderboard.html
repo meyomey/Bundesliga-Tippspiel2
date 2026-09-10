@@ -88,15 +88,22 @@
           {% else %}
             <div class="avatar-fallback small">{{ r.user.username[0]|upper }}</div>
           {% endif %}
-          <strong>{{ r.user.username }}</strong>
-          {% if r.user.favorite_team %}
-            <img src="{{ r.user.favorite_team.logo }}" alt="" class="lb-fav-mini" title="{{ r.user.favorite_team.name }}" />
-          {% endif %}
-          {% set tr = trends.get(r.user.id) if trends else none %}
-          {% if tr and tr.delta is not none and tr.delta != 0 %}
-            {% if tr.delta > 0 %}<span class="lb-trend up">▲ {{ tr.delta }}</span>
-            {% else %}<span class="lb-trend down">▼ {{ -tr.delta }}</span>{% endif %}
-          {% endif %}
+          <div class="lb-card-id">
+            <strong>{{ r.user.username }}</strong>
+            {% set tr = trends.get(r.user.id) if trends else none %}
+            {% set has_sub = r.user.favorite_team or (tr and tr.delta is not none and tr.delta != 0) %}
+            {% if has_sub %}
+            <span class="lb-card-sub">
+              {% if r.user.favorite_team %}
+                <img src="{{ r.user.favorite_team.logo }}" alt="" class="lb-fav-mini" title="{{ r.user.favorite_team.name }}" />
+              {% endif %}
+              {% if tr and tr.delta is not none and tr.delta != 0 %}
+                {% if tr.delta > 0 %}<span class="lb-trend up">▲ {{ tr.delta }}</span>
+                {% else %}<span class="lb-trend down">▼ {{ -tr.delta }}</span>{% endif %}
+              {% endif %}
+            </span>
+            {% endif %}
+          </div>
           {{ player_tooltip(r.user) }}
         </div>
         <div class="lb-card-points">{{ r.points }}</div>
@@ -195,18 +202,6 @@
               {% if tr %}
                 {% if tr.delta is not none and tr.delta > 0 %}<span class="lb-trend up" title="{{ tr.delta }} Plätze gut"> ▲ {{ tr.delta }}</span>
                 {% elif tr.delta is not none and tr.delta < 0 %}<span class="lb-trend down" title="{{ -tr.delta }} Plätze schlechter">▼ {{ -tr.delta }}</span>{% endif %}
-                {% if tr.sparkline|length > 1 %}
-                  {% set max_v = (tr.sparkline|max) or 1 %}
-                  {% set step = (60 / (tr.sparkline|length - 1)) %}
-                  <svg class="lb-sparkline" viewBox="0 0 60 20" preserveAspectRatio="none" title="Punkte letzte {{ tr.sparkline|length }} Spieltage">
-                    <path class="sl-area" d="M 0 20
-                      {% for v in tr.sparkline %}L {{ (loop.index0 * step)|round(1) }} {{ (20 - (v / max_v) * 18)|round(1) }} {% endfor %}
-                      L 60 20 Z" />
-                    <path class="sl-line" d="M
-                      {% for v in tr.sparkline %}{{ (loop.index0 * step)|round(1) }} {{ (20 - (v / max_v) * 18)|round(1) }}{% if not loop.last %} L {% endif %}{% endfor %}" />
-                    <circle cx="60" cy="{{ (20 - (tr.sparkline[-1] / max_v) * 18)|round(1) }}" r="2.2" />
-                  </svg>
-                {% endif %}
               {% endif %}
               {{ player_tooltip(r.user) }}
             </div>
