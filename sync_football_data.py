@@ -296,12 +296,28 @@ def fetch_live_match_updates(matchday=None):
             ttl_seconds=30
         )
 
+    # OLB-Live-Boost: football-data.org delayt Scores im Free-Tier Minuten;
+    # OpenLigaDB meldet Bundesliga-Tore quasi sofort. Laeuft zusaetzlich (und
+    # auch, wenn fd ausfaellt) - processweit auf 1 Request/20s gedrosselt.
+    boost = {}
+    try:
+        from sync_openligadb import boost_live_from_openligadb
+        boost = boost_live_from_openligadb(matchday=matchday) or {}
+    except Exception as e:
+        current_app.logger.debug(f"OLB-Live-Boost uebersprungen: {e}")
+    boost_updates = int(boost.get("updated") or 0)
+
     if err or not data:
-        return {"ok": False, "msg": err}
+        return {"ok": bool(boost_updates), "msg": (err or ""),
+                "updated": boost_updates, "live": 0, "olb_boost": boost_updates}
 
     comp_obj = Competition.query.filter_by(code=comp, is_active=True).first()
     comp_id = comp_obj.id if comp_obj else 1
 
-    return _process_football_data(data, comp_id, source="live-sync")
+    result = _process_football_data(data, comp_id, source="live-sync")
+    if boost_updates:
+        result["updated"] = result.get("updated", 0) + boost_updates
+        result["olb_boost"] = boost_updates
+    return result
 
 

@@ -291,6 +291,135 @@ def _fill_missing_from_openligadb():
     return filled
 
 
+# ---------------------------------------------------------- OLB Live-Boost -
+_OLB_BOOST_CACHE_KEY = "olb_live_boost:last_fetch"
+_OLB_BOOST_TTL_SECONDS = 20
+# In-Prozess-Fallback, wenn der Redis-Cache nicht laeuft (CacheManager ist
+# dann bewusst ein No-Op - ohne dieses Netz wuerde jeder Client pollend die
+# OpenLigaDB direkt treffen).
+_olb_boost_last_fetch = {"ts": 0.0}
+
+
+def boost_live_from_openligadb(matchday=None):
+    """Frische Tore fuer laufende/begonnene Spiele von OpenLigaDB holen.
+
+    Hintergrund: football-data.org liefert Scores im Free-Tier zeitlich
+    versetzt (Tore teils erst nach Minuten). OpenLigaDB meldet Bundesliga-
+    Treffer quasi in Echtzeit - als schneller Live-Booster ideal.
+
+    Regeln:
+    - Kein Upstream-Call, wenn gar kein Spiel im (angehenden) Zeitfenster liegt.
+    - Prozessweites Throttling: fruehestens alle _OLB_BOOST_TTL_SECONDS ein
+      Request, egal wie viele Clients das Live-Center pollen.
+    - schreibt nur ueber apply_match_update (Status-Monotonie bleibt gewahrt)
+      und loest Punkte-Recalc fuer betroffene Spiele aus.
+    - Bei OLB-Ausfall/Timeout: stiller Rueckzug, der fd-Pfad bleibt allein aktiv.
+    """
+    now = datetime.now(timezone.utc)
+    from competition_helpers import filter_matches_for_active_competition
+
+    window_open = now - timedelta(hours=3, minutes=15)   # Nachspielzeit + Puffer
+    window_close = now + timedelta(minutes=20)            # Anpfiff-Naeherung
+    cand_q = Match.query.filter(
+        Match.kickoff >= window_open,
+        Match.kickoff <= window_close,
+        Match.status.in_(("scheduled", "live")),
+    )
+    cand_q = filter_matches_for_active_competition(cand_q)
+    if matchday:
+        cand_q = cand_q.filter(Match.matchday == matchday)
+    candidates = cand_q.all()
+    if not candidates:
+        return {"ok": True, "updated": 0}
+
+    import time as _time
+    try:
+        from cache import cache as _cache
+        if _cache.enabled:
+            if _cache.get(_OLB_BOOST_CACHE_KEY):
+                return {"ok": True, "updated": 0, "throttled": True}
+            _cache.set(_OLB_BOOST_CACHE_KEY, 1, ttl=_OLB_BOOST_TTL_SECONDS)
+        else:
+            raise RuntimeError("cache inaktiv")
+    except Exception:
+        if _time.monotonic() - _olb_boost_last_fetch["ts"] < _OLB_BOOST_TTL_SECONDS:
+            return {"ok": True, "updated": 0, "throttled": True}
+        _olb_boost_last_fetch["ts"] = _time.monotonic()
+
+    season = current_sync_season_code()
+    matchdays = sorted({m.matchday for m in candidates if m.matchday})
+    urls = [f"https://api.openligadb.de/getmatchdata/bl1/{season}/{md}" for md in matchdays] or \
+           [f"https://api.openligadb.de/getmatchdata/bl1/{season}"]
+
+    def _parse_dt(value):
+        try:
+            dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except Exception:
+            return None
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+    updated = 0
+    affected_ids = set()
+    for url in urls:
+        try:
+            r = requests.get(url, timeout=8)
+            if r.status_code != 200:
+                continue
+            payload = r.json()
+        except Exception:
+            continue
+        for md in payload if isinstance(payload, list) else []:
+            kickoff = _parse_dt(_olb_kickoff(md))
+            if kickoff is None or not (window_open <= kickoff <= window_close):
+                continue
+            home_short = _OLB_TEAM_MAP.get(_olb_team_name(_olb_get(md, "team1", "Team1")) or "")
+            away_short = _OLB_TEAM_MAP.get(_olb_team_name(_olb_get(md, "team2", "Team2")) or "")
+            if not home_short or not away_short:
+                continue
+            match = None
+            for cand in candidates:
+                if cand.home_team.short_name == home_short and cand.away_team.short_name == away_short:
+                    match = cand
+                    break
+            if match is None:
+                continue
+            h_score = a_score = None
+            for res in _olb_results(md):
+                if _olb_result_type_id(res) == 2:
+                    h_score, a_score = _olb_score(res)
+                    break
+            if h_score is None and _olb_results(md):
+                h_score, a_score = _olb_score(_olb_results(md)[-1])
+            if h_score is None or a_score is None:
+                continue
+            if _olb_is_finished(md):
+                target_status, target_live = "finished", False
+            elif kickoff <= now:
+                target_status, target_live = "live", True
+            else:
+                continue  # noch nicht angepfiffen
+            if (match.home_score, match.away_score, match.status) == (h_score, a_score, target_status):
+                continue
+            apply_match_update(match, home_score=h_score, away_score=a_score,
+                               status=target_status, is_live=target_live)
+            if target_status == "finished":
+                match.live_phase = None
+                match.minute = None
+            affected_ids.add(match.id)
+            updated += 1
+    if updated:
+        db.session.commit()
+        from scoring import recalculate_matches_points
+        from badges import check_and_award_badges
+        from models import User
+        affected_users = recalculate_matches_points(affected_ids, commit=True)
+        if affected_users:
+            users = User.query.filter(User.id.in_(affected_users)).all()
+            check_and_award_badges(users=users)
+        current_app.logger.info(f"OLB-Live-Boost: {updated} Spiele aktualisiert ({', '.join(str(i) for i in sorted(affected_ids))})")
+    return {"ok": True, "updated": updated}
+
+
 def sync_results():
     """Haupt-Entry-Point für den Ergebnis-Sync.
 

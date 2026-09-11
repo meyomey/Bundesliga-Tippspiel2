@@ -18,7 +18,7 @@
 
 /* --- Live-Center Polling & UI --- */
 (function() {
-  const POLL = 30_000;
+  const POLL = 20_000; // passt zum 20s-OLB-Boost-Fenster (Server drosselt selbst)
   const matchesList = document.getElementById('liveMatchesList');
   const lbList = document.getElementById('liveLeaderboard');
   const refreshBtn = document.getElementById('liveRefreshBtn');

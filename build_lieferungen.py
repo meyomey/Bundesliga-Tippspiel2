@@ -80,6 +80,8 @@ GITHUB_UPLOAD_FILES = [
     "tests/test_tip_overview.py",
     # 11.09.2026: Tippreminder als kompakte Pille
     "tests/test_tipreminder_pill.py",
+    # 11.09.2026 (3): OLB-Live-Boost (sync_openligadb/sync_football_data/live.js sind gelistet)
+    "tests/test_olb_live_boost.py",
     # 06.09.2026: Rangliste Mobile - Namensblock mit eigener Zeile
     "templates/leaderboard.html",
     "CHANGELOG.md",
