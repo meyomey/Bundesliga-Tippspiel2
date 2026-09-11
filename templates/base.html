@@ -247,17 +247,20 @@
 
 {% if current_user.is_authenticated and open_match_count and next_open_match %}
 <!-- Countdown-Banner für ungetippte Spiele (Feature B) -->
-<a href="{{ url_for('main.schedule', matchday=next_open_match.matchday) }}"
-   class="tipreminder-banner"
-   id="tipReminderBanner"
-   data-kickoff="{{ next_open_match.kickoff.isoformat() }}Z">
-  <span class="tr-icon">⏰</span>
-  <div class="tr-text">
-    <strong>{{ open_match_count }} ungetippte{{ '' if open_match_count == 1 else '' }} Spiel{{ 'e' if open_match_count != 1 else '' }} offen</strong>
-    <small>Nächster Anpfiff: <span id="trCountdown">berechne…</span></small>
-  </div>
-  <span class="tr-arrow">→</span>
-</a>
+<div class="tipreminder-banner"
+     id="tipReminderBanner"
+     data-kickoff="{{ next_open_match.kickoff.isoformat() }}Z">
+  <a class="tr-main" href="{{ url_for('main.schedule', matchday=next_open_match.matchday) }}"
+     aria-label="Offene Spiele ansehen - zum Spielplan">
+    <span class="tr-icon" aria-hidden="true">⏰</span>
+    <span class="tr-text">
+      <strong>{{ open_match_count }} ungetippt{{ 'es' if open_match_count == 1 else 'e' }} Spiel{{ '' if open_match_count == 1 else 'e' }} offen</strong>
+      <small>Nächster Anpfiff: <span id="trCountdown">berechne…</span></small>
+    </span>
+  </a>
+  <a class="tr-cta" href="{{ url_for('main.quick_tip', matchday=next_open_match.matchday) }}"
+     aria-label="Jetzt tippen - Schnelltipp für Spieltag {{ next_open_match.matchday }} öffnen">Jetzt tippen<span class="tr-arrow" aria-hidden="true">→</span></a>
+</div>
 {% endif %}
 
 <!-- Toast-Container für JavaScript -->

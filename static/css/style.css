@@ -3761,46 +3761,87 @@ html[data-team] .lp-orb.orb-1 {
 .recap-tile small { color: var(--text-muted); font-size: 11px; }
 
 /* ============================================================
-   FEATURE B: Countdown-Banner für ungetippte Spiele
+   FEATURE B: Countdown-Banner fuer ungetippte Spiele
+   Bewusst als kompakte, zentrierte Pille gestaltet (kein
+   randloser Vollbreiten-Balken): wirkt in beiden Themes wie
+   ein Angebot, nicht wie eine Warnleiste.
    ============================================================ */
 .tipreminder-banner {
-  display: flex; align-items: center; gap: 14px;
-  padding: 12px 18px;
-  background: linear-gradient(135deg, rgba(245,158,11,.18), rgba(245,158,11,.08));
-  border-bottom: 1px solid rgba(245,158,11,.4);
-  color: var(--text); text-decoration: none;
-  position: sticky; top: var(--header-h); z-index: 90;
-  transition: background .15s;
+  display: flex; align-items: center; gap: 12px;
+  width: min(calc(100% - 24px), 640px);
+  margin: 10px auto 0;
+  padding: 7px 7px 7px 14px;
+  background: linear-gradient(135deg, rgba(245,158,11,.14), rgba(245,158,11,.05));
+  border: 1px solid rgba(245,158,11,.38);
+  border-radius: 999px;
+  box-shadow: 0 8px 22px rgba(245,158,11,.10);
+  color: var(--text);
+  position: sticky; top: calc(var(--header-h) + 8px); z-index: 90;
+  transition: background .15s, box-shadow .15s, transform .15s;
   backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 .tipreminder-banner:hover {
-  background: linear-gradient(135deg, rgba(245,158,11,.28), rgba(245,158,11,.15));
-  color: var(--text);
+  background: linear-gradient(135deg, rgba(245,158,11,.22), rgba(245,158,11,.10));
+  box-shadow: 0 10px 26px rgba(245,158,11,.16);
+  transform: translateY(-1px);
 }
+.tr-main {
+  flex: 1; min-width: 0;
+  display: flex; align-items: center; gap: 12px;
+  color: var(--text); text-decoration: none;
+}
+.tr-main:hover { color: var(--text); }
 .tipreminder-banner.urgent {
-  background: linear-gradient(135deg, rgba(239,68,68,.18), rgba(239,68,68,.08));
-  border-bottom-color: rgba(239,68,68,.5);
+  background: linear-gradient(135deg, rgba(239,68,68,.14), rgba(239,68,68,.05));
+  border-color: rgba(239,68,68,.45);
+  box-shadow: 0 8px 22px rgba(239,68,68,.12);
   animation: bannerPulse 1.2s infinite;
 }
 @keyframes bannerPulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); }
   50%      { box-shadow: 0 0 0 4px rgba(239,68,68,.15); }
 }
-.tr-icon { font-size: 22px; flex-shrink: 0; }
-.tr-text { flex: 1; min-width: 0; line-height: 1.3; }
+.tr-icon { font-size: 20px; flex-shrink: 0; }
+.tr-text { flex: 1; min-width: 0; line-height: 1.25; }
 .tr-text strong {
-  display: block; font-size: 14px; color: var(--text);
+  display: block; font-size: 13.5px; color: var(--text);
 }
 .tr-text small {
-  display: block; font-size: 12px; color: var(--text-muted); margin-top: 2px;
+  display: block; font-size: 12px; color: var(--text-muted);
 }
 .tipreminder-banner.urgent .tr-text small { color: var(--danger); font-weight: 700; }
+.tr-cta {
+  flex-shrink: 0;
+  white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(245,158,11,.16);
+  border: 1px solid rgba(245,158,11,.36);
+  border-radius: 999px;
+  padding: 6px 13px;
+  font-size: 12.5px; font-weight: 700;
+  color: var(--text); text-decoration: none;
+  transition: background .15s;
+}
+.tr-cta:hover { color: var(--text); text-decoration: none; background: rgba(245,158,11,.34); }
+.tipreminder-banner:hover .tr-cta { background: rgba(245,158,11,.30); }
+.tipreminder-banner.urgent .tr-cta {
+  background: rgba(239,68,68,.18); border-color: rgba(239,68,68,.45);
+}
 .tr-arrow {
-  font-size: 22px; color: var(--text-muted); flex-shrink: 0;
+  font-size: 14px; line-height: 1; color: var(--text-muted);
   transition: transform .15s;
 }
-.tipreminder-banner:hover .tr-arrow {
-  transform: translateX(4px); color: var(--warning);
+.tipreminder-banner:hover .tr-arrow { transform: translateX(3px); color: var(--warning); }
+.tipreminder-banner a:focus-visible {
+  outline: 2px solid var(--warning); outline-offset: 3px; border-radius: 999px;
+}
+@media (max-width: 767px) {
+  .tipreminder-banner { gap: 10px; padding: 6px 6px 6px 12px; width: calc(100% - 20px); }
+  .tr-icon { font-size: 18px; }
+  .tr-text strong { font-size: 13px; }
+  .tr-text small { font-size: 11.5px; }
+  .tr-cta { padding: 5px 10px; font-size: 11.5px; }
 }
 
 /* ============================================================

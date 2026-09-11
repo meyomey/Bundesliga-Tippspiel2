@@ -78,6 +78,8 @@ GITHUB_UPLOAD_FILES = [
     # 10.09.2026 (3): Tippuebersicht - fester Navi-Punkt + mobiler Tab
     "templates/base.html",
     "tests/test_tip_overview.py",
+    # 11.09.2026: Tippreminder als kompakte Pille
+    "tests/test_tipreminder_pill.py",
     # 06.09.2026: Rangliste Mobile - Namensblock mit eigener Zeile
     "templates/leaderboard.html",
     "CHANGELOG.md",

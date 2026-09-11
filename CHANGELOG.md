@@ -1373,3 +1373,17 @@ faker==28.4.1
 - **Aenderung (templates/base.html):** Neuer Primär-Navigationspunkt "👀 Tipps" (Title-Tooltip erklaert die Anpfiff-Sichtbarkeit) direkt nach "Tippen" - auf Desktop UND im mobilen Menue sichtbar; der alte reine Mobil-Eintrag entfaellt. Die mobile Bottom-Tabbar bekommt einen eigenen "👀 Tipps"-Tab zwischen Tippen und Rangliste; aktiver Zustand wird wie ueblich markiert.
 - **CSS (static/css/style.css):** `.bottom-tabbar` von 4 auf 5 Spalten (`repeat(5, 1fr)`), seitliches Padding 8px->5px fuer die zusaetzliche Spalte; Label-Groessen bleiben unveraendert (mobile-First).
 - **Tests:** +4 in `tests/test_tip_overview.py` (Navi-Link ohne hidden-desktop inkl. Tooltip, 5-Spalten-Regel der Tabbar, aktiver Zustand auf /tipps, Manifest-Shortcut zeigt auf /tipps). Suite **327/327**.
+
+
+## 2026-09-11 - Tippreminder-Banner: von der Vollbreiten-Warnleiste zur kompakten Pille
+
+- **Anlass (Nutzerfeedback):** "Der lange Balken 'ungetippte Spiele' wirkt etwas unschoen in der App." Der Feature-B-Banner lief als randloser, klebriger Vollbreiten-Streifen unter der Navigation - Text links, Pfeil allein am rechten Rand; im Light-Theme als breites Gelb besonders wuchtig. Zusaetzlich enthielt die Template-Pluralbedingung zwei Leerzweige ("ungetippte[ ] Spiel[e]" mit toter 'n'-Regel).
+- **Redesign (templates/base.html + static/css/style.css):** Der Banner wird eine zentrierte Pille: `width:min(calc(100% - 24px), 640px)`, Rand + Radius 999px + dezenter Schatten, zwei Zeilen (Titel + Countdown) kompakt. Statt des vereinzelten Pfeils sitzt rechts ein Action-Chip "Jetzt tippen →". Sticky bleibt (top: header + 8px), Urgent-Modus (roter Rand/Puls <1h vor Anpfiff) unveraendert; Hover mit leichtem Lift. Mobile: kleinere Paddings/Schriften via Media-Query. Plural jetzt korrekt: "1 ungetipptes Spiel offen" / "n ungetippte Spiele offen". app.js-Anker (id, data-kickoff, .urgent) bleiben exakt erhalten. aria-label am Link ergaenzt.
+- **Tests:** +4 in `tests/test_tipreminder_pill.py` (Pille-Markup + Action-Chip, Singular/Plural deterministisch gegen Bootstrap-Demo-Spiele, Banner verschwindet nach Vollstaendigkeit, CSS-Anker ohne Vollbreiten-border). Suite **331/331**.
+
+
+## 2026-09-11 (2) - Tippreminder-Pille: "Jetzt tippen" fuehrt jetzt in den Schnelltipp
+
+- **Anlass (Nutzerfeedback):** ""Jetzt tippen" soll aber den Schnelltipp oeffnen" – die ganze Pille verlinkte bisher nur zum Spielplan.
+- **Aenderung (templates/base.html + style.css):** Der Vollbreiten-Link wird zu einem Container <div> mit zwei getrennten Zielen: Text+Icon (.tr-main) fuehren weiterhin zum Spielplan des offenen Spieltags, der Action-Chip (.tr-cta, jetzt echter <a>) offnet /schnelltipp/<matchday>. app.js-Anker (ID, data-kickoff, .urgent) bleiben am Container; Hover/Fokus-Stile auf die Kinder umgezogen.
+- **Tests:** 4 bestehende Tests in `tests/test_tipreminder_pill.py` auf die Zwei-Ziel-Struktur scharf gestellt (href-Assertions fuer /schnelltipp/3 und /spielplan/3). Suite **331/331**.
