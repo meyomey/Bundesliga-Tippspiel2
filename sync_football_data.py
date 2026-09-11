@@ -307,9 +307,20 @@ def fetch_live_match_updates(matchday=None):
         current_app.logger.debug(f"OLB-Live-Boost uebersprungen: {e}")
     boost_updates = int(boost.get("updated") or 0)
 
+    # Optionaler Minute-Booster (API-Football, Free-Plan mit Budgetwaechter):
+    # echte Schiedsrichterminute, sobald im Admin ein optionaler Token steht.
+    minute_updates = 0
+    try:
+        from minute_boost import boost_minutes_from_apifootball
+        mb = boost_minutes_from_apifootball() or {}
+        minute_updates = int(mb.get("updated") or 0)
+    except Exception as e:
+        current_app.logger.debug(f"Minute-Boost uebersprungen: {e}")
+
     if err or not data:
-        return {"ok": bool(boost_updates), "msg": (err or ""),
-                "updated": boost_updates, "live": 0, "olb_boost": boost_updates}
+        return {"ok": bool(boost_updates or minute_updates), "msg": (err or ""),
+                "updated": boost_updates, "live": 0, "olb_boost": boost_updates,
+                "minute_boost": minute_updates}
 
     comp_obj = Competition.query.filter_by(code=comp, is_active=True).first()
     comp_id = comp_obj.id if comp_obj else 1
@@ -318,6 +329,8 @@ def fetch_live_match_updates(matchday=None):
     if boost_updates:
         result["updated"] = result.get("updated", 0) + boost_updates
         result["olb_boost"] = boost_updates
+    if minute_updates:
+        result["minute_boost"] = minute_updates
     return result
 
 

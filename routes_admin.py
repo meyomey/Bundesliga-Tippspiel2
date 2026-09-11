@@ -622,6 +622,7 @@ def settings():
         form.payment_info_text.data = get_setting("payment_info_text", "")
         form.prize_notes.data = get_setting("prize_notes", "")
         form.football_data_token.data = ""
+        form.apifootball_token.data = ""
         form.public_base_url.data = get_setting("public_base_url", current_app.config.get("PUBLIC_BASE_URL", ""))
         form.mail_server.data = get_setting("mail_server", current_app.config.get("MAIL_SERVER", ""))
         form.mail_port.data = get_setting("mail_port", current_app.config.get("MAIL_PORT", 587))
@@ -657,6 +658,9 @@ def settings():
         api_token = (form.football_data_token.data or "").strip()
         if api_token:
             set_setting("football_data_token", api_token)
+        apifb_token = (form.apifootball_token.data or "").strip()
+        if apifb_token:
+            set_setting("apifootball_token", apifb_token)
         set_setting("public_base_url", (form.public_base_url.data or "").strip().rstrip("/"))
 
         set_setting("mail_server", (form.mail_server.data or "").strip())
@@ -726,6 +730,7 @@ def settings():
                            api_configured=not api_missing,
                            mail_password_configured=bool(get_setting("mail_password", current_app.config.get("MAIL_PASSWORD", ""))),
                            vapid_private_configured=bool(get_setting("vapid_private", current_app.config.get("VAPID_PRIVATE_KEY", ""))),
+                           apifootball_configured=bool(get_setting("apifootball_token", current_app.config.get("APIFOOTBALL_TOKEN", ""))),
                            telegram_token_configured=bool(get_setting("telegram_bot_token", current_app.config.get("TELEGRAM_BOT_TOKEN", ""))),
                            telegram_secret_configured=bool(get_setting("telegram_webhook_secret", current_app.config.get("TELEGRAM_WEBHOOK_SECRET", ""))))
 
