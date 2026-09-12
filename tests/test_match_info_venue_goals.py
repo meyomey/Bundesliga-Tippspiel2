@@ -188,6 +188,8 @@ def test_match_detail_renders_venue_and_goal_scorers(client, db, user, competiti
     # ...und die Pille ist ein Google-Maps-Link (schluessellos, neuer Tab)
     assert "maps/search/?api=1&amp;query=Allianz%20Arena" in html
     assert 'rel="noopener noreferrer"' in html and 'target="_blank"' in html
+    # Plus Kompass-Piktogramm fuer Direkt-Routing (Variante b, 12.09.)
+    assert "🧭" in html and "maps/dir/?api=1&amp;destination=Allianz%20Arena" in html
     assert "Torschützen" in html
     assert "Harry Kane" in html and "Vorlage: Jamal Musiala" in html
     assert "45'+2" in html and "(Elfmeter)" in html

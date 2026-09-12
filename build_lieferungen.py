@@ -109,6 +109,9 @@ GITHUB_UPLOAD_FILES = [
     # 12.09.2026 (10): Heimstadien als Festdaten
     "stadiums.py",
     "main_tips_routes.py",
+    "stats_live.py",
+    "tests/test_stadiums_weather.py",
+    "tests/test_stadium_gap_watch.py",
     "tests/test_stadiums_map.py",
     # 06.09.2026: Rangliste Mobile - Namensblock mit eigener Zeile
     "templates/leaderboard.html",

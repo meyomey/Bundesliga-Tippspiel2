@@ -30,13 +30,59 @@ STADIUM_COORDS = {
     "STP": (53.5566, 9.9647),      # Millerntor-Stadion
     "HSV": (53.5869, 9.8957),      # Volksparkstadion
     "KOE": (50.9336, 6.8769),      # RheinEnergieStadion
+    "SVE": (49.2983, 7.0549),      # Ursapharm-Arena an der Kaiserlinde (Aufsteiger 2026/27)
+    "SCP": (51.7203, 8.7677),      # Home Deluxe Arena, Paderborn
+    "S04": (51.5774, 7.1320),      # VELTINS-Arena, Gelsenkirchen
 }
+
+# Keyword-Fallback (12.09.2026): neue Aufsteiger/-innen oder andere
+# TLA-Schreibweisen des Feeds sollen das Wetter nicht sofort aussteigen
+# lassen - wenn das Kuerzel fehlt, zaehlt der Vereinsname.
+_COORD_KEYWORDS = [
+    (("bayern",), "FCB"),
+    (("dortmund",), "BVB"),
+    (("leverkusen",), "B04"),
+    (("leipzig",), "RBL"),
+    (("stuttgart",), "VFB"),
+    (("eintracht", "frankfurt"), "SGE"),
+    (("wolfsburg",), "WOB"),
+    (("monchengladbach", "gladbach"), "BMG"),
+    (("freiburg",), "SCF"),
+    (("union", "berlin"), "FCU"),
+    (("hoffenheim",), "TSG"),
+    (("mainz",), "M05"),
+    (("augsburg",), "FCA"),
+    (("werder",), "SVW"),
+    (("heidenheim",), "FCH"),
+    (("pauli",), "STP"),
+    (("hamburger",), "HSV"),
+    (("koeln",), "KOE"),
+    (("elversberg",), "SVE"),
+    (("paderborn",), "SCP"),
+    (("schalke",), "S04"),
+]
+
+
+def _coords_for_team(team):
+    """Stadion-Koordinaten: erst Kuerzel-Lookup, dann Namens-Fallback."""
+    if team is None:
+        return None
+    code = (team.short_name or "").upper()
+    if code in STADIUM_COORDS:
+        return STADIUM_COORDS[code]
+    name = (team.name or "").lower().replace("ä", "ae").replace("ö", "oe") \
+        .replace("ü", "ue").replace("ß", "ss")
+    if not name:
+        return None
+    for keywords, coord_code in _COORD_KEYWORDS:
+        if all(k in name for k in keywords) and coord_code in STADIUM_COORDS:
+            return STADIUM_COORDS[coord_code]
+    return None
 
 
 def get_match_weather(match):
     """Holt Wetter vom Open-Meteo (kostenlos, kein Key)."""
-    home_short = match.home_team.short_name
-    coords = STADIUM_COORDS.get(home_short)
+    coords = _coords_for_team(match.home_team)
     if not coords:
         return None
 

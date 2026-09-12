@@ -1509,3 +1509,33 @@ faker==28.4.1
 - **Nutzerwuenschen:** "Kann man beim Stadion ein Google Maps Link hinterlegen?" - Ja, ganz ohne API-Key/Sprechpartner-Komplikation: Der offizielle Maps-Suchlink (https://www.google.com/maps/search/?api=1&query=..) funktioniert schluessellos, Desktop wie Mobil (Mobilapp-Sprung inklusive).
 - **Umsetzung:** `stadiums.maps_url(venue, club)` haengt den Vereinsnamen als Kontext an die Arena-Suche an (Sponsortitel wie "MEWA Arena" treffen so eindeutig) und escaped den Query-String korrekt. Match-Detail rendert die Pille als <a target=_blank rel=noopener noreferrer> mit kleinem ↗ und Hover-Framework; ohne Link (kein Stadion hinterlegt) bleibt alles wie bisher reiner Text. Fehler im URL-Bau faehrt die Pille harmlos auf Text zurueck.
 - **Tests:** +1 (maps_url-Format inkl. Escape-Faellen), Rendering-Test um Link-Nachweis erweitert (Jinja escaped & -> &amp;, Test kennt jetzt die HTML-Schreibweise). Suite **369/369**. Nebenbefund: sed-Ersatz mit & im Suchmuster hatte die Testdatei beschadigt - ueber Python sauber repariert, alle Tests erneut gruen.
+
+
+## 2026-09-12 (12) - Kompass-Icon fuer Direkt-Routing neben der Stadion-Pille
+
+- **Anlass:** Nutzerentscheid "b)" aus der Erklaerung zum Maps-Link: Pille bleibt die universelle Stadion-Suche (Steckbrief, FOTOS, "In der Naehe -> Parken"), ein kleines **🧭-Piktogramm** direkt daneben springt per `maps/dir/?api=1&destination=..` ohne Zwischenschritt ins **Sofort-Routing** (Startort = aktuelle Position, Freigabe regelt Maps selbst).
+- **Umsetzung:** `stadiums.maps_route_url()` (Query identisch zur Suche inkl. Vereins-Kontext, damit Sponsortitel treffen), Context-Variable `venue_route_url` in der Detail-Route (gleiche try/except-Heilung: ohne URL rendert die Pille als Text weiter), runde Mini-Schaltflaeche im Pillen-Design (hover-Akzent), `aria-label` fuer Screenreader.
+- **Tests:** +1 (dir-URL-Format/Escape/None-Faelle), Rendering-Test prueft jetzt beide Links (Suche + `maps/dir/?api=1&destination=Allianz%20Arena`). Suite **370/370**.
+
+
+## 2026-09-12 (13) - Aufsteiger-Luecke: Elversberg/Paderborn/Schalke mit Stadion + Wetter
+
+- **Anlass (Nutzer):** "bei Elversberg wird kein Stadion und kein Wetter angezeigt". Blick in die Saisonrealitaet (OLB live): BL1 2026/27 spielt mit **SV 07 Elversberg, SC Paderborn 04 und FC Schalke 04** - die drei Aufsteiger fehlten in BEIDEN statischen Karten (Wetter-Koordinaten nur 18er-Stand 2025/26, Stadionkarte analog).
+- **Wetter (`stats_live.py`):** drei neue Koordinaten (Ursapharm-Arena an der Kaiserlinde, Home Deluxe Arena, VELTINS-Arena - Namen gegengeprueft am 12.09.) + generischer **Namens-Fallback** `_coords_for_team()`: erst Kuerzel-Lookup, bei fremdem TLA zaehlt der Vereinsname (21 Keywords) - damit fuehrt eine anders geschriebene Feed-Abkuerzung nie wieder zum kompletten Wetter-Ausfall eines Vereins.
+- **Stadion (`stadiums.py`):** drei Eintraege nachgezogen (Pille + Maps-/Routing-Links funktionieren damit automatisch).
+- **Tests:** +1 Stadion-Lookup Aufsteiger, +4 Wetter (`tests/test_stadiums_weather.py`: Direkt-Treffer, TLA-Fremdschreiblaeue faellt auf Namen zurueck, Unbekanntes bleibt leer, Einfallstor-Test "Code in BEIDEN Karten"). Suite **375/375**.
+
+
+## 2026-09-12 (14) - Fruehwarnung "Festdaten-Luecke" (Sync-Meldung + Admin-Zeile)
+
+- **Anlass:** Frage "Wie laeuft das bei neuen Aufsteigern?" - Antwort war: lautlos. Das aendert diese Runde.
+- **Sync:** `_process_football_data` sammelt jetzt Heimteams, die WEDER vom Feed (venue) noch von der statischen Karte abgedeckt sind (dedupliziert, max. 12). Meldet sie in der Sync-Zeile an: "... - Stadion: 0 aus Feed, 153 aus Festdaten - 🛈 ohne Stadion-Karte: SV 07 Elversberg, SC Paderborn 07 …" und persistiert die Liste als Setting `stadium_gap_teams` (JSON, ensure_ascii=False). Der JEWEILIGE letzte Lauf schreibt - nach Karten-Pflege + Sync heilt die Anzeige von selbst (im Test belegt: 2. Lauf -> "[]").
+- **Admin-Seite `/admin/sync`:** kleine Zeile "🛈 Festdaten-Pflege: <Namen> ohne Stadion-Karte – hier bleiben Pille und Wetter leer. Je ein Eintrag in stadiums.py und stats_live.py, nach dem nächsten Sync ist diese Zeile weg." Bewusst Info-Look (kein ⚠️ - Pflegezustand, kein Fehler, gemäß Admin-Sicht-Regel). Defekter Setting-Wert degradiert still auf [].
+- **Tests:** Sync-Seite erweitert (Fehlliste, msg-Suffix, Persistenz, Selbstheilung) + neue `tests/test_stadium_gap_watch.py` (3: Zeile sichtbar, nach Pflege weg, kaputter Wert lautlos). Suite **378/378**. Nebenbefund: .venv-Restore war diesmal nur ein Rumpf (pip-Grund, requirements-Zeilen mit CR) - mit /tmp-Datei und tr -d \r sauber neu gebaut.
+
+
+## 2026-09-12 (15) - Combo-Pille: Stadion-Suche + 🧭-Routing in einer Zeile
+
+- **Nutzerfeedback:** "Mit der Routing Pille werden im Smartphone-Modus jetzt zwei Zeilen angezeigt. Das ist unschön." Ursache: Pille und Kompass waren zwei eigene Flex-Items im Badges-Container (`flex-wrap: wrap`) - bei schmalem Viewport brach der Kompass um.
+- **Loesung:** Beide Links stecken jetzt in EINER gemeinsamen Huelle `.tu-venue-combo` (Rahmen/Hintergrund nur noch aussen, innen duenne Trennlinie). Garantiet gegen Umbruch zusaetzlich: `white-space: nowrap` + `max-width: 100%`, und der Arena-Text laeuft bei Platznot mit Ellipse aus (`.tvp-text`, ↗-Pfeil via `flex:none` gesichert) - auf dem Smartphone also z.B. "📍 Stadion An der Alten Först…" statt zweiter Zeile; antippen bleibt beides getrennt (Text = Suche, Kompass = Direkt-Routing).
+- **Tests:** +1 Struktur-/CSS-Test (Combo genau einmal im Template; nowrap/overflow/Ellipse in der CSS). Rendering-Tests bleiben groen, da "📍 Allianz Arena" zusammenhaengig im Text-Span steht. Suite **379/379**.

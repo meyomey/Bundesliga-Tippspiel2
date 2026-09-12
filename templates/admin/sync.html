@@ -75,6 +75,10 @@
   {% else %}
     <p class="muted">Noch kein Sync-Ergebnis gespeichert.</p>
   {% endif %}
+  {% set gaps = diag.get('stadium_gaps') or [] %}
+  {% if gaps %}
+  <p class="muted" style="margin:8px 0 0">🛈 <strong>Festdaten-Pflege:</strong> {{ gaps|join(", ") }} ohne Stadion-Karte – hier bleiben Pille und Wetter leer. Je ein Eintrag in <code>stadiums.py</code> und <code>stats_live.py</code>, nach dem nächsten Sync ist diese Zeile weg.</p>
+  {% endif %}
   {% set srcs = diag.get('source_activity') or [] %}
   {% if srcs %}
   <h3 style="margin:14px 0 4px">Versuche je Quelle</h3>

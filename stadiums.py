@@ -49,6 +49,10 @@ _STADIUMS = [
     (("arminia", "bielefeld"), "SchücoArena"),
     (("fortuna", "duesseldorf"), "Merkur Spiel-Arena"),
     (("gruether", "furth"), "Sportpark Ronhof"),
+    # Aufsteiger 2026/27 (Namen via Transfermarkt-Vereinsseite, 12.09.2026)
+    (("elversberg",), "Ursapharm-Arena an der Kaiserlinde"),
+    (("paderborn",), "Home Deluxe Arena"),
+    (("schalke",), "VELTINS-Arena"),
 ]
 
 
@@ -71,6 +75,17 @@ def maps_url(venue_name, club_name=None):
     from urllib.parse import quote
     query = f"{venue_name}, {club_name}" if club_name else venue_name
     return "https://www.google.com/maps/search/?api=1&query=" + quote(query)
+
+
+def maps_route_url(venue_name, club_name=None):
+    """Direktes Routing (Maps-URL 'dir', schluessellos): ein Tipp, und die
+    Navigationsansicht mit Ziel Stadion startet - Startort ist die aktuelle
+    Position (Maps erfragt dafuer selbst die Freigabe)."""
+    if not venue_name:
+        return None
+    from urllib.parse import quote
+    query = f"{venue_name}, {club_name}" if club_name else venue_name
+    return "https://www.google.com/maps/dir/?api=1&destination=" + quote(query)
 
 
 def home_stadium_for(team_name):

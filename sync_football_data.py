@@ -113,6 +113,7 @@ def _process_football_data(data, comp_id, source="football-data.org"):
     live_count = 0
     venue_feed_count = 0  # Feed-Lieferung (football-data)
     venue_map_count = 0   # gefuellte Luecken aus der festen Heimstadium-Karte
+    venue_gap_names = []  # Heimteams ohne Feed-venue UND ohne Karten-Treffer
     new_teams = 0
     current_ext_ids = set()
     affected_match_ids = set()
@@ -177,6 +178,12 @@ def _process_football_data(data, comp_id, source="football-data.org"):
         mapped_venue = None
         if not venue_feed and home_stadium_for:
             mapped_venue = home_stadium_for(home_team.name)
+        # Fruehwarnung fuer die statischen Karten (Aufsteiger koennen dort
+        # fehlen, ohne dass es jemand merkt): Heimteam ohne jede Quelle.
+        if (home_team is not None and not venue_feed and not mapped_venue
+                and home_team.name not in venue_gap_names
+                and len(venue_gap_names) < 12):
+            venue_gap_names.append(home_team.name)
 
         score = md.get("score", {})
         full_time = score.get("fullTime", {})
@@ -255,14 +262,27 @@ def _process_football_data(data, comp_id, source="football-data.org"):
             users = User.query.filter(User.id.in_(affected_users)).all()
             check_and_award_badges(users=users)
 
+    # Persistenz fuer die kleine Admin-Zeile (sync.html): der JEWEILIGE letzte
+    # Lauf schreibt, also heilt die Zeile nach Karten-Pflege von selbst weg.
+    import json as _json
+    try:
+        set_setting("stadium_gap_teams", _json.dumps(venue_gap_names, ensure_ascii=False))
+    except Exception:
+        pass
+    gap_suffix = ""
+    if venue_gap_names:
+        shown = ", ".join(venue_gap_names[:3]) + (" …" if len(venue_gap_names) > 3 else "")
+        gap_suffix = f" \u00b7 \U0001f6c8 ohne Stadion-Karte: {shown}"
+
     return {
         "ok": True,
-        "msg": f"✅ {source}: {created} neu, {updated} aktualisiert, {live_count} live \u00b7 \U0001f4cd Stadion: {venue_feed_count} aus Feed, {venue_map_count} aus Festdaten{purge_summary_suffix()}",
+        "msg": f"✅ {source}: {created} neu, {updated} aktualisiert, {live_count} live \u00b7 \U0001f4cd Stadion: {venue_feed_count} aus Feed, {venue_map_count} aus Festdaten{gap_suffix}{purge_summary_suffix()}",
         "created": created,
         "updated": updated,
         "live": live_count,
         "venues": venue_feed_count,
         "venues_map": venue_map_count,
+        "venues_missing": venue_gap_names,
         "new_teams": new_teams,
         "purged_stale": purged_stale,
     }

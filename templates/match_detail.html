@@ -106,7 +106,14 @@
       {% endif %}
       {% if match.venue %}
         {% if venue_maps_url %}
-          <a class="tu-venue-pill" href="{{ venue_maps_url }}" target="_blank" rel="noopener noreferrer" title="Stadion in Google Maps öffnen">📍 {{ match.venue }} <span class="tvp-ext">↗</span></a>
+          {# Combo-Pille: Suche + Routing in EINER Zeile (schmale Screens
+             brachen sonst als zwei Badge-Items um - 12.09. Nutzerfeedback). #}
+          <span class="tu-venue-combo">
+            <a class="tu-venue-pill" href="{{ venue_maps_url }}" target="_blank" rel="noopener noreferrer" title="Stadion in Google Maps ansehen"><span class="tvp-text">📍 {{ match.venue }}</span> <span class="tvp-ext">↗</span></a>
+            {% if venue_route_url %}
+            <a class="tu-venue-route" href="{{ venue_route_url }}" target="_blank" rel="noopener noreferrer" title="Direkt zum Stadion navigieren (Google Maps)" aria-label="Routing zum Stadion starten">🧭</a>
+            {% endif %}
+          </span>
         {% else %}
           <span class="tu-venue-pill" title="Stadion">📍 {{ match.venue }}</span>
         {% endif %}

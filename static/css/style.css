@@ -7233,7 +7233,25 @@ ul.audit-diff-list li { margin-bottom: 2px; word-break: break-word; }
 /* ── Match-Infos: Stadion + Torschuetzen (12.09.2026) ── */
 a.tu-venue-pill { text-decoration: none; cursor: pointer; transition: border-color .15s ease, background .15s ease; }
 a.tu-venue-pill:hover, a.tu-venue-pill:focus-visible { border-color: rgba(56,189,248,.55); background: rgba(56,189,248,.14); }
-a.tu-venue-pill .tvp-ext { font-size: 11px; opacity: .75; }
+a.tu-venue-pill .tvp-ext { font-size: 11px; opacity: .75; flex: none; }
+a.tu-venue-route {
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 14px; line-height: 1; text-decoration: none; cursor: pointer;
+  transition: background .15s ease;
+}
+/* Combo-Huelle (12.09.): Stadion-Suche und 🧭-Routing teilen sich EINE Pille.
+   Als zwei Badge-Items brachen sie auf schmalen Screens um (zwei Zeilen). */
+.tu-venue-combo {
+  display: inline-flex; align-items: stretch; max-width: 100%;
+  white-space: nowrap; overflow: hidden;
+  border-radius: 999px; background: rgba(148,163,184,.12);
+  border: 1px solid rgba(148,163,184,.25);
+}
+.tu-venue-combo .tu-venue-pill { flex: 0 1 auto; min-width: 0; background: transparent; border: none; border-radius: 0; }
+.tu-venue-combo .tu-venue-pill:hover, .tu-venue-combo .tu-venue-pill:focus-visible { background: rgba(56,189,248,.14); }
+.tu-venue-combo .tvp-text { overflow: hidden; text-overflow: ellipsis; }
+.tu-venue-combo .tu-venue-route { border-left: 1px solid rgba(148,163,184,.28); border-radius: 0; padding: 0 9px; color: inherit; }
+.tu-venue-combo .tu-venue-route:hover, .tu-venue-combo .tu-venue-route:focus-visible { background: rgba(56,189,248,.18); }
 .tu-venue-pill {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 4px 10px; border-radius: 999px;

@@ -193,7 +193,24 @@ def get_sync_diagnostics():
         "last_sync": last_sync,
         "apifootball": apifootball,
         "source_activity": _source_activity(),
+        "stadium_gaps": _stadium_gap_list(),
     }
+
+
+def _stadium_gap_list():
+    """Heimteams ohne Stadion-Karten-Treffer laut dem letzten Sync-Lauf.
+
+    Nur Info-Pflege (kein Fehlerfall): neue Aufsteiger koennen in den
+    statischen Karten fehlen - die Admin-Sync-Seite zeigt dazu eine Zeile,
+    die nach dem Nachziehen in stadiums.py/stats_live.py von selbst verschwindet.
+    """
+    try:
+        import json
+        raw = get_setting("stadium_gap_teams", "") or ""
+        vals = json.loads(raw) if raw else []
+        return [str(v)[:60] for v in vals if v][:6]
+    except Exception:
+        return []
 
 
 def _source_activity():

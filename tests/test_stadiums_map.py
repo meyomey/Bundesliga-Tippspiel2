@@ -9,6 +9,7 @@ import pytest
 
 import stadiums
 import sync
+from sync import get_sync_diagnostics
 from models import Competition
 
 
@@ -23,6 +24,13 @@ def test_lookup_matches_known_clubs():
     assert stadiums.home_stadium_for("1. FC Nürnberg") == "Max-Morlock-Stadion"
     assert stadiums.home_stadium_for("FC St. Pauli") == "Millerntor-Stadion"
     assert stadiums.home_stadium_for("Hamburger SV") == "Volksparkstadion"
+
+
+def test_lookup_covers_promoted_clubs_2026():
+    # Luecke vom 12.09.: Aufsteiger fehlten komplett (weder Pille noch Wetter)
+    assert stadiums.home_stadium_for("SV 07 Elversberg") == "Ursapharm-Arena an der Kaiserlinde"
+    assert stadiums.home_stadium_for("SC Paderborn 07") == "Home Deluxe Arena"
+    assert stadiums.home_stadium_for("FC Schalke 04") == "VELTINS-Arena"
 
 
 def test_lookup_stays_silent_for_unknown():
@@ -71,11 +79,36 @@ def test_sync_backfills_from_map_but_feed_wins(db, app, bl1):
         assert by_ext["fd:9202"].venue is None
         assert by_ext["fd:9203"].venue == "Speicher XI"
         assert "Stadion: 1 aus Feed, 1 aus Festdaten" in res["msg"]
+        # Fruehwarnung: Testwald ist unbekannt -> gemeldet und persistiert
+        assert res["venues_missing"] == ["SV Testwald"]
+        assert "ohne Stadion-Karte: SV Testwald" in res["msg"]
+        from scoring import get_setting
+        assert get_setting("stadium_gap_teams") == '["SV Testwald"]'
+        assert get_sync_diagnostics()["stadium_gaps"] == ["SV Testwald"]
         # 2. Lauf ohne Feed-venue am gespeicherten Spiel: Ueberschreiben verboten
         data2 = {"matches": [_fd_match(9203, "Werder Bremen", "TSG Hoffenheim")]}
         res2 = sync._process_football_data(data2, bl1.id, source="test")
         assert by_ext["fd:9203"].venue == "Speicher XI"
         assert res2["venues_map"] == 0  # vorhandener Wert bleibt unangetastet
+        # ...und die Fehlliste heilt: 2. Lauf kennt nur Werder (Karte ok)
+        assert res2["venues_missing"] == []
+        assert get_setting("stadium_gap_teams") == "[]"
+        assert "ohne Stadion-Karte" not in res2["msg"]
+        assert get_sync_diagnostics()["stadium_gaps"] == []
+
+
+def test_combo_pill_keeps_one_line_layout():
+    """Mobile-Fix 12.09.: Suche + Routing stecken in EINER Pille (Combo),
+    die CSS-Seite garantiert einzeilig (nowrap + Ellipse)."""
+    import pathlib
+    html = pathlib.Path("templates/match_detail.html").read_text(encoding="utf-8")
+    assert 'class="tu-venue-combo"' in html
+    assert html.count('tu-venue-combo') == 1
+    css = pathlib.Path("static/css/style.css").read_text(encoding="utf-8")
+    at = css.rindex(".tu-venue-combo {")
+    block = css[at:at + 260]
+    assert "white-space: nowrap" in block and "overflow: hidden" in block
+    assert "text-overflow: ellipsis" in css[css.rindex(".tu-venue-combo .tvp-text"):]
 
 
 def test_maps_url_builds_keyless_search_link():
@@ -86,3 +119,11 @@ def test_maps_url_builds_keyless_search_link():
     # Ohne Stadion gibt es keinen Link; ohne Verein bleibt der Query beim Namen
     assert stadiums.maps_url(None) is None
     assert stadiums.maps_url("Voith-Arena").endswith("query=Voith-Arena")
+
+
+def test_maps_route_url_is_directions_deeplink():
+    url = stadiums.maps_route_url("Allianz Arena", "FC Bayern München")
+    assert url.startswith("https://www.google.com/maps/dir/?api=1&destination=")
+    assert "Allianz%20Arena" in url and "Bayern" in url
+    assert stadiums.maps_route_url(None) is None
+    assert stadiums.maps_route_url("Voith-Arena").endswith("destination=Voith-Arena")
