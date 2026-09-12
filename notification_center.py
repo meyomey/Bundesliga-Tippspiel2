@@ -22,6 +22,60 @@ def _truthy(value, default=True):
 
 
 
+WAVE_KINDS = {1: "match_reminder", 2: "match_reminder_w2"}
+
+
+def reminder_second_wave_enabled() -> bool:
+    """Zweite, fruehe Reminder-Welle an/aus (Admin-Schalter, Standard: an)."""
+    try:
+        from scoring import get_setting
+        return _truthy(get_setting("reminders_second_wave_enabled", True), True)
+    except Exception:
+        return True
+
+
+def reminder_lead_hours(user, wave: int = 1) -> int:
+    """Effektive Vorlauf-Stunden fuer einen User (bzw. die zweite Welle).
+
+    Welle 1: ohne globalen Override die persoenliche Profil-Einstellung
+    (notify_hours_before); mit 'reminders_force_lead_hours' gilt der vom
+    Spielleiter gesetzte Standard fuer ALLE (Profilwerte werden ignoriert).
+    Welle 2: immer der globale Wert 'reminders_second_lead_hours'.
+    """
+    try:
+        from scoring import get_setting, _truthy_setting
+    except Exception:
+        return 1 if wave == 1 else 24
+    if wave == 2:
+        raw = get_setting("reminders_second_lead_hours", 24)
+        lo, hi = 1, 168
+    else:
+        force = _truthy_setting(get_setting("reminders_force_lead_hours", False), False)
+        raw = None
+        if not force and user is not None:
+            raw = getattr(user, "notify_hours_before", None)
+        if raw is None:
+            raw = get_setting("reminders_lead_hours", 1)
+        lo, hi = 0, 24
+    try:
+        val = int(raw)
+    except (TypeError, ValueError):
+        val = 1 if wave == 1 else 24
+    return max(lo, min(hi, val))
+
+
+def _window_hit(match, user, wave: int, now) -> bool:
+    """Nur senden, wenn der Anpfiff innerhalb des Wellen-Vorlaufs liegt."""
+    if match.kickoff is None:
+        return False
+    kickoff = match.kickoff
+    if kickoff.tzinfo is None:
+        kickoff = kickoff.replace(tzinfo=timezone.utc)
+    lead = reminder_lead_hours(user, wave)
+    delta = (kickoff - now).total_seconds()
+    return 0 <= delta <= lead * 3600 + 300  # +5 Min Toleranz (15-Minuten-Cron)
+
+
 def _already_sent(user, match, channel, kind="match_reminder", *, sent_cache=None):
     """Prueft, ob an diesen Kanal fuer das Spiel schon gesendet wurde.
 
@@ -82,7 +136,8 @@ def reminder_message(match, plain=True):
 
 
 def send_user_notification(user, match, channels=None, *, tipped_user_ids=None,
-                           sent_cache=None, email_base_url=None) -> dict:
+                           sent_cache=None, email_base_url=None,
+                           wave: int = 1, now=None, enforce_window: bool = False) -> dict:
     """Sendet eine Reminder-Nachricht an einen User ueber konfigurierte Kanaele.
 
     Optionale Prefetch-Parameter (``tipped_user_ids``, ``sent_cache``,
@@ -90,12 +145,20 @@ def send_user_notification(user, match, channels=None, *, tipped_user_ids=None,
     """
     channels = channels or ["email", "push", "telegram", "whatsapp"]
     result = {"email": False, "push": False, "telegram": False, "whatsapp": False}
+    kind = WAVE_KINDS.get(wave, WAVE_KINDS[1])
 
     if not user_wants_match_reminder(user, match, tipped_user_ids=tipped_user_ids):
         return result
+    if enforce_window:
+        # Automatik-Lauf: pro Welle nur im eigenen Zeitfenster senden;
+        # manuelle Admin-Erinnerungen (Standard) verschicken dagegen immer.
+        if now is None:
+            now = datetime.now(timezone.utc)
+        if not _window_hit(match, user, wave, now):
+            return result
 
     # E-Mail
-    if "email" in channels and _truthy(getattr(user, "notify_email", True), True) and not _already_sent(user, match, "email", sent_cache=sent_cache):
+    if "email" in channels and _truthy(getattr(user, "notify_email", True), True) and not _already_sent(user, match, "email", kind, sent_cache=sent_cache):
         try:
             from mail_helpers import send_email
             from scoring import get_setting
@@ -108,12 +171,12 @@ def send_user_notification(user, match, channels=None, *, tipped_user_ids=None,
                 f"Hallo {user.username},\n\n{reminder_message(match)}\n\nJetzt tippen: {match_url}\n",
             )
             if result["email"]:
-                _mark_sent(user, match, "email", sent_cache=sent_cache)
+                _mark_sent(user, match, "email", kind, sent_cache=sent_cache)
         except Exception as e:
             current_app.logger.warning(f"Notification E-Mail fehlgeschlagen fuer User {user.id}: {e}")
 
     # Push
-    if "push" in channels and _truthy(getattr(user, "notify_push", True), True) and user.push_subscription and not _already_sent(user, match, "push", sent_cache=sent_cache):
+    if "push" in channels and _truthy(getattr(user, "notify_push", True), True) and user.push_subscription and not _already_sent(user, match, "push", kind, sent_cache=sent_cache):
         try:
             from push_routes import _send_push_to_users
             sent, _failed = _send_push_to_users([user], {
@@ -124,22 +187,22 @@ def send_user_notification(user, match, channels=None, *, tipped_user_ids=None,
             })
             result["push"] = sent > 0
             if result["push"]:
-                _mark_sent(user, match, "push", sent_cache=sent_cache)
+                _mark_sent(user, match, "push", kind, sent_cache=sent_cache)
         except Exception as e:
             current_app.logger.warning(f"Notification Push fehlgeschlagen fuer User {user.id}: {e}")
 
     # Telegram
-    if "telegram" in channels and _truthy(getattr(user, "notify_telegram", True), True) and not _already_sent(user, match, "telegram", sent_cache=sent_cache):
+    if "telegram" in channels and _truthy(getattr(user, "notify_telegram", True), True) and not _already_sent(user, match, "telegram", kind, sent_cache=sent_cache):
         try:
             from telegram_bot import notify_user_telegram
             result["telegram"] = notify_user_telegram(user, reminder_message(match, plain=True))
             if result["telegram"]:
-                _mark_sent(user, match, "telegram", sent_cache=sent_cache)
+                _mark_sent(user, match, "telegram", kind, sent_cache=sent_cache)
         except Exception as e:
             current_app.logger.warning(f"Notification Telegram fehlgeschlagen fuer User {user.id}: {e}")
 
     # WhatsApp
-    if "whatsapp" in channels and _truthy(getattr(user, "notify_whatsapp", True), True) and not _already_sent(user, match, "whatsapp", sent_cache=sent_cache):
+    if "whatsapp" in channels and _truthy(getattr(user, "notify_whatsapp", True), True) and not _already_sent(user, match, "whatsapp", kind, sent_cache=sent_cache):
         if user.whatsapp_phone and user.whatsapp_apikey:
             try:
                 from whatsapp import send_whatsapp_message
@@ -147,14 +210,15 @@ def send_user_notification(user, match, channels=None, *, tipped_user_ids=None,
                     user.whatsapp_phone, user.whatsapp_apikey, reminder_message(match, plain=False)
                 )
                 if result["whatsapp"]:
-                    _mark_sent(user, match, "whatsapp", sent_cache=sent_cache)
+                    _mark_sent(user, match, "whatsapp", kind, sent_cache=sent_cache)
             except Exception as e:
                 current_app.logger.warning(f"Notification WhatsApp fehlgeschlagen fuer User {user.id}: {e}")
 
     return result
 
 
-def send_match_reminders(match, channels=None) -> dict:
+def send_match_reminders(match, channels=None, *, wave: int = 1,
+                         now=None, enforce_window: bool = False) -> dict:
     """Sendet Reminder fuer ein Spiel an alle berechtigten User.
 
     Bulk-optimiert: Statt pro User/Kanal bis zu 6 Queries (Tipp vorhanden?
@@ -168,12 +232,13 @@ def send_match_reminders(match, channels=None) -> dict:
         row[0] for row in db.session.query(Prediction.user_id)
         .filter_by(match_id=match.id).all()
     }
+    wave_kind = WAVE_KINDS.get(wave, WAVE_KINDS[1])
     sent_cache = {
         (row.user_id, row.match_id, row.channel, row.kind)
         for row in db.session.query(
             NotificationLog.user_id, NotificationLog.match_id,
             NotificationLog.channel, NotificationLog.kind,
-        ).filter_by(match_id=match.id, kind="match_reminder").all()
+        ).filter_by(match_id=match.id, kind=wave_kind).all()
     }
     try:
         from scoring import get_setting as _get_setting
@@ -187,6 +252,7 @@ def send_match_reminders(match, channels=None) -> dict:
             user, match, channels=channels,
             tipped_user_ids=tipped_user_ids, sent_cache=sent_cache,
             email_base_url=email_base_url,
+            wave=wave, now=now, enforce_window=enforce_window,
         )
         if any(res.values()):
             summary["users"] += 1
@@ -201,10 +267,17 @@ def send_match_reminders(match, channels=None) -> dict:
     return summary
 
 
-def upcoming_reminder_matches(default_hours=1):
-    """Findet Spiele, die ins Reminder-Zeitfenster fallen."""
-    now = datetime.now(timezone.utc)
-    max_hours = 24
+def upcoming_reminder_matches(default_hours=1, now=None):
+    """Findet Spiele, die ins Reminder-Zeitfenster einer aktiven Welle fallen.
+
+    Obergrenze = groesster aktiver Wellen-Vorlauf (Welle 1 max. 24 h, Welle 2
+    bis 168 h konfigurierbar). Die eigentliche, user-genaue Fenster-Pruefung
+    uebernimmt send_user_notification(enforce_window=True) im Zyklus.
+    """
+    now = now or datetime.now(timezone.utc)
+    max_hours = max(24, int(default_hours or 0))
+    if reminder_second_wave_enabled():
+        max_hours = max(max_hours, reminder_lead_hours(None, wave=2))
     q = Match.query.filter(
         Match.status == "scheduled",
         Match.kickoff > now,
@@ -212,29 +285,7 @@ def upcoming_reminder_matches(default_hours=1):
     )
     q = filter_matches_for_active_competition(q)
     matches = q.order_by(Match.kickoff.asc()).all()
-
-    # User einmal laden (frueher: einmal pro Spiel -> N+1),
-    # Fenster in Minuten vorbereiten, dann nur noch in-memory pruefen.
-    windows = []
-    for user in User.query.filter(~User.email.like("%@bot.local")).all():
-        hours = getattr(user, "notify_hours_before", None) or default_hours
-        try:
-            hours = max(0, min(24, int(hours)))
-        except Exception:
-            hours = default_hours
-        windows.append(timedelta(hours=hours, minutes=5))
-
-    result = []
-    for match in matches:
-        kickoff = match.kickoff
-        if kickoff is None:
-            continue
-        if kickoff.tzinfo is None:  # SQLite liefert naive Zeiten -> als UTC werten
-            kickoff = kickoff.replace(tzinfo=timezone.utc)
-        # Es reicht, wenn mindestens ein User sein individuelles Fenster erreicht hat.
-        if any(now <= kickoff <= now + win for win in windows):
-            result.append(match)
-    return result
+    return [m for m in matches if m.kickoff is not None]
 
 
 
@@ -337,9 +388,10 @@ def send_test_missing_tip_notification(user, channels=None) -> dict:
 
     return result
 
-def run_reminder_cycle(channels=None) -> dict:
-    """Kompletter Reminder-Lauf fuer Scheduler/Cron."""
-    total = {"matches": 0, "users": 0, "email": 0, "push": 0, "telegram": 0, "whatsapp": 0, "enabled": True}
+def run_reminder_cycle(channels=None, now=None) -> dict:
+    """Kompletter Reminder-Lauf fuer Scheduler/Cron (alle aktiven Wellen)."""
+    total = {"matches": 0, "users": 0, "email": 0, "push": 0, "telegram": 0, "whatsapp": 0,
+              "wave1": 0, "wave2": 0, "enabled": True}
     try:
         from scoring import get_setting
         enabled = get_setting("reminders_enabled", True)
@@ -348,10 +400,17 @@ def run_reminder_cycle(channels=None) -> dict:
             return total
     except Exception:
         pass
-    for match in upcoming_reminder_matches():
-        total["matches"] += 1
-        res = send_match_reminders(match, channels=channels)
-        for k in ("users", "email", "push", "telegram", "whatsapp"):
-            total[k] += res.get(k, 0)
+    if now is None:
+        now = datetime.now(timezone.utc)
+    waves = [1, 2] if reminder_second_wave_enabled() else [1]
+    matches = upcoming_reminder_matches(now=now)
+    total["matches"] = len(matches)
+    for wave in waves:
+        for match in matches:
+            res = send_match_reminders(match, channels=channels, wave=wave,
+                                        now=now, enforce_window=True)
+            for k in ("users", "email", "push", "telegram", "whatsapp"):
+                total[k] += res.get(k, 0)
+            total[f"wave{wave}"] += res.get("users", 0)
     db.session.commit()
     return total

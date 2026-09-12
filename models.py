@@ -176,7 +176,8 @@ class Match(db.Model):
     is_live = db.Column(db.Boolean, default=False)
     minute = db.Column(db.Integer, nullable=True)  # Aktuelle Minute (echter Feed-Wert; None = unbekannt)
     live_phase = db.Column(db.String(20), nullable=True)  # Live-Phase des Feeds: IN_PLAY / PAUSED (Halbzeit) / EXTRA_TIME / PENALTY_SHOOTOUT
-    events = db.Column(db.Text, nullable=True)  # JSON: Tore, Karten, etc.
+    events = db.Column(db.Text, nullable=True)  # JSON: Torschuetzen-Liste {kind:"gf",...} (Goal-Boost)
+    venue = db.Column(db.String(80), nullable=True)  # Stadion (football-data Free-Tier, "venue"-Feld)
 
     home_team = db.relationship("Team", foreign_keys=[home_team_id])
     away_team = db.relationship("Team", foreign_keys=[away_team_id])

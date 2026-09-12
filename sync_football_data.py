@@ -14,6 +14,11 @@ from models import Match, Competition
 from scoring import get_setting, set_setting
 from match_results import apply_match_update
 
+try:  # fester Heimstadium-Nachschlageweg (12.09.2026); fehlbares Modul = aus
+    from stadiums import home_stadium_for  # (Deploy-Rest: Sync laeuft dann weiter)
+except ImportError:
+    home_stadium_for = None
+
 from sync_shared import (
     current_sync_season_code, _resolve_or_create_team_from_fd, _ensure_competition_team,
     _find_existing_match, _purge_stale_matches_for_comp, purge_summary_suffix,
@@ -106,6 +111,8 @@ def _process_football_data(data, comp_id, source="football-data.org"):
     updated = 0
     created = 0
     live_count = 0
+    venue_feed_count = 0  # Feed-Lieferung (football-data)
+    venue_map_count = 0   # gefuellte Luecken aus der festen Heimstadium-Karte
     new_teams = 0
     current_ext_ids = set()
     affected_match_ids = set()
@@ -161,6 +168,16 @@ def _process_football_data(data, comp_id, source="football-data.org"):
         if real_minute is not None and real_minute < 1:
             real_minute = None
 
+        # Stadion: Feed-Wert hat immer Vorrang; nur fuer echte Luecken greift
+        # die feste Heimstadium-Karte (Free-Plan von football-data liefert
+        # venue laut Diagnose 12.09. nicht, OLB ebenso wenig).
+        venue_feed = (md.get("venue") or "").strip()[:80] or None
+        if venue_feed:
+            venue_feed_count += 1
+        mapped_venue = None
+        if not venue_feed and home_stadium_for:
+            mapped_venue = home_stadium_for(home_team.name)
+
         score = md.get("score", {})
         full_time = score.get("fullTime", {})
         home_score = full_time.get("home")
@@ -183,6 +200,11 @@ def _process_football_data(data, comp_id, source="football-data.org"):
                 kickoff=kickoff,
                 is_live=(our_status == "live"),
             )
+            if venue_feed and existing.venue != venue_feed:
+                existing.venue = venue_feed  # nie mit None loeschen (API-liefert nicht immer)
+            elif not venue_feed and mapped_venue and not existing.venue:
+                existing.venue = mapped_venue
+                venue_map_count += 1
             if old_status != our_status or old_h != existing.home_score or old_a != existing.away_score:
                 affected_match_ids.add(existing.id)
             updated += 1
@@ -198,7 +220,10 @@ def _process_football_data(data, comp_id, source="football-data.org"):
                 status=our_status,
                 external_id=ext_id,
                 is_live=(our_status == "live"),
+                venue=venue_feed or mapped_venue,
             )
+            if mapped_venue and not venue_feed:
+                venue_map_count += 1
             db.session.add(existing)
             db.session.flush()
             if our_status == "finished":
@@ -232,10 +257,12 @@ def _process_football_data(data, comp_id, source="football-data.org"):
 
     return {
         "ok": True,
-        "msg": f"✅ {source}: {created} neu, {updated} aktualisiert, {live_count} live{purge_summary_suffix()}",
+        "msg": f"✅ {source}: {created} neu, {updated} aktualisiert, {live_count} live \u00b7 \U0001f4cd Stadion: {venue_feed_count} aus Feed, {venue_map_count} aus Festdaten{purge_summary_suffix()}",
         "created": created,
         "updated": updated,
         "live": live_count,
+        "venues": venue_feed_count,
+        "venues_map": venue_map_count,
         "new_teams": new_teams,
         "purged_stale": purged_stale,
     }
@@ -317,10 +344,21 @@ def fetch_live_match_updates(matchday=None):
     except Exception as e:
         current_app.logger.debug(f"Minute-Boost uebersprungen: {e}")
 
+    # Goal-Boost: Torschuetzen-Listen fuer frisch beendete Spiele (nutzt den
+    # optionalen API-Football-Key, eigener Mini-Budgetwaechter).
+    goal_updates = 0
+    try:
+        from minute_boost import boost_goal_scorers_from_apifootball
+        gb = boost_goal_scorers_from_apifootball() or {}
+        goal_updates = int(gb.get("updated") or 0)
+    except Exception as e:
+        current_app.logger.debug(f"Goal-Boost uebersprungen: {e}")
+
     if err or not data:
-        return {"ok": bool(boost_updates or minute_updates), "msg": (err or ""),
-                "updated": boost_updates, "live": 0, "olb_boost": boost_updates,
-                "minute_boost": minute_updates}
+        return {"ok": bool(boost_updates or minute_updates or goal_updates),
+                "msg": (err or ""), "updated": boost_updates, "live": 0,
+                "olb_boost": boost_updates, "minute_boost": minute_updates,
+                "goals": goal_updates}
 
     comp_obj = Competition.query.filter_by(code=comp, is_active=True).first()
     comp_id = comp_obj.id if comp_obj else 1
@@ -331,6 +369,8 @@ def fetch_live_match_updates(matchday=None):
         result["olb_boost"] = boost_updates
     if minute_updates:
         result["minute_boost"] = minute_updates
+    if goal_updates:
+        result["goals"] = goal_updates
     return result
 
 

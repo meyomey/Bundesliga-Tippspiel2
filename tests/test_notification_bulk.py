@@ -134,7 +134,9 @@ def test_upcoming_reminder_matches_loads_users_once(app, db, competition, teams)
 
 
 def test_upcoming_reminder_matches_respects_user_windows(app, db, competition, teams, monkeypatch):
-    """Individuelles Stundenfenster (notify_hours_before) bleibt erhalten."""
+    """Individuelles Stundenfenster (notify_hours_before) bleibt erhalten -
+    die Fenster-Pruefung sitzt seit der Wellen-Umsetzung im Versand
+    (send_..._reminders mit enforce_window), nicht mehr in der Spiel-Eligibility."""
     monkeypatch.setitem(app.config, 'COMPETITION', competition.code)  # Scope auf Test-Liga
     u_far = _mk_user(db, 1)
     u_far.notify_hours_before = 24
@@ -144,16 +146,24 @@ def test_upcoming_reminder_matches_respects_user_windows(app, db, competition, t
     m_in_far_window = _mk_match(db, competition, teams, hours_ahead=12, matchday=1)
     with app.app_context():
         hits = upcoming_reminder_matches()
-    assert any(h.id == m_in_far_window.id for h in hits)  # Fenster von u_far (24h) deckt das Spiel ab
+    assert any(h.id == m_in_far_window.id for h in hits)  # 24h-Fenster deckt das Spiel ab
 
-    # Nur 1h-Fenster zwischen Spiel und jetzt -> nicht enthalten
+    # 12h entfernt, aber nur 0h/1h-Vorlaeufe -> Welle 1 sendet NICHT, Welle 2 (24h) schon
     db.session.delete(m_in_far_window)
     u_far.notify_hours_before = 0  # deaktiviert weites Fenster
     db.session.commit()
     m_close = _mk_match(db, competition, teams, hours_ahead=12, matchday=2)
+    mails = []
+    monkeypatch.setattr('mail_helpers.send_email',
+                        lambda s, r, b, html=None: mails.append(r) or True)
+    now = datetime.now(timezone.utc)
     with app.app_context():
-        hits2 = upcoming_reminder_matches()
-    assert all(h.id != m_close.id for h in hits2)
+        res_w1 = send_match_reminders(m_close, channels=['email'], wave=1,
+                                      now=now, enforce_window=True)
+        assert res_w1["users"] == 0
+        res_w2 = send_match_reminders(m_close, channels=['email'], wave=2,
+                                      now=now, enforce_window=True)
+    assert res_w2["users"] >= 1 and len(mails) >= 1
 
 
 def test_next_open_match_for_user_prefetches_tips(app, db, user, competition, teams):

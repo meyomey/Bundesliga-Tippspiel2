@@ -135,6 +135,16 @@ Verwendungszweck: Tippspiel + Spielername') }}
             <small class="muted" style="display:block;margin-top:3px">{{ form.reminders_enabled.description }}</small>
           </span>
         </label>
+        <div class="settings-grid" style="margin-top:10px">
+          <label>{{ form.reminders_lead_hours.label }} {{ form.reminders_lead_hours(class_='input', type='number', min='0', max='24') }}
+            <small class="muted">{{ form.reminders_lead_hours.description }}</small></label>
+          <label>{{ form.reminders_second_lead_hours.label }} {{ form.reminders_second_lead_hours(class_='input', type='number', min='1', max='168') }}
+            <small class="muted">{{ form.reminders_second_lead_hours.description }}</small></label>
+          <label class="check">{{ form.reminders_second_wave_enabled() }} <span><strong>{{ form.reminders_second_wave_enabled.label.text }}</strong>
+            <small class="muted" style="display:block;margin-top:3px">{{ form.reminders_second_wave_enabled.description }}</small></span></label>
+          <label class="check">{{ form.reminders_force_lead_hours() }} <span><strong>{{ form.reminders_force_lead_hours.label.text }}</strong>
+            <small class="muted" style="display:block;margin-top:3px">{{ form.reminders_force_lead_hours.description }}</small></span></label>
+        </div>
         <p class="muted small">
           Automatik läuft über <code>cron_jobs.py reminder</code> bzw. <code>cron_jobs.py all</code>.
           Jeder Spieler steuert im Profil selbst, welche Kanäle genutzt werden und wie viele Stunden vor Anpfiff erinnert wird.
@@ -151,14 +161,15 @@ Verwendungszweck: Tippspiel + Spielername') }}
   </details>
 
   {# APIs #}
-  <details class="section-group" {% if api_missing %}open{% endif %}>
-    <summary>🌐 APIs {% if api_missing %}<span class="missing-badge">⚠ Nicht konfiguriert</span>{% endif %}</summary>
+  <details class="section-group" {% if api_missing or not apifootball_configured %}open{% endif %}>
+    <summary>🌐 APIs {% if api_missing %}<span class="missing-badge">⚠ Nicht konfiguriert</span>{% elif not apifootball_configured %}<span class="missing-badge" style="opacity:.7">ℹ Free-Key empfohlen</span>{% endif %}</summary>
     <div class="section-body">
       <label>{{ form.football_data_token.label }} {{ form.football_data_token(class_='input', placeholder='Leer lassen = bestehenden Token behalten') }}
         <small class="muted">Status: {% if api_configured %}✅ Token gespeichert{% else %}⚠ Kein Token gespeichert{% endif %}</small>
       </label>
       <label>{{ form.apifootball_token.label }} {{ form.apifootball_token(class_='input', placeholder='Leer lassen = bestehenden Token behalten') }}
-        <small class="muted">Status: {% if apifootball_configured %}✅ Token gespeichert – Live-Minute wird allgaetlich gebohst (Budget: max. 90 Calls/Tag){% else %}ℹ️ Kein Token – Spielminute nutzt die „≈"-Struktur-uhr. Optionaler Free-Key von api-sports.io erhoeht die Genauigkeit (echte Minute).{% endif %}</small>
+        <small class="muted">Status: {% if apifootball_configured %}✅ Token gespeichert – echte Live-Minute, Torschützen im Spielbericht und Torjäger-Rangliste sind aktiv (Budgetwächter: gesamt ≤ 100 Calls/Tag){% else %}ℹ️ Kein Token – Live-Minute zeigt die „≈"-Uhr, Torschützen und Torjäger-Rangliste bleiben leer. Kostenloser Free-Key von api-sports.io aktiviert alles drei automatisch. Achtung: Je nach Plan begrenzt die API bestimmte Endpunkte auf vergangene Saisons – solche Absagen zeigt Admin → API Sync („Versuche je Quelle") im Originaltext, und die App pausiert den betroffenen Feed dann einen Tag.{% endif %}</small>
+        <small class="muted">Key holen: <a href="https://www.api-football.com/" target="_blank" rel="noopener">api-football.com</a> registrieren → Dashboard → „API-KEY" kopieren → hier einfügen.</small>
       </label>
       <label>{{ form.public_base_url.label }} {{ form.public_base_url(class_='input', placeholder='https://deine-domain.de') }}
         <small class="muted">{{ form.public_base_url.description }}</small>

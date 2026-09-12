@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Torjäger{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1>🥇 Torjäger</h1>
+    <p class="muted small">
+      Torschützenliste{% if meta.season %} · Saison {{ meta.season }}{% endif %}
+      · 📡 Feed: <strong>API-Football</strong> (kostenlos)
+      {% if fetched_dt %}<span class="muted">· Stand: {{ fetched_dt|de_local('%d.%m.%Y %H:%M') }} Uhr</span>{% endif %}
+    </p>
+  </div>
+</div>
+
+{% if entries %}
+<section class="card ts-card">
+  <table class="ts-table">
+    <thead>
+      <tr><th>#</th><th>Spieler</th><th class="right">Tore</th><th class="right">Vorlagen</th><th class="right">Einsätze</th></tr>
+    </thead>
+    <tbody>
+      {% for e in entries %}
+      <tr class="{{ 'ts-leader' if loop.first }}">
+        <td class="ts-rank">{{ loop.index }}</td>
+        <td class="ts-player">
+          {% if e.photo %}<img class="ts-photo" src="{{ e.photo }}" alt="" loading="lazy" width="28" height="28">{% else %}<span class="ts-photo ts-photo-fallback">{{ e.name[:1] }}</span>{% endif %}
+          <span class="ts-names">
+            <strong>{{ e.name }}</strong>
+            <small>{{ e.short }}{% if e.position %} · {{ e.position }}{% endif %}</small>
+          </span>
+        </td>
+        <td class="right ts-goals"><strong>{{ e.goals }}</strong>
+          {% if e.pen_scored %}<small class="muted">davon {{ e.pen_scored }} Elfm.</small>{% endif %}
+          {% if e.pen_missed %}<small class="muted">{{ e.pen_missed }} verschossen</small>{% endif %}
+        </td>
+        <td class="right">{{ e.assists or '—' }}</td>
+        <td class="right muted">{{ e.apps or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted small ts-foot">Aktualisiert sich nach Spieltagen automatisch (max. 2× täglich, zusammen mit den Live-Boostern immer unter 100 Abrufen/Tag). Halte die Liste für deine Tipps und die Sonderfrage „Torschützenkönig“ bereit.</p>
+</section>
+{% else %}
+<section class="card">
+  <h2>Noch keine Torjäger-Daten</h2>
+  {% if meta.has_token %}
+    <p class="muted">Der Abruf läuft automatisch im Hintergrund (nach dem nächsten Sync bzw. Seitenbesuch am Spieltagsabend). Falls es lange leer bleibt, prüfe den API-Football-Key in <em>Admin → Einstellungen → APIs</em>.</p>
+  {% else %}
+    <p class="muted">Für die Torschützenliste wird der kostenlose <strong>API-Football-Key</strong> benötigt (Admin → Einstellungen → APIs, 100 Abrufe/Tag gratis – derselbe Key wie für Live-Minute und Torschützen im Spielbericht).</p>
+  {% endif %}
+  {% if meta.last_error %}
+    <p class="muted small" style="margin-top:10px">⚠️ Letzter Abrufversuch{% if meta.last_attempt %} am {{ meta.last_attempt }} Uhr UTC{% endif %}: {{ meta.last_error }}{% if meta.last_error and "plan" in meta.last_error|lower %} – der Feed wird heute nicht weiter versucht und macht es morgen von selbst erneut.{% endif %}</p>
+  {% endif %}
+</section>
+{% endif %}
+
+{% endblock %}

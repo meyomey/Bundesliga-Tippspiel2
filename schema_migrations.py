@@ -112,6 +112,11 @@ def _migration_user_default_tip_view():
         conn.execute(text('UPDATE "users" SET "default_tip_view" = :d WHERE "default_tip_view" IS NULL OR "default_tip_view" = :empty'), {"d": "normal", "empty": ""})
     return "users.default_tip_view gesetzt"
 
+def _migration_match_venue():
+    _add_column_if_missing("matches", "venue", "VARCHAR(80)")
+    return "matches.venue (Stadion aus football-data) sichergestellt"
+
+
 def _migration_invitation_codes_schema():
     """Stellt die Einladungscode-Tabelle explizit sicher.
 
@@ -151,6 +156,7 @@ MIGRATIONS = [
     ("2026_05_19_004_orphan_report", "Orphan-Daten pruefen und berichten", _migration_repair_orphan_logs_only),
     ("2026_08_11_001_invitation_codes_schema", "Einladungscode-Tabelle sicherstellen", _migration_invitation_codes_schema),
     ("2026_08_12_001_user_default_tip_view", "Standard-Tippansicht je User sicherstellen", _migration_user_default_tip_view),
+    ("2026_09_12_001_match_venue", "Stadion-Spalte fuer Spielinfos", _migration_match_venue),
 ]
 
 

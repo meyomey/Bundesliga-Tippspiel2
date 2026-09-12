@@ -1405,3 +1405,107 @@ faker==28.4.1
 - **Admin:** Settings -> APIs -> neues optionales Feld "API-Football Token" (leer lassen = Modul komplett inaktiv, Umgebungsvar APIFOOTBALL_TOKEN als Fallback in config.py). Statuszeile erklaert Budget und ≈-Rueckfall.
 - **Ehrliche Grenze:** Ohne Token aendert sich nichts (≈-Uhr bleibt); mit Token kann das Tagesbudget an vollen Spieltagen frueher ausgehen - dann stiller Rueckfall auf die ≈-Uhr, nie eine eingefrorene Exakt-Anzeige. OpenLigaDB liefert weiterhin die Tore in ~20s, API-Football die echte Minute - die Kombination deckt "Tor schnell" und "Minute echt" ab, ohne dass ein Cent fliesst.
 - **Tests:** +6 in `tests/test_minute_boost.py` (Minute ohne "≈", HT-Pause, FT-UhrReset, kein Token = kein HTTP, Drossel+Budget, fremde/mehrfach Treffer ignoriert). Suite **342/342**.
+
+
+## 2026-09-12 (1) - CI #81 rot behoben: GitHub-Paket-Luecke + Frische-Gate
+
+- **Befund:** Actions-Run #81 ("precise minute of play added") - Flake8/Security gruen, alle pytest-Jobs rot. Reproduktion im Sandbox-Klon: `AttributeError: 'SettingsForm' object has no attribute 'apifootball_token'` (tests/test_routes.py). **Ursache:** Das 04-Paket enthielt routes_admin.py mit neuem Feld, aber `forms.py`/`config.py`/`templates/admin/settings.html` standen nie auf der GitHub-Liste -> Repo-Kopie halb neu/halb alt. Live-Server war NICHT betroffen (Hotfix-Ordner enthielt alle 6 Dateien).
+- **Fix 1 (Liste):** GITHUB_UPLOAD_FILES ergaenzt um forms.py, config.py, templates/admin/settings.html + docs/reparatur_tippverlust_st1.sql (Nachzigler aus 13). 04-Paket jetzt 45 Dateien.
+- **Fix 2 (nie wieder):** Neuer `github_freshness_gate()` im Build: vergleicht jede code-relevante Runtime-Datei per Blob-Hash gegen GitHub main (git fetch + ls-tree) und meldet jede Abweichung, die nicht im 04-Paket steckt, vor dem Bauen. Zusaetzlich `verify_04.py`: klont main, packt das Paket drueber, faehrt pytest - exakt wie die Actions-CI.verify_04 lief nach dem Fix: **342/342 gruen auf Repo-Kopie + Paket** (12.09.2026).
+- **Hausputz:** verify_04.py aus dem Runtime-Set genommen (nur Doku/Tests), Ursprungsremote im Workspace-Klon nachgeruestet.
+
+
+## 2026-09-12 (2) - Tipp-Erinnerungen: zwei einstellbare Wellen
+
+- **Anlass (Nutzerfrage):** "Wie war das mit den Remindern bei fehlenden Tipps - kann ich das aktivieren oder muss das jeder selber machen? Einige Spieler vergessen ihre Tipps." Befund: Zyklus laeuft bereits mit dem Cron (task=all -> run_reminders), Standard = einmal 1 h vor Anpfiff. Gewuenscht: "beides, aber einstellbar" (zweite Welle + globaler Vorlauf).
+- **Neu (notification_center.py):** Wellen-Konzept. Welle 1 (kurz vor Anpfiff) respektiert die Profil-Vorlaufzeit des Spielers; der Admin kann mit `reminders_force_lead_hours` einen globalen Standard (`reminders_lead_hours`, 0-24 h) fuer alle erzwingen. Welle 2 (Vorwarnung) sendet zusaetzlich `reminders_second_lead_hours` (1-168 h) vor Anpfiff an alle - eigenes Versand-Log (`kind="match_reminder_w2"`), blockiert Welle 1 nicht und wird pro Spiel nur einmal ausgeloesst. Master-Schalter `reminders_enabled` bleibt oben drauf; manuelle Admin-Erinnerungen (Offene-Tipps-Seite, Test-Button) versenden weiterhin unabhängig vom Fenster (enforce_window opt-in nur im Zyklus).
+- **Eligibility:** `upcoming_reminder_matches()` erweitert das Abfragefenster auf den groessten aktiven Wellen-Vorlauf (bis 168 h); die user-genaue Fensterpruefung (`_window_hit`, +5 min Toleranz wegen 15-min-Cron) sitzt jetzt im Versand statt in der Match-Auswahl. `run_reminder_cycle(channels, now=None)` gibt `wave1`/`wave2`-Zaehler zurueck (Heartbeat-Details).
+- **Admin-UI:** Einstellungen -> "Tipp-Erinnerungen": vier neue Felder (Welle-1-Vorlauf, Force-Schalter, Welle-2 an/aus [Standard an], Welle-2-Vorlauf) mit Beschreibungen; Werte clampen beim Speichern.
+- **Test-Fix:** `tests/test_notification_bulk.py::test_upcoming_reminder_matches_respects_user_windows` auf die neue Architektur umgeschrieben (Fensterpruefung im Versand, nicht mehr in der Spielauswahl). Neu: `tests/test_reminder_waves.py` mit 4 Tests (Vorlauf-Aufloesung/Force/Clamps, beide Wellen mit getrennten Logs, Dedup zweiter Zyklus, Welle-2 aus + manueller Versand, Master aus). Hinweis aus der Debug-Runde: Objekte NACH Update innerhalb derselben Test-Session koennen ueber die Identity-Map veraltet erscheinen - Tests arbeiten deshalb mit frischen Matches statt Updates.
+- Suite **346/346**.
+
+
+## 2026-09-12 (2) - Spielinfos mit echtem Mehrwert: Stadion + Torschuetzen
+
+- **Anlass (Nutzerfrage):** "Kann man eventuell noch eine Info zu Spielen einbauen, die einen echten Mehrwert bietet?" Recherche: OLB-Event-/Goals-Endpoints leer bzw. 404 (live geprueft), football-data Player-/Scorer-Daten nur gegen Bezahlung. Uebrige echte Gratis-Perlen: das venue-Feld im ohnehin geladenen Match-Payload und die goals[] im API-Football-Free-Plan (Token dafuer wird bereits fuer den Minute-Boost angeboten).
+- **Neu 1 - Stadion:** `Match.venue` (neue Spalte + Schema-Migration `2026_09_12_001_match_venue`); der fd-Sync persistiert `md["venue"]` (leere Payloads loeschen Bestand nicht). Match-Detail zeigt eine dezent-grau Pill "📍 Allianz Arena" neben dem Wetter-Pill.
+- **Neu 2 - Goal-Boost (`minute_boost.boost_goal_scorers_from_apifootball()`):** Nach beendeten Spielen (Kickoff <= jetzt, <= 2 Tage alt) holt EIN Fetch `/fixtures?league=..&season=..&last=9` die Torschuetzen (Schuetze, Vorlage, Minute+Nachspielzeit, Elfmeter/Eigentor) und legt sie als JSON (`kind:"gf"`) in `Match.events` ab - sortiert, dedup-faehig, Fremdformate (live_scoring-Legat) werden nie ueberschrieben. Eigener Budgetwaechter: min. 10 min Abstand, max. 8 Calls/Tag (zusammen mit Minute-Boost <= 98 von 100). Ohne API-Football-Token: kein Request, keine Anzeige - reines Bonusfeature.
+- **Anzeige:** Match-Detail bekommt einen "⚽ Torschuetzen"-Block (Zeile pro Tor: Minute, Kuerzel Heim/Auswaerts, Spieler, Elfmeter-/Eigentor-Zusatz, Vorlage). Live-Center/Schnelltipp bleiben unveraendert schnell.
+- **Nebenbefund behoben:** app.py laeuft beim Start jetzt `run_pending_migrations()` direkt nach `db.create_all()` - ohne das haette jeder Deploy mit neuen Spalten (Netcup wie Test-Datei-DB) mit "no such column" gebrannt (im Testlauf exakt so aufgetreten und gefixt).
+- **Tests:** +5 in `tests/test_match_info_venue_goals.py` (venue persist + Erhalten bei leerem Payload, Goals sortiert inkl. Elfmeter/Eigentor/Seite, kein Token = kein HTTP, Fremd-events unangetastet + kein Call, 2H-Payload wird ignoriert, Detail-Rendering mit Venue + Torschuetzen-Zeilen). Suite **351/351**.
+
+
+## 2026-09-12 (3) - Torjaeger-Rangliste (Torschuetzenliste)
+
+- **Anlass (Nutzerwunsch):** "die Torjaeger Rangliste haette ich gerne noch" - zusaetzlich als Hilfe fuer die Sonderfrage "Torschuetzenkoenig".
+- **Neues Modul `top_scorers.py`:** holt die offizielle Top-Scorer-Liste von API-Football (`GET /statistics/league/top_scorers`, dauerhafter Free-Plan, derselbe optionale Key wie Minute-/Goal-Boost). Ergebnis liegt als JSON im Setting-Cache `top_scorers_data` (keine neue Tabelle). Parsing: Tore, Vorlagen, Elfmeter getroffen/verschossen, Einsaetze, Minuten; Spieler ohne Tor werden gefiltert; Sortierung Tore desc, Name asc; Top 20.
+- **Budgetwaechter:** eigener Gate - fruehestens alle 6 h, max. 2 Abrufe/Tag; zusammen mit Minute- (<=90) und Goal-Boost (<=8) damit immer <=100 Calls/Tag des Free-Plans. Ohne Token: kein Request, Seite zeigt Erklaertext statt Leiertabelle. Abruffehler behalten den letzten Erfolgs-Cache (Seite nie kaputt).
+- **Auto-Aktualisierung:** Hook in `sync_results()` (Cron-Sync und Admin-Sync-Button) - bewusst VOR den FD-/OLB-Netzwerken, laeuft auch bei Sync-Stoerungen. `force=True` (Intervall-Skip) ist vorbereitet, falls spaeter ein Admin-Button gewuenscht wird.
+- **UI:** neue Seite `/torjaeger` (login_required) mit Ranglisten-Tabelle (Bild, Name, Team-Kuerzel via DB-Matching, Tore inkl. Elfmeter-Zusatz, Vorlagen, Einsaetze; Fuehrender leicht hervorgehoben), Stand-Zeitstempel, Karten-Einstieg "🥇 Torjaeger" auf der Mehr-Seite. Mobile-first, keine externen Assets ausser Spielerfotos (wie ueblich optionale CDN-Bilder mit Initial-Fallback).
+- **Tests:** +6 in `tests/test_top_scorers.py` (Parse/Sort/Cache, Throttle + Budget + no-token, Listing traegt Fremdfehler den alten Cache weiter inkl. Team-Kuerzel, Seiten-Rendering mit Elfer-Hinweis und "kein Tor = nicht gelistet", Hinweis-Karte ohne Daten, Sync-Hook ruft Refresh genau einmal). Suite **357/357**.
+
+
+## 2026-09-12 (4) - API-Football im Admin sichtbar machen (Folge des Torjaeger-Wunsches)
+
+- **Anlass (Nutzerfrage):** "hier fehlt doch noch API-Football, oder?" - Der Key war technisch langst andockbar (Feld in Admin -> Einstellungen -> "🌐 APIs", Save/Read-Pfade vorhanden); das Sektions-<details> blieb aber zugeklappt, das Label nannte nur "Live-Minute", und der Status-Hilfetext aus Runde 19 war sprachlich beschadigt ("wird allgaetlich gebohst", kaputte Anfuehrungszeichen).
+- **Fix:** API-Abschnitt offnet sich jetzt auch, wenn der API-Football-Key fehlt (Badge "ℹ Free-Key empfohlen", inaktiv-Optik statt Warnrot - es bleibt optional). Hilfetext repariert und benennt alle drei Free-Key-Funktionen (echte Live-Minute, Torschuetzen im Spielbericht, Torjaeger-Rangliste) inkl. gemeinsamem Budget (≤ 100 Calls/Tag) und "Key holen"-Link zu api-football.com. Formular-Label entsprechend erweitert.
+- **Kein Funktionscode geaendert** - nur Admin-UI-Beschriftung/Hilfe. Suite bleibt **357/357**; flake8-Gate OK.
+
+
+## 2026-09-12 (5) - API-Football im Admin-Dashboard sichtbar (Checks + letzte Abrufe)
+
+- **Anlass (Nutzer-Screenshot):** Admin -> API Sync zeigte football-data/OLB-Checks und "Letzter Sync", aber vom dritten Datenstrang (API-Football-Key) fehlte jede Spur - obwohl der Key laengst eingetragen war.
+- **Neu:** Aktivitaetsprotokoll Setting `apifootball_activity` (JSON): jeder ECHTE HTTP-Versuch (Erfolg wie Fehler, nie gedrosselte) hinterlaesst Zeitstempel + Status + Kurznotiz je Feed-Typ minute/goals/torjaeger; `record_apifootball_activity()` + `apifootball_activity_summary()` in minute_boost.py, aufgerufen von Minute-Boost, Goal-Boost und top_scorers.
+- **Admin -> API Sync:** neuer Check-Kachel-Eintrag "API-Football Token (optional)" (fehlender Key = ℹ️, kein ⚠, bleibt schliesslich optional) + neue Karte "API-Football · Booster": Key-Status, letzter Abruf je Feed (Zeit UTC + Ergebnis/Notiz) und "Heutiger Verbrauch x/90 · y/8 · z/2" direkt aus den Budget-Gates (Cache- oder Prozess-Fallback). Warnungszeile, wenn der optionale Free-Key fehlt.
+- **Haertung:** Die Karte liest das Diagnostic-Dict defensiv (fehlende/veraltete Schluessel kippen die Admin-Seite nicht - abgesichert durch den bestehenden Test mit gemocktem Alt-Diag). get_sync_diagnostics liefert zusaetzlich "apifootball".
+- **Tests:** +3 in `tests/test_apifootball_admin_status.py` (Record-Roundtrip + Notiz-Kirzung, Erfolgs- und HTTP-401-Pfad werden protokolliert + Budget-Zaehler getrennt, Diagnostics/Seite mit und ohne Key). Suite **360/360**.
+
+
+## 2026-09-12 (6) - Versuche je Datenquelle im Admin-Dashboard (fd/OLB inklusiv)
+
+- **Anschluss an (5):** auf Nachfrage auch football-data.org und OpenLigaDB ins Protokoll - gemeinsamer Speicher `datasource_activity.py` (ein Setting-JSON; Eintraege football-data | openligadb | minute | goals | torjaeger), protokolliert NACH echt stattgefundenen HTTP-Versuchen (Erfolg wie Fehler, Grund als Notiz). Die API-Football-Recorder nutzen jetzt denselben Speicher (Wrapper bleibt API-kompatibel).
+- **Sync-Pfad:** `sync_results()` protokolliert den FD-Versuch und - falls der Fallback greift - den OLB-Versuch; die Aggregat-Zeile "Letzter Sync" bleibt unveraendert bestehen.
+- **Admin -> API Sync:** neue Tabelle "Versuche je Quelle" unter "Letzter Sync" (Zeit UTC + ✅/⚠️ + Fehlergrund; neutrale "noch nicht protokolliert"-Zustand, kein Alarm-Look). Diagnostics-Dict erhaelt `source_activity`;aeltere/gemockte Diags (ohne den Schluessel) rendern die Karte unveraendert - durch den bestehenden Alt-Diag-Test abgesichert.
+- **Tests:** +2 in `tests/test_apifootball_admin_status.py` (fd-Fehler + OLB-Fallback-Grund landen im Protokoll; Seite zeigt Fehlerzeile + neutrale Zeilen), Recorder-Tests auf gemeinsamen Speicher umgestellt. Suite **362/362**; Frische-Gate um `datasource_activity.py` ergaenzt, verify_04 gruen (04-Paket 58 Dateien).
+
+
+## 2026-09-12 (7) - Torjaeger-Endpoint korrigiert + echte Fehlergruende im Protokoll
+
+- **Anlass (Nutzer-Screenshots nach Deploy):** Admin-Karte zeigte "⚠️ Torjaeger-Liste · API-Meldung (Key/Limit pruefen)", waehrend das api-sports-Dashboard nur 1/100 Requests zeigt. Diagnose: generischer Platzhaltertext verbarg den echten Grund - und der Grund war ein Fehler auf UNSETER Seite: verwendet wurde /statistics/league/top_scorers, offiziell laut Doku ist **GET /players/topscorers?league=..&season=..** (12.09.2026 gegen die API-Football-Dokumentation verifiziert). Der Endpunkt liefert exakt dasselbe Response-Format (player + statistics[]), der Parser blieb unveraendert.
+- **Besser protokolliert:** neue Helper `af_errors_text()` verdichten das API-Fehlerfeld (dict/list) zu lesbarem Text; minute/goals/torjaeger schreiben jetzt den ECHTEN API-Grund ins Versuchsprotokoll statt "Key/Limit pruefen". Damit Erklaert der Screenshot-Fall sich selbst, waere er bereits geloggt gewesen.
+- **Selbstheilend:** nach einem FEHLgeschlagenen Torjaeger-Versuch erlaubt das Gate den naechsten schon nach 30 Minuten (Erfolg bleibt beim 6-h-Rhythmus) - binnen des Tagesbudgets (2). Ein kaputter Aufruf "bestraft" den Feed nicht mit einem halben Tag Pause.
+- **Tests:** URL-Assertionen auf den korrigierten Endpunkt gezogen; +1 Test (echter Fehlertext landet im Protokoll, Drossel direkt danach, Retry nach 40 min erlaubt, Erfolgspa drosselt weiter). Suite **363/363**.
+
+
+## 2026-09-12 (8) - Plan-Absagen von API-Football: Feed pausiert, Grund sichtbar
+
+- **Anlass (Nutzer-Log nach Deploy):** Die neue Versuchs-Tabelle lieferte den echten Grund fuer die leere Torjaeger-Liste: `Free plans do not have access to this season, try from 2022 to 2024` - API-Football schraenkt Statistik-/Saison-Endpunkte im Free-Plan auf vergangene Saisons (laufende 2026/27 gesperrt). Endpoint und Key waren also korrekt; es ist eine Plan-Grenze der API.
+- **Neu - Plan-Bremse:** erkennen alle drei API-Football-Feeds (minute/goals/torjaeger) an einem "plan"-Stichwort im Fehlerfeld und pausieren den betreffenden Feed bis zum Folgetag (Setting `apifootball_plan_block`, tageweise). Pro Tag bleibt 1 Probelauf - kein Budget-Verbrennen gegen eine klare Absage, automatische Wiederholung, falls der Plan sich aendert.
+- **Neu - Ehrlichkeit auf /torjaeger:** ohne Daten zeigt die Seite jetzt den letzten echten API-Grund inkl. Zeit des Versuches (aus dem Versuchsprotokoll), statt nur "noch keine Daten".
+- **Doku-Hinweis im Admin:** API-Football-Statustext erwaehnt die Saison-/Plan-Grenze und verweist auf Admin -> API Sync.
+- **Einordnung fuer die Sonderfrage "Torschuetzenkoenig":** aktuelle Torschuetzenlisten sind damit aus KEINER der zwei eingebundenen Gratis-Quellen befüllbar (fd: Scorer nur Paid; API-Football Free: letzte Saison gesperrt). Optional gegen laufende Kosten: API-Football Standard-Plan; bewusst NICHT eingebaut (Kosten-Regel des Projekts). Live-Minuten bleiben unberuehrt, solange /fixtures?live=all im Free-Plan zugelaesst bleibt (kein Saison-Parameter) - sollte auch das abgewiesen werden, greift dieselbe Plan-Bremse.
+- **Tests:** +2 (Plan-Absage pausiert Feed + Grund im Protokoll; Seite zeigt Grund + Selbstheilungs-Hinweis), Counter-Fix im Test. Suite **365/365**.
+
+
+## 2026-09-12 (9) - Sync-Diagnose für die Stadion-Info
+
+- **Anlass (Nutzer-Screenshot):** Migration `2026_09_12_001_match_venue` war um 11:03 gelaufen, aber auf der Match-Detailseite erschien keine 📍-Pille. Von aussen nicht unterscheidbar: liefert football-data im Free-Plan überhaupt `venue`-Werte (anonym ist der Zugriff 403), oder fehlt ein deploytes Datei-Update?
+- **Fix - Selbst-Diagnose:** `_process_football_data` zaehlt jetzt pro Sync-Lauf, wie viele Spiele der Feed MIT Stadionangabe geliefert hat, und haengt es an die Sync-Meldung an: "✅ football-data.org: 0 neu, 306 aktualisiert, 0 live · 📍 0 mit Stadionangabe". Damit entscheidet ein Blick auf Admin -> API Sync über die Ursache: Zahl >0 ohne Pillen = Template/Deploy-Lücke; Zahl 0 = die API liefert keine Stadien (dann bleibt die Pille hohl und der Ball bleibt bei football-data bzw. einem Spaeter-Upgrade).
+- **Kein Verhalten geaendert** - nur Messaging + Zaehler (`venues` im Ergebnis-Dict). Test erweitert (1 mit / 0 mit Stadionangabe über zwei Sync-Laeufe). Suite **365/365**.
+
+
+## 2026-09-12 (10) - Heimstadien als Festdaten (Pille fuellt sich trotz Free-Plan)
+
+- **Diagnose steht (Nutzer-Log):** "📍 0 mit Stadionangabe" - football-data liefert im genutzten Plan kein `venue`, OLB ebenso nicht (live geprueft). Die Sync-Pille blieb daher datenlos leer.
+- **Loesung - neues Modul `stadiums.py`:** kuratierte Heimstadium-Karte (Name -> Stadion) fuer die 18 Erstligisten 2025/26 (Wikipedia/stadion.de, 12.09.2026 gegengeprueft) plus stabile Zweitliga-/Absteiger-Namen (u.a. Holstein-Stadion, Vonovia Ruhrstadion, Fritz-Walter-Stadion). Normalisierung inkl. Umlautkonvertierung (Moenchengladbach/Duesseldorf/Nuernberg - erste Version hatte genau dort Luecken, im Test gefangen).
+- **Sync-Regel:** Feed-Wert hat IMMER Vorrang; die Karte fuellt ausschliesslich echte Luecken (neues Match ohne Feed-venue oder Bestand leer). Auswaertsteams werden nie belegt. Unbekannter Verein -> Feld bleibt leer (kein Schaetzen). Kein Ueberschreiben bei Folgesyncs (2. Lauf mit stiller API laesst "Speicher XI" stehen - getestet).
+- **Diagnose-Meldung nachgezogen:** "📍 Stadion: n aus Feed, m aus Festdaten" - damit bleibt unterscheidbar, woher Werte kommen; `venues`/`venues_map` im Sync-Ergebnis.
+- **Import-Absicherung:** `sync_football_data` importiert die Karte with try/except ImportError - wer beim FTP nur das alte Sync-File erwischt, laeuft ohne Stadion-Fallback weiter (kein Crash).
+- **Tests:** +3 (`tests/test_stadiums_map.py`: Lookups inkl. Umlaut-Faelle, Sync-Backfill/Feed-Vorrang/Zweitlauf-Heiligung, Stille bei Unbekanntem). Suite **368/368**.
+
+
+## 2026-09-12 (11) - Stadion-Pille mit Google-Maps-Link
+
+- **Nutzerwuenschen:** "Kann man beim Stadion ein Google Maps Link hinterlegen?" - Ja, ganz ohne API-Key/Sprechpartner-Komplikation: Der offizielle Maps-Suchlink (https://www.google.com/maps/search/?api=1&query=..) funktioniert schluessellos, Desktop wie Mobil (Mobilapp-Sprung inklusive).
+- **Umsetzung:** `stadiums.maps_url(venue, club)` haengt den Vereinsnamen als Kontext an die Arena-Suche an (Sponsortitel wie "MEWA Arena" treffen so eindeutig) und escaped den Query-String korrekt. Match-Detail rendert die Pille als <a target=_blank rel=noopener noreferrer> mit kleinem ↗ und Hover-Framework; ohne Link (kein Stadion hinterlegt) bleibt alles wie bisher reiner Text. Fehler im URL-Bau faehrt die Pille harmlos auf Text zurueck.
+- **Tests:** +1 (maps_url-Format inkl. Escape-Faellen), Rendering-Test um Link-Nachweis erweitert (Jinja escaped & -> &amp;, Test kennt jetzt die HTML-Schreibweise). Suite **369/369**. Nebenbefund: sed-Ersatz mit & im Suchmuster hatte die Testdatei beschadigt - ueber Python sauber repariert, alle Tests erneut gruen.

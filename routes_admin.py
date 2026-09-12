@@ -638,6 +638,11 @@ def settings():
         form.telegram_bot_username.data = get_setting("telegram_bot_username", "")
         form.telegram_webhook_secret.data = ""
         form.reminders_enabled.data = get_setting("reminders_enabled", True)
+        form.reminders_lead_hours.data = get_setting("reminders_lead_hours", 1)
+        form.reminders_force_lead_hours.data = bool(get_setting("reminders_force_lead_hours", False))
+        from notification_center import _truthy as _t
+        form.reminders_second_wave_enabled.data = _t(get_setting("reminders_second_wave_enabled", True), True)
+        form.reminders_second_lead_hours.data = get_setting("reminders_second_lead_hours", 24)
         form.registration_mode.data = get_setting("registration_mode", "invite")
 
     if form.validate_on_submit():
@@ -690,6 +695,16 @@ def settings():
         if tg_webhook_secret:
             set_setting("telegram_webhook_secret", tg_webhook_secret)
         set_setting("reminders_enabled", bool(form.reminders_enabled.data))
+        try:
+            set_setting("reminders_lead_hours", max(0, min(24, int(form.reminders_lead_hours.data))))
+        except (TypeError, ValueError):
+            set_setting("reminders_lead_hours", 1)
+        set_setting("reminders_force_lead_hours", bool(form.reminders_force_lead_hours.data))
+        set_setting("reminders_second_wave_enabled", bool(form.reminders_second_wave_enabled.data))
+        try:
+            set_setting("reminders_second_lead_hours", max(1, min(168, int(form.reminders_second_lead_hours.data))))
+        except (TypeError, ValueError):
+            set_setting("reminders_second_lead_hours", 24)
         set_setting("registration_mode", form.registration_mode.data or "invite")
 
         apply_mail_settings()

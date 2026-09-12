@@ -244,6 +244,15 @@ def create_app(config_object=Config):
     # ── Bootstrap DB + Demo ──
     with app.app_context():
         db.create_all()
+        # create_all ergaenzt bei bestehenden Tabellen KEINE neuen Spalten -
+        # ausstehende Migrationen (z. B. matches.venue, 12.09.2026) direkt
+        # nachziehen, sonst crasht der Start mit "no such column".
+        try:
+            from schema_migrations import run_pending_migrations
+            for msg in run_pending_migrations() or []:
+                app.logger.info(f"Auto-Migration: {msg}")
+        except Exception as e:
+            app.logger.warning(f"Auto-Migration beim Start fehlgeschlagen: {e}")
 
         # SQLite WAL-Modus
         try:

@@ -153,6 +153,13 @@ def get_sync_diagnostics():
         "teams_seeded": teams_total >= 18,
         "has_matches": matches_total > 0,
     }
+    # API-Football (optionale Free-Booster): Key-Status + Aktivitaetsprotokoll
+    try:
+        from minute_boost import apifootball_activity_summary
+        apifootball = apifootball_activity_summary()
+    except Exception:
+        apifootball = {"token": False, "entries": {}, "calls": {}, "caps": {}}
+    checks["apifootball_token"] = bool(apifootball.get("token"))
     # OpenLigaDB Ping leichtgewichtig
     try:
         r = requests.get(f"{current_app.config['OPENLIGADB_BASE']}/getavailableleagues", timeout=5)
@@ -170,6 +177,8 @@ def get_sync_diagnostics():
         warnings.append(f"Aktiver Wettbewerb hat {teams_total} Teams. Alte Matches/Teams prüfen und ggf. Spielplan bereinigen.")
     if remote_logos:
         warnings.append(f"{remote_logos} Teamlogos sind noch extern verlinkt.")
+    if not apifootball.get("token"):
+        warnings.append("API-Football-Key fehlt (optional): echte Live-Minute, Torschützen im Spielbericht und Torjäger-Liste bleiben inaktiv.")
     last_sync = get_setting("last_sync_result", None)
     return {
         "competition": comp_obj,
@@ -182,7 +191,23 @@ def get_sync_diagnostics():
         "checks": checks,
         "warnings": warnings,
         "last_sync": last_sync,
+        "apifootball": apifootball,
+        "source_activity": _source_activity(),
     }
+
+
+def _source_activity():
+    """Letzter echter Abrufversuch je Datenquelle (Admin-Dashboard)."""
+    try:
+        from datasource_activity import SOURCES, entries
+        raw = entries()
+        return [
+            {"key": key, "label": label,
+             "entry": raw.get(key)}
+            for key, label in SOURCES
+        ]
+    except Exception:
+        return []
 
 
 # ============================================================ Schema-Migration -

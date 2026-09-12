@@ -431,8 +431,22 @@ def sync_results():
     aufgerufen. Andernfalls (kein Token, Rate-Limit, Netzwerkfehler …)
     übernimmt OLB.
     """
+    # Automatische Torjaeger-Aktualisierung (eigener Budgetwaechter, max.
+    # 2 Calls/Tag; ohne API-Football-Key kompletter No-Op). Bewusst VOR den
+    # Netzwerkaufrufen, damit sie auch bei FD-/OLB-Stoerungen laeuft.
+    try:
+        from top_scorers import refresh_top_scorers
+        refresh_top_scorers()
+    except Exception as e:
+        current_app.logger.debug(f"top-scorers Hook uebersprungen: {e}")
+
     # --- 1. football-data.org versuchen ---
     res_fd = sync_with_football_data()
+    try:
+        from datasource_activity import record as _rec
+        _rec("football-data", bool(res_fd.get("ok")), res_fd.get("msg", ""))
+    except Exception:
+        pass
     if res_fd.get("ok"):
         # Sicherheitsnetz: faellige Spiele ohne Ergebnis aus OpenLigaDB nachziehen,
         # damit sie nicht dauerhaft auf "scheduled" stehen bleiben.
@@ -454,6 +468,11 @@ def sync_results():
 
     # --- 2. OpenLigaDB als Fallback ---
     res_olb = sync_with_openligadb()
+    try:
+        from datasource_activity import record as _rec
+        _rec("openligadb", bool(res_olb.get("ok")), res_olb.get("msg", ""))
+    except Exception:
+        pass
     if res_olb.get("ok"):
         current_app.logger.info(f"✅ Sync via OpenLigaDB (Fallback): {res_olb.get('msg')}")
         # Hinweis im UI, falls FD nicht konfiguriert ist

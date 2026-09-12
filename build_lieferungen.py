@@ -89,6 +89,27 @@ GITHUB_UPLOAD_FILES = [
     "config.py",
     "templates/admin/settings.html",
     "docs/reparatur_tippverlust_st1.sql",
+    # 12.09.2026: Reminder-Wellen
+    "notification_center.py",
+    "tests/test_reminder_waves.py",
+    "tests/test_notification_bulk.py",
+    # 12.09.2026 (2): Stadion + Torschuetzen
+    "app.py",
+    "schema_migrations.py",
+    "templates/match_detail.html",
+    "tests/test_match_info_venue_goals.py",
+    # 12.09.2026 (3): Torjaeger-Rangliste
+    "top_scorers.py",
+    "templates/torjaeger.html",
+    "tests/test_top_scorers.py",
+    # 12.09.2026 (5): API-Football im Admin-Dashboard
+    "templates/admin/sync.html",
+    "datasource_activity.py",
+    "tests/test_apifootball_admin_status.py",
+    # 12.09.2026 (10): Heimstadien als Festdaten
+    "stadiums.py",
+    "main_tips_routes.py",
+    "tests/test_stadiums_map.py",
     # 06.09.2026: Rangliste Mobile - Namensblock mit eigener Zeile
     "templates/leaderboard.html",
     "CHANGELOG.md",
@@ -289,6 +310,18 @@ def github_freshness_gate(runtime_paths, github_paths):
     fetch = subprocess.run(["git", "fetch", "--quiet", "origin", "main"],
                            capture_output=True, text=True)
     if fetch.returncode != 0:
+        # Sandbox-Restores verlieren schonmal das origin-Remote (Fall 12.09.):
+        # einmal selbst nachziehen und erneut versuchen, statt still zu ueberspringen.
+        remotes = subprocess.run(["git", "remote"], capture_output=True, text=True).stdout.split()
+        if "origin" not in remotes:
+            add = subprocess.run(["git", "remote", "add", "origin",
+                                  "https://github.com/meyomey/Bundesliga-Tippspiel2.git"],
+                                 capture_output=True, text=True)
+            if add.returncode == 0:
+                print("\u2139\ufe0f  GitHub-Frische-Gate: origin-Remote ergaenzt, erneut im Netz.")
+                fetch = subprocess.run(["git", "fetch", "--quiet", "origin", "main"],
+                                       capture_output=True, text=True)
+    if fetch.returncode != 0:
         print("\u2139\ufe0f  GitHub-Frische-Gate: 'git fetch origin main' nicht moeglich "
               f"({(fetch.stderr or '').strip()[:80]}) - uebersprungen.")
         return []
@@ -347,7 +380,12 @@ def main():
          or p in DEV_PY or p in ("build_lieferungen.py", "verify_04.py")],
     )
 
-    gate_issues = github_freshness_gate(runtime, set(GITHUB_UPLOAD_FILES))
+    # Gate prueft Code UND Tests: geaenderte Testdateien muessen mit ins
+    # GitHub-Paket, sonst laeuft die CI gegen veraltete Assertions (12.09.2026).
+    gate_issues = github_freshness_gate(
+        runtime + [p2 for p2 in docs_tests if p2.startswith("tests/")],
+        set(GITHUB_UPLOAD_FILES),
+    )
 
     z1 = make_zip(f"01_Runtime_{TODAY}.zip", runtime, manifest_01(commit, commit_date))
     z2 = make_zip(f"02_Doku_Tests_{TODAY}.zip", docs_tests, manifest_02(commit, commit_date))

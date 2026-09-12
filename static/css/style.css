@@ -7229,3 +7229,42 @@ ul.audit-diff-list {
 ul.audit-diff-list li { margin-bottom: 2px; word-break: break-word; }
 .diff-old { color: #f87171; text-decoration: line-through; opacity: .85; }
 .diff-new { color: #34d399; }
+
+/* ── Match-Infos: Stadion + Torschuetzen (12.09.2026) ── */
+a.tu-venue-pill { text-decoration: none; cursor: pointer; transition: border-color .15s ease, background .15s ease; }
+a.tu-venue-pill:hover, a.tu-venue-pill:focus-visible { border-color: rgba(56,189,248,.55); background: rgba(56,189,248,.14); }
+a.tu-venue-pill .tvp-ext { font-size: 11px; opacity: .75; }
+.tu-venue-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 10px; border-radius: 999px;
+  background: rgba(148,163,184,.12); border: 1px solid rgba(148,163,184,.25);
+  font-size: 12px; font-weight: 600; color: var(--text-soft, #cbd5e1);
+  white-space: nowrap;
+}
+.tu-goals-card { margin-top: 14px; }
+.tu-goals { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.tu-goals li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; font-size: 13.5px; padding: 6px 10px; border-radius: 10px; background: rgba(148,163,184,.06); }
+.tg-time { font-weight: 800; color: var(--accent, #38bdf8); min-width: 44px; }
+.tg-side { font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 999px; }
+.tg-home { background: rgba(59,130,246,.16); }
+.tg-away { background: rgba(244,114,182,.14); }
+.tg-player { font-weight: 600; }
+.tg-assist { color: var(--muted, #94a3b8); font-size: 11.5px; }
+
+/* ── Torjaeger-Rangliste (12.09.2026) ── */
+.ts-card { padding: 6px 0 10px; }
+.ts-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.ts-table th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted, #94a3b8); padding: 8px 10px 6px; border-bottom: 1px solid rgba(148,163,184,.18); }
+.ts-table th.right, .ts-table td.right { text-align: right; }
+.ts-table td { padding: 7px 10px; border-bottom: 1px solid rgba(148,163,184,.08); vertical-align: middle; }
+.ts-table tr:last-child td { border-bottom: none; }
+.ts-rank { width: 26px; color: var(--muted, #94a3b8); font-weight: 700; }
+.ts-leader td { background: linear-gradient(90deg, rgba(250,204,21,.09), transparent 60%); }
+.ts-player { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.ts-names { display: flex; flex-direction: column; min-width: 0; }
+.ts-names small { color: var(--muted, #94a3b8); font-size: 11px; }
+.ts-photo { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex: 0 0 auto; background: rgba(148,163,184,.14); }
+.ts-photo-fallback { display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; color: var(--text-soft, #cbd5e1); }
+.ts-goals strong { font-size: 16px; }
+.ts-goals small { display: block; font-size: 10.5px; white-space: nowrap; }
+.ts-foot { margin: 10px 12px 0; }

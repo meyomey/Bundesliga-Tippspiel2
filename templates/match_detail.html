@@ -104,6 +104,13 @@
       {% else %}
         <span class="status status-scheduled">geplant</span>
       {% endif %}
+      {% if match.venue %}
+        {% if venue_maps_url %}
+          <a class="tu-venue-pill" href="{{ venue_maps_url }}" target="_blank" rel="noopener noreferrer" title="Stadion in Google Maps öffnen">📍 {{ match.venue }} <span class="tvp-ext">↗</span></a>
+        {% else %}
+          <span class="tu-venue-pill" title="Stadion">📍 {{ match.venue }}</span>
+        {% endif %}
+      {% endif %}
       {% if weather %}
         <span class="tu-weather-pill" title="{{ weather.label }} · Wind {{ weather.wind }} km/h">
           <span>{{ weather.label[:1] }}</span>
@@ -231,6 +238,27 @@
     {% endif %}
   </div>
 </section>
+
+<!-- ============ TORSCHUETZEN (Goal-Boost, falls Daten vorhanden) ============ -->
+{% set goal_rows = [] %}
+{% for row in (match.events | fromjson) %}
+  {% if row.kind == 'gf' %}{% set _ = goal_rows.append(row) %}{% endif %}
+{% endfor %}
+{% if goal_rows %}
+<section class="card tu-goals-card">
+  <h2>⚽ Torschützen</h2>
+  <ul class="tu-goals">
+    {% for g in goal_rows %}
+    <li>
+      <span class="tg-time">{{ g.min }}'{% if g.extra %}+{{ g.extra }}{% endif %}</span>
+      <span class="tg-side {{ 'tg-home' if g.team == 'home' else 'tg-away' }}">{{ match.home_team.short_name if g.team == 'home' else match.away_team.short_name }}</span>
+      <span class="tg-player">{{ g.player or 'unbekannt' }}{% if g.penalty %} <small>(Elfmeter)</small>{% endif %}{% if g.own_goal %} <small>(Eigentor)</small>{% endif %}</span>
+      {% if g.assist %}<span class="tg-assist">Vorlage: {{ g.assist }}</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
 
 <!-- ============ TIPP-VERTEILUNG (Vergleich zu anderen Mitspielern) ============ -->
 {% if tip_dist and tip_dist.total > 1 %}

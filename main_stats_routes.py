@@ -493,6 +493,25 @@ def _bl_standings():
         error_msg=error_msg,
     )
 
+@main_bp.route("/torjaeger", endpoint="top_scorers")
+@login_required
+def _top_scorers():
+    """Torjaeger-Rangliste (Torschuetzenliste) aus dem API-Football-Free-Key.
+
+    Datenquellen-Ehrlichkeit: nur echte Feed-Daten; ohne Key zeigt die Seite
+    einen Hinweistext statt leerer Tabellen.
+    """
+    from datetime import datetime as _dt
+    from top_scorers import top_scorers_listing
+    entries, meta = top_scorers_listing()
+    fetched_dt = None
+    try:
+        fetched_dt = _dt.fromisoformat(str(meta.get("fetched_at"))) if meta.get("fetched_at") else None
+    except (TypeError, ValueError):
+        fetched_dt = None
+    return render_template("torjaeger.html", entries=entries, meta=meta, fetched_dt=fetched_dt)
+
+
 @main_bp.route("/tabelle", endpoint="leaderboard")
 @main_bp.route("/tabelle/<int:matchday>", endpoint="leaderboard")
 @login_required

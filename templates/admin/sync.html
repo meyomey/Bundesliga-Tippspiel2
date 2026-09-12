@@ -26,16 +26,40 @@
     {% for key, label in [
       ('football_data_token','football-data Token'),
       ('openligadb_available','OpenLigaDB erreichbar'),
+      ('apifootball_token','API-Football Token (optional)'),
       ('active_competition','Aktive Competition'),
       ('teams_seeded','Teams vorhanden'),
       ('has_matches','Spiele vorhanden')
     ] %}
-      <div class="count-tile"><strong>{{ '✅' if diag.checks.get(key) else '⚠️' }}</strong><small>{{ label }}</small></div>
+      <div class="count-tile"><strong>{{ '✅' if diag.checks.get(key) else ('ℹ️' if key == 'apifootball_token' else '⚠️') }}</strong><small>{{ label }}</small></div>
     {% endfor %}
   </div>
   {% if diag.warnings %}
     <div class="flash flash-warning" style="margin-top:12px"><ul style="margin-left:18px">{% for w in diag.warnings %}<li>{{ w }}</li>{% endfor %}</ul></div>
   {% endif %}
+</div>
+
+<div class="card">
+  <h2>API-Football · Booster</h2>
+  {% set af = (diag.get('apifootball') or {}) if diag.get is defined else (diag.apifootball or {}) %}
+  {% set af_entries = af.get('entries') or {} %}
+  {% set af_calls = af.get('calls') or {} %}
+  {% set af_caps = af.get('caps') or {} %}
+  {% if af.get('token') %}
+    <p class="muted" style="margin-top:0">✅ Key hinterlegt – echte Live-Minute, Torschützen im Spielbericht und Torjäger-Liste sind scharf. Die Abrufe laufen bedarfsorientiert (Live-Center, nach Abpfiff, Sync-Cron) – nie über das Free-Budget hinaus.</p>
+  {% else %}
+    <p class="muted" style="margin-top:0">ℹ️ Kein Key – kostenlos holen unter <a href="https://www.api-football.com/" target="_blank" rel="noopener">api-football.com</a> und unter Einstellungen → APIs eintragen. Danach aktivieren sich die drei Feeds von selbst (kein Neustart).</p>
+  {% endif %}
+  <table class="mini-table">
+    {% for fkey, flabel in [('minute','Live-Minute (bei Live-Center-Besuchen)'), ('goals','Torschützen (nach Abpfiff)'), ('torjaeger','Torjäger-Liste (mit jedem Sync)')] %}
+      {% set e = af_entries.get(fkey) %}
+      <tr>
+        <td>{{ flabel }}</td>
+        <td>{% if e %}{{ '✅' if e.ok else '⚠️' }} {{ e.at[:16].replace('T', ' ') }} Uhr UTC{% if e.note %} · {{ e.note }}{% endif %}{% else %}<span class="muted">noch kein Abruf</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+  </table>
+  <p class="muted" style="margin-bottom:0">Heutiger Verbrauch: Live-Minute {{ af_calls.get('minute', 0) or 0 }}/{{ af_caps.get('minute', 90) }} · Torschützen {{ af_calls.get('goals', 0) or 0 }}/{{ af_caps.get('goals', 8) }} · Torjäger {{ af_calls.get('torjaeger', 0) or 0 }}/{{ af_caps.get('torjaeger', 2) }} — Freigrenze 100 Abrufe/Tag gesamt.</p>
 </div>
 
 <div class="card">
@@ -50,6 +74,19 @@
     </table>
   {% else %}
     <p class="muted">Noch kein Sync-Ergebnis gespeichert.</p>
+  {% endif %}
+  {% set srcs = diag.get('source_activity') or [] %}
+  {% if srcs %}
+  <h3 style="margin:14px 0 4px">Versuche je Quelle</h3>
+  <p class="muted" style="margin:0 0 6px">Letzter echter Abruf – auch fehlgeschlagene (mit Grund). Zeigt, ob ein Feed still mitläuft oder stumm ausfällt.</p>
+  <table class="mini-table">
+    {% for row in srcs %}
+    <tr>
+      <td>{{ row.label }}</td>
+      <td>{% if row.entry %}{{ '✅' if row.entry.ok else '⚠️' }} {{ row.entry.at[:16].replace('T', ' ') }} Uhr UTC{% if row.entry.note %} · {{ row.entry.note }}{% endif %}{% else %}<span class="muted">noch nicht protokolliert</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
   {% endif %}
 </div>
 {% endblock %}

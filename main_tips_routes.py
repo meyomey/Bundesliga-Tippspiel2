@@ -255,8 +255,19 @@ def _match_detail(match_id):
         except Exception as e:
             current_app.logger.warning(f"Wetter-API Fehler: {e}")
 
+    # Stadion-Link (Google Maps, schluessellos): nur wenn eine Stadioninfo
+    # hinterlegt ist; Fehlerfall laesst die Pille als reinen Text weiterlaufen.
+    venue_maps_url = None
+    if match.venue:
+        try:
+            from stadiums import maps_url
+            venue_maps_url = maps_url(match.venue, match.home_team.name)
+        except Exception:
+            venue_maps_url = None
+
     return render_template(
         "match_detail.html",
+        venue_maps_url=venue_maps_url,
         match=match, pred=pred,
         tip_form=tip_form, comment_form=comment_form,
         comments=comments, comments_pagination=comments_pagination, all_preds=all_preds,

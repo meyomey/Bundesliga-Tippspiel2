@@ -240,7 +240,8 @@ class SettingsForm(FlaskForm):
                                 validators=[Optional(), Length(0, 1000)])
     football_data_token = PasswordField("football-data.org Token", validators=[Optional()])
     apifootball_token = PasswordField(
-        "API-Football Token (optional, echte Live-Minute)", validators=[Optional()])
+        "API-Football Token (optional: Live-Minute, Torschützen, Torjäger)",
+        validators=[Optional()])
     public_base_url = StringField(
         "Öffentliche Basis-URL",
         validators=[Optional(), Length(0, 200)],
@@ -278,6 +279,27 @@ class SettingsForm(FlaskForm):
         "Automatische Erinnerungen bei fehlenden Tipps aktivieren",
         default=True,
         description="Erinnert Spieler vor Anpfiff ueber ihre aktivierten Kanaele: E-Mail, Push, Telegram oder WhatsApp.",
+    )
+    reminders_lead_hours = IntegerField(
+        "Welle 1 - Vorlauf in Stunden vor Anpfiff",
+        default=1,
+        validators=[Optional(), NumberRange(0, 24)],
+        description="Standard fuer Spieler ohne eigene Profil-Einstellung (0-24).",
+    )
+    reminders_force_lead_hours = BooleanField(
+        "Vorlauf fuer alle erzwingen",
+        description="Ignoriert die persönliche Vorlauf-Einstellung der Profile und nutzt überall den Welle-1-Standard.",
+    )
+    reminders_second_wave_enabled = BooleanField(
+        "Welle 2 - frühe Vorwarnung aktivieren",
+        default=True,
+        description="Zweiter, separater Hinweis einige Stunden fruher (eigenes Versand-Log, blockiert Welle 1 nicht).",
+    )
+    reminders_second_lead_hours = IntegerField(
+        "Welle 2 - Vorlauf in Stunden vor Anpfiff",
+        default=24,
+        validators=[Optional(), NumberRange(1, 168)],
+        description="z. B. 24 = Erinnerung am Vortag (1-168). Gilt fuer alle Spieler.",
     )
 
     registration_mode = SelectField(
