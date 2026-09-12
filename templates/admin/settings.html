@@ -157,6 +157,9 @@ Verwendungszweck: Tippspiel + Spielername') }}
       <label>{{ form.football_data_token.label }} {{ form.football_data_token(class_='input', placeholder='Leer lassen = bestehenden Token behalten') }}
         <small class="muted">Status: {% if api_configured %}✅ Token gespeichert{% else %}⚠ Kein Token gespeichert{% endif %}</small>
       </label>
+      <label>{{ form.apifootball_token.label }} {{ form.apifootball_token(class_='input', placeholder='Leer lassen = bestehenden Token behalten') }}
+        <small class="muted">Status: {% if apifootball_configured %}✅ Token gespeichert – Live-Minute wird allgaetlich gebohst (Budget: max. 90 Calls/Tag){% else %}ℹ️ Kein Token – Spielminute nutzt die „≈"-Struktur-uhr. Optionaler Free-Key von api-sports.io erhoeht die Genauigkeit (echte Minute).{% endif %}</small>
+      </label>
       <label>{{ form.public_base_url.label }} {{ form.public_base_url(class_='input', placeholder='https://deine-domain.de') }}
         <small class="muted">{{ form.public_base_url.description }}</small>
       </label>

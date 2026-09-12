@@ -239,6 +239,8 @@ class SettingsForm(FlaskForm):
     prize_notes = TextAreaField("Hinweis zu Gewinnen / Preisgeldern",
                                 validators=[Optional(), Length(0, 1000)])
     football_data_token = PasswordField("football-data.org Token", validators=[Optional()])
+    apifootball_token = PasswordField(
+        "API-Football Token (optional, echte Live-Minute)", validators=[Optional()])
     public_base_url = StringField(
         "Öffentliche Basis-URL",
         validators=[Optional(), Length(0, 200)],

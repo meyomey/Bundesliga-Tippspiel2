@@ -24,7 +24,7 @@ TODAY = date.today().isoformat()
 # ---------------------------------------------------------------- Auswahl --
 DEV_PY = {"generate_pwa_icons.py", "scheduler.py"}          # Dev-/Standalone-Skripte
 BROKEN_AVATARS = set()  # veraltet: kaputte Avatar-Stubs wurden aus dem Repo entfernt
-NOT_RUNTIME = DEV_PY | {"build_lieferungen.py"}              # nur in 02, nicht auf den Server
+NOT_RUNTIME = DEV_PY | {"build_lieferungen.py", "verify_04.py"}              # nur in 02, nicht auf den Server
 
 # Dateien, die auf GitHub fehlen bzw. seit dem letzten Stand geaendert sind
 # (fuer 04_GitHub_Upload). Nach jedem Push wieder leeren - 04 entfaellt dann
@@ -84,6 +84,11 @@ GITHUB_UPLOAD_FILES = [
     "tests/test_olb_live_boost.py",
     "minute_boost.py",
     "tests/test_minute_boost.py",
+    # 12.09.2026: CI-Run #81 rot - Formular-/Config-Ergaenzungen nachreichen
+    "forms.py",
+    "config.py",
+    "templates/admin/settings.html",
+    "docs/reparatur_tippverlust_st1.sql",
     # 06.09.2026: Rangliste Mobile - Namensblock mit eigener Zeile
     "templates/leaderboard.html",
     "CHANGELOG.md",
@@ -262,6 +267,67 @@ Teststand: 281/281 Tests gruen, Coverage 79 %
 """
 
 
+def _git_blob_sha(path_bytes: bytes) -> str:
+    """Git-Blob-Hash (sha1 over 'blob <len>\\0...') - fuer den Vergleich ohne Subprozess."""
+    import hashlib
+    h = hashlib.sha1()
+    h.update(b"blob %d\0" % len(path_bytes))
+    h.update(path_bytes)
+    return h.hexdigest()
+
+
+def github_freshness_gate(runtime_paths, github_paths):
+    """Gate gegen Paket-Luecken beim GitHub-Upload (CI-Run #81, 11.09.2026).
+
+    Vergleicht jede code-relevante Runtime-Datei mit dem AKTUELLEN GitHub-main
+    (git fetch + ls-tree). Was dort fehlt oder aelter ist, MUSS in
+    GITHUB_UPLOAD_FILES stehen - sonst bleibt die Repo-Kopie unfertig und die
+    Actions-CI laeuft rot (Beispiel #81: routes_admin.py mit neuem
+    Formularfeld gepusht, forms.py ohne Feld zurueckgelassen ->
+    AttributeError in allen Python-Jobs).
+    """
+    fetch = subprocess.run(["git", "fetch", "--quiet", "origin", "main"],
+                           capture_output=True, text=True)
+    if fetch.returncode != 0:
+        print("\u2139\ufe0f  GitHub-Frische-Gate: 'git fetch origin main' nicht moeglich "
+              f"({(fetch.stderr or '').strip()[:80]}) - uebersprungen.")
+        return []
+    ls = subprocess.run(["git", "ls-tree", "-r", "FETCH_HEAD"],
+                        capture_output=True, text=True)
+    if ls.returncode != 0:
+        print("\u2139\ufe0f  GitHub-Frische-Gate: ls-tree fehlgeschlagen - uebersprungen.")
+        return []
+    remote = {}
+    for line in ls.stdout.splitlines():
+        meta, _, rel = line.partition("\t")
+        parts = meta.split()
+        if len(parts) >= 3:
+            remote[rel] = parts[2]
+    stale = []
+    for rel in runtime_paths:
+        if rel in github_paths:
+            continue
+        if not (rel.endswith(".py") or rel.startswith(("templates/", "static/css", "static/js"))):
+            continue  # Assets/DBs/Doku koennen alt bleiben, Code nicht
+        src = ROOT / rel
+        if not src.exists():
+            continue
+        blob = remote.get(rel)
+        if blob is None:
+            stale.append((rel, "NEU - fehlt komplett in GitHub main"))
+        elif blob != _git_blob_sha(src.read_bytes()):
+            stale.append((rel, "GEAENDERT - aelter in GitHub main"))
+    if stale:
+        print("\n\u26a0\ufe0f  GitHub-Frische-Gate: Code-Dateien weichen von GitHub main ab,")
+        print("    sind aber NICHT im 04-Paket (CI-Rot-Gefahr!):")
+        for rel, why in sorted(stale):
+            print(f"   {rel:44s} {why}")
+        print("   -> In GITHUB_UPLOAD_FILES aufnehmen, neu bauen, erneut hochladen lassen.")
+    else:
+        print("\u2705 GitHub-Frische-Gate: 04-Paket deckt alle Code-Diffs zu GitHub main ab")
+    return stale
+
+
 def main():
     tracked = tracked_files()
     commit, commit_date = commit_info()
@@ -278,8 +344,10 @@ def main():
         [p for p in tracked
          if p.endswith((".md", ".bat")) or p.startswith(("tests/", "docs/", ".github/"))
          or p in ("pytest.ini", "Dockerfile", "docker-compose.yml", ".gitignore")
-         or p in DEV_PY or p == "build_lieferungen.py"],
+         or p in DEV_PY or p in ("build_lieferungen.py", "verify_04.py")],
     )
+
+    gate_issues = github_freshness_gate(runtime, set(GITHUB_UPLOAD_FILES))
 
     z1 = make_zip(f"01_Runtime_{TODAY}.zip", runtime, manifest_01(commit, commit_date))
     z2 = make_zip(f"02_Doku_Tests_{TODAY}.zip", docs_tests, manifest_02(commit, commit_date))

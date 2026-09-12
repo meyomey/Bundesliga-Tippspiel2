@@ -20,6 +20,7 @@ class Config:
 
     # Redis Cache (optional)
     REDIS_URL = os.environ.get("REDIS_URL")  # z.B. "redis://localhost:6379/0"
+    APIFOOTBALL_TOKEN = os.environ.get("APIFOOTBALL_TOKEN", "")
 
     # Sessions
     PERMANENT_SESSION_LIFETIME = timedelta(days=30)
