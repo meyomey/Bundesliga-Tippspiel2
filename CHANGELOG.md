@@ -1534,8 +1534,46 @@ faker==28.4.1
 - **Tests:** Sync-Seite erweitert (Fehlliste, msg-Suffix, Persistenz, Selbstheilung) + neue `tests/test_stadium_gap_watch.py` (3: Zeile sichtbar, nach Pflege weg, kaputter Wert lautlos). Suite **378/378**. Nebenbefund: .venv-Restore war diesmal nur ein Rumpf (pip-Grund, requirements-Zeilen mit CR) - mit /tmp-Datei und tr -d \r sauber neu gebaut.
 
 
-## 2026-09-12 (15) - Combo-Pille: Stadion-Suche + 🧭-Routing in einer Zeile
+## 2026-09-13 (15) - Combo-Pille: Stadion-Suche + 🧭-Routing in einer Zeile
 
 - **Nutzerfeedback:** "Mit der Routing Pille werden im Smartphone-Modus jetzt zwei Zeilen angezeigt. Das ist unschön." Ursache: Pille und Kompass waren zwei eigene Flex-Items im Badges-Container (`flex-wrap: wrap`) - bei schmalem Viewport brach der Kompass um.
 - **Loesung:** Beide Links stecken jetzt in EINER gemeinsamen Huelle `.tu-venue-combo` (Rahmen/Hintergrund nur noch aussen, innen duenne Trennlinie). Garantiet gegen Umbruch zusaetzlich: `white-space: nowrap` + `max-width: 100%`, und der Arena-Text laeuft bei Platznot mit Ellipse aus (`.tvp-text`, ↗-Pfeil via `flex:none` gesichert) - auf dem Smartphone also z.B. "📍 Stadion An der Alten Först…" statt zweiter Zeile; antippen bleibt beides getrennt (Text = Suche, Kompass = Direkt-Routing).
 - **Tests:** +1 Struktur-/CSS-Test (Combo genau einmal im Template; nowrap/overflow/Ellipse in der CSS). Rendering-Tests bleiben groen, da "📍 Allianz Arena" zusammenhaengig im Text-Span steht. Suite **379/379**.
+
+
+## 2026-09-13 (16) - Badges-Zeile endgueltig einzeilig (Combo + Wetter)
+
+- **Nachzieh-Feedback:** "Es sind immer noch zwei Zeilen zusammen mit dem Wetter" (Screenshot). Die Combo-Pille war intern einzeilig, aber Container `.tu-top-badges` durfte weiter umbrechen -> Wetter-Pill rutschte als zweites Flex-Item in Zeile 2.
+- **Fix (nur CSS, eine Datei):** `.tu-top-badges` auf `flex-wrap: nowrap` + `overflow:hidden`; Status-Badge und Wetter-Pille `flex:none` (nie schrumpfbar), Stadion-Combo `flex:0 1 auto; min-width:0` - uebrigem Platz fehlt, kuerzt ausschliesslich der Arena-Text zur Ellipse ("📍 Stadion An der Alten Först…"). Combo-los-Fallback (reine Text-Pille) analog schrumpfbar gemacht. Container wird ausschliesslich im Match-Detail genutzt, keine Nebeneffekte.
+- **Tests:** Combo-/Einzeiligkeits-Test erweitert (nowrap im Container, flex:none an Wetter+Status, Ellipse-Anker bleiben); Suite **379/379**. Nebenbefund: .venv-Rumpf erneut (bewusster guarded-Rebuild mit CR-Bereinigung) und ein vom eigenen Patch entfernter Test-Lookup (`at`) - ergaenzt, alles gruen.
+
+
+## 2026-09-13 (17) - Status wandert zur Anpfiff-Zeile: Badges gehoeren Stadion + Wetter
+
+- **Nutzerfeedback:** Nach dem Einzeilig-Fix war der Stadionname nur noch "Allia..." zu erahnen - Vorschlag "Passt das Geplant nicht besser neben Datum und Uhrzeit?" - ja, genau so.
+- **Umsetzung:** Status-Pill (geplant/LIVE/Endstand) sitzt jetzt IN der Anpfiff-Zeile (.tu-kickoff-row hinter "Uhr"); die Badges-Zeile enthaelt nur noch Stadion-Combo + Wetter und bekommt dafuer die volle Kartenbreite. Zusaetzlich: sind weder Stadion noch Wetter vorhanden, faellt die Badges-Zeile gleich ganz weg (kein Leerstreifen). CSS-Einzeilig-Regeln bleiben als Sicherheitsnetz (lange Namen wie "Stadion An der Alten Foersterei" koennen auf sehr kleinen Geraeten immer noch ellipseieren); die nun gegenstandslose Regel .tu-top-badges .status wurde entfernt.
+- **Tests:** +1 Strukturtest (Kickoff-Zeile vor Badges, Status nicht mehr darin, Badges nur bei Inhalt), Einzeilig-Test auf neue Lage gezogen. Rendering-/Live-Tests unveraendert groen (Markup nur verschoben). Suite **380/380**.
+
+
+## 2026-09-13 (18) - Admin-Sync-Seite aufgeraeumt: 2 Karten statt 3, keine Doppelmeldung
+
+- **Anlass (Nutzer-Screenshot):** "Kannst du hier aufräumen und besser strukturieren?" - die Seite zeigte dreimal dasselbe: Booster-Karte mit 3 API-Football-Zeilen, darunter die Versuche-Tabelle mit exakt denselben 3 Zeilen, dazu die Sync-Meldung identisch in "Letzter Sync" UND in der fuellenden Tabelle; ausserdem rohes ISO "2026-09-13T10:30:03.218724+00:00".
+- **Neue Struktur:** "Sync-Lauf" (Status + lokal lesbare Zeit + Zaehler + Stadion-Aufteilung + Fehlliste, alles aus den strukturierten res-Feldern - die rohe msg nur noch bei Fehlern) und "Datenquellen" (EINER Tabelle fuer alle fuenf Feeds mit Status/Zeit/Grund; Key-Zustand und Tagesverbrauch als Caption/Fußnote; football-data-Zeile zeigt ihre Sync-Meldung nicht erneut, wenn der Sync-Lauf-Karte sie schon zeigt - Feinfilter nur bei ok==True). Booster-Karte und Versuche-Tabelle entfallen als eigene Bloecke.
+- **Zeitformat:** neuer Helper `sync._fmt_utc()` (ISO -> '13.09.2026 10:30 Uhr UTC', kaputte Werte auf rohen Anfang zuruck) fuer last_sync und alle Activity-Eintraege (at_fmt).
+- **Nebenbefund:** Erster Splice-Versuch landete im falschen Endanker (index traf das Title-{% endblock %} in Zeile 2) und beschaeftigte das Template - sauber aus den bekannten Stuecken neu aufgebaut, danach grep-Kontrolle (1x content-Block, 3x h2). Tests an neue Begriffe gezogen statt stumm geloescht. Suite **380/380**.
+
+
+## 2026-09-13 (19) - Torjaeger-Liste keyfrei gemacht: Quelle gewechselt auf OpenLigaDB
+
+- **Anlass:** "Gibt es evtl. noch eine andere kostenlose Datenquelle fuer die Torjäger? Wenn nicht, kann Torjäger aus Mehr entfernt werden." Recherche: **OpenLigaDB `GET /getgoalgetters/{bl1|bl2}/{saison}`** liefert die aktuelle Torschuetzenliste (live verifiziert 13.09., Name+Tore) - die Alternative zum Remove. API-Football war weiterhin nur bis 2024 gut (Free-Plan), football-data Scorer = Bezahltier, TheSportsDB ohne Saison-Scorer-Aggregat.
+- **top_scorers.py komplett neu (Cache-Geruest bleibt):** einzige Quelle jetzt OLB, keyfrei; Parsing goalGetterName/goalCount (Tore desc, Gleichstand alphabetisch, Top 20, torlos raus); Takt 30 min statt 6 h (OLB hat kein Konto), Fehler-Retry nach 10 min; CACHE_VERSION 2 verwirft das alte API-Football-Schema; kein Plan-Gate, kein `apifootball_token`, keine Vorlagen-/Einsatz-Spalten mehr. Sync-Hook in sync_openligadb heisst jetzt `_refresh_top_scorers_hook()` (Testbarkeit, unveraendert lautlos).
+- **Nebeneffekte:** Torjaeger zaehlt nicht mehr zum API-Football-Budget (minute_boost summary + sync.html-Verbrauchszeile ohne Torjaeger-Segment; Aktivitaet laeuft weiter ueber den gemeinsamen Quellen-Speicher, Label "OpenLigaDB · Torjäger-Liste"), settings.html-Texte korrigiert (Key nur noch fuer Minute/Torschuetzen noetig), Seite ohne API-Football-Erwaehnung.
+- **Tests:** test_top_scorers.py neu geschrieben (7: Parsing/Sort, keyfrei, Takt+Fehler-Schnellretry, Cache-Ehrlichkeit bei 503, Seite mit/ohne Daten, Hook-Fehlerresilienz); af-Status-Tests auf goals-Planbremse + geteilten Speicher umgezogen. Ein Assertions-Wortkrieg entpuppte sich als eigener Tippfehler ("nächster" vs. Template "der nächste"). Suite **381/381** (7 Tests neu geschrieben, +1 Fehlerresilienz-Fall).
+
+
+## 2026-09-13 (20) - OLB-Spielereignisse als gratis Nachzueger (Tore & Karten)
+
+- **Anlass:** Nutzerfrage nach weiteren kostenlosen Quellen pro Spiel (Torschuetzen, Karten). Live-Pruefung: TheSportsDB Felder leer, ESPN von hier 403 (unverifizierbar/undokumentiert), football-data events = Paid, API-Football-History bleibt Free-Plan-blockt. Einzige saubere Gratis-Option: **OpenLigaDB matchEvents** im bereits genutzten getmatchdata-Payload (aktuell leer, 0 Ereignisse BL1 - live getestet); nimmt man, damit es automatisch greift.
+- **sync_openligadb.py:** `_olb_event_rows()` normalisiert Goal/OwnGoal/Yellow/YellowRed/Red (Elfer-Fehlschuetze und Wechsel bewusst draussen), numerische UND Text-Eventtypen; `_apply_olb_events()` mergt in das events-JSON beider OLB-Pfade (Vollsync + Nachzug): Goal-Boost-Zeilen haben bei Tor-Minute+Seite Vorrang (keine Duplikate), Fremdformate (live_scoring) bleiben unangetastet, laeuft nur bei finished, idempotent. Sync-Meldung ergaenzt "🥇 n Spiele mit neuen Ereignissen" nur wenn >0 (sonst lautlos), res["events"] Zaehler.
+- **Seite:** match_detail zeigt unter den Torschuetzen eine "🟨 Karten & Platzverweise"-Sektion (Gelb/Gelb-Rot/Rot mit Quelle-Hinweis); gf-Zeilen aus OLB laufen automatisch durch die bestehende Tore-Sektion.
+- **Tests:** +6 (`tests/test_olb_events.py`: Normalisierung/Filter, numerische Typen, Merge ohne Duplikate + Fremdformat-Schutz + Idempotenz, finished-Guard, Vollsync-Integration inkl. Meldungszaehler, Rendering beider Sektionen). Suite **388/388**.

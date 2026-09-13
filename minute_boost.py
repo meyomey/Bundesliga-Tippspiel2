@@ -375,20 +375,13 @@ def apifootball_activity_summary():
     try:
         import datasource_activity as _ds
         all_entries = _ds.entries()
-        data = {k: v for k, v in all_entries.items() if k in ("minute", "goals", "torjaeger")}
+        data = {k: v for k, v in all_entries.items() if k in ("minute", "goals")}
     except Exception:
         data = {}
     day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     calls = {"minute": _today_gate_count(_GATE_KEY, _STATE_FALLBACK, day),
-             "goals": _today_gate_count(_GOAL_GATE_KEY, _GOAL_STATE_FALLBACK, day),
-             "torjaeger": 0}
-    caps = {"minute": _DAILY_BUDGET, "goals": _GOAL_DAILY_BUDGET, "torjaeger": 2}
-    try:
-        import top_scorers as _ts
-        calls["torjaeger"] = _today_gate_count(_ts._GATE_KEY, _ts._STATE_FALLBACK, day)
-        caps["torjaeger"] = _ts._DAILY_BUDGET
-    except Exception:
-        pass
+             "goals": _today_gate_count(_GOAL_GATE_KEY, _GOAL_STATE_FALLBACK, day)}
+    caps = {"minute": _DAILY_BUDGET, "goals": _GOAL_DAILY_BUDGET}
     return {"token": bool(apifootball_token()), "entries": data,
             "calls": calls, "caps": caps}
 

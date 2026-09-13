@@ -94,16 +94,21 @@
   <div class="tu-topline">
     <div class="tu-kickoff">
       <span class="tu-kickoff-day">{{ match.kickoff|de_local('%A') }}</span>
-      <strong>{{ match.kickoff|de_local('%d.%m.%Y · %H:%M') }} Uhr</strong>
+      {# Status hierher gezogen (12.09., Nutzerwunsch): neben Datum/Zeit platzt
+         er nie - und die Badges-Zeile hoert nicht mehr auf "Allia..." weg. #}
+      <span class="tu-kickoff-row">
+        <strong>{{ match.kickoff|de_local('%d.%m.%Y · %H:%M') }} Uhr</strong>
+        {% if match.status == 'live' %}
+          <span class="status status-live"><span class="live-dot"></span> LIVE</span>
+        {% elif match.status == 'finished' %}
+          <span class="status status-finished">✓ Endstand</span>
+        {% else %}
+          <span class="status status-scheduled">geplant</span>
+        {% endif %}
+      </span>
     </div>
+    {% if match.venue or weather %}
     <div class="tu-top-badges">
-      {% if match.status == 'live' %}
-        <span class="status status-live"><span class="live-dot"></span> LIVE</span>
-      {% elif match.status == 'finished' %}
-        <span class="status status-finished">✓ Endstand</span>
-      {% else %}
-        <span class="status status-scheduled">geplant</span>
-      {% endif %}
       {% if match.venue %}
         {% if venue_maps_url %}
           {# Combo-Pille: Suche + Routing in EINER Zeile (schmale Screens
@@ -126,6 +131,7 @@
         </span>
       {% endif %}
     </div>
+    {% endif %}
   </div>
 
   {% if match.status != 'finished' %}
@@ -248,8 +254,10 @@
 
 <!-- ============ TORSCHUETZEN (Goal-Boost, falls Daten vorhanden) ============ -->
 {% set goal_rows = [] %}
+{% set card_rows = [] %}
 {% for row in (match.events | fromjson) %}
   {% if row.kind == 'gf' %}{% set _ = goal_rows.append(row) %}{% endif %}
+  {% if row.type == 'card' %}{% set _ = card_rows.append(row) %}{% endif %}
 {% endfor %}
 {% if goal_rows %}
 <section class="card tu-goals-card">
@@ -264,6 +272,21 @@
     </li>
     {% endfor %}
   </ul>
+</section>
+{% endif %}
+{% if card_rows %}
+<section class="card tu-goals-card">
+  <h2>🟨 Karten &amp; Platzverweise</h2>
+  <ul class="tu-goals">
+    {% for c in card_rows %}
+    <li>
+      <span class="tg-time">{{ c.min }}'</span>
+      <span class="tg-side {{ 'tg-home' if c.team == 'home' else 'tg-away' }}">{{ match.home_team.short_name if c.team == 'home' else match.away_team.short_name }}</span>
+      <span class="tg-player">{{ c.player or 'unbekannt' }} <small>{{ {'gelb': '🟨 Gelbe Karte', 'yellow_red': '🟨🟥 Gelb-Rot', 'rot': '🟥 Platzverweis'}.get(c.card, c.card) }}</small></span>
+    </li>
+    {% endfor %}
+  </ul>
+  <p class="muted small ts-foot">Quelle: OpenLigaDB (kostenlose Spielereignisse) – listet nur, was dort erfasst ist.</p>
 </section>
 {% endif %}
 

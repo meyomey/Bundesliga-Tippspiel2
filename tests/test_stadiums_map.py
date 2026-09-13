@@ -97,6 +97,18 @@ def test_sync_backfills_from_map_but_feed_wins(db, app, bl1):
         assert get_sync_diagnostics()["stadium_gaps"] == []
 
 
+def test_status_sits_at_kickoff_not_in_badges():
+    """Nutzerfeedback 12.09.: GEPLANT/Pille/Wetter zusammen = Ellipsen-Not.
+    Status steht jetzt in der Anpfiff-Zeile (.tu-kickoff-row), die
+    Badges-Zeile gehoert allein Stadion + Wetter (und entfaellt leer ganz)."""
+    import pathlib
+    html = pathlib.Path("templates/match_detail.html").read_text(encoding="utf-8")
+    assert html.count("tu-kickoff-row") == 1
+    assert html.index('class="tu-kickoff-row"') < html.index('class="tu-top-badges"')
+    assert html.index("status-scheduled") < html.index('class="tu-top-badges"')
+    assert "{% if match.venue or weather %}" in html
+
+
 def test_combo_pill_keeps_one_line_layout():
     """Mobile-Fix 12.09.: Suche + Routing stecken in EINER Pille (Combo),
     die CSS-Seite garantiert einzeilig (nowrap + Ellipse)."""
@@ -105,6 +117,12 @@ def test_combo_pill_keeps_one_line_layout():
     assert 'class="tu-venue-combo"' in html
     assert html.count('tu-venue-combo') == 1
     css = pathlib.Path("static/css/style.css").read_text(encoding="utf-8")
+    # Zeile 1 fixiert: Container bricht nicht mehr um, Wetter/Status schrumpfen nicht
+    badges = css[css.rindex(".tu-top-badges {"):][:130]
+    assert "flex-wrap: nowrap" in badges
+    assert "flex: none" in css[css.rindex(".tu-weather-pill {"):][:90]
+    # Status wohnt nicht mehr in den Badges (wanderte 12.09. zur Anpfiff-Zeile)
+    assert ".tu-top-badges .status" not in css
     at = css.rindex(".tu-venue-combo {")
     block = css[at:at + 260]
     assert "white-space: nowrap" in block and "overflow: hidden" in block

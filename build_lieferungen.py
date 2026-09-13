@@ -112,6 +112,7 @@ GITHUB_UPLOAD_FILES = [
     "stats_live.py",
     "tests/test_stadiums_weather.py",
     "tests/test_stadium_gap_watch.py",
+    "tests/test_olb_events.py",
     "tests/test_stadiums_map.py",
     # 06.09.2026: Rangliste Mobile - Namensblock mit eigener Zeile
     "templates/leaderboard.html",

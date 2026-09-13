@@ -24,7 +24,7 @@ SOURCES = [
     ("openligadb", "OpenLigaDB (Fallback + Nachzug)"),
     ("minute", "API-Football · Live-Minute"),
     ("goals", "API-Football · Torschützen"),
-    ("torjaeger", "API-Football · Torjäger-Liste"),
+    ("torjaeger", "OpenLigaDB · Torjäger-Liste (Torschützen)"),
 ]
 
 SETTING_KEY = "datasourc…ivity"

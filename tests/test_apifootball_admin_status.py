@@ -71,11 +71,11 @@ def test_record_roundtrip_and_truncation(app, af_env):
         summary = minute_boost.apifootball_activity_summary()
         assert summary["token"] is True
         assert set(summary["entries"]) == {"minute", "goals"}
-        assert set(summary["calls"]) == {"minute", "goals", "torjaeger"}
+        assert set(summary["calls"]) == {"minute", "goals"}  # Torjaeger = OLB, kein af-Budget
         assert summary["caps"]["minute"] == 90
 
 
-def test_minute_and_torjaeger_attempt_get_recorded(app, db, monkeypatch, af_env):
+def test_minute_and_shared_activity_records(app, db, monkeypatch, af_env):
     comp = Competition.query.filter_by(code="BL1").first() or Competition(
         code="BL1", name="Bundesliga", season="2026", matchdays=34, teams_count=18, is_active=True)
     db.session.add(comp)
@@ -95,15 +95,15 @@ def test_minute_and_torjaeger_attempt_get_recorded(app, db, monkeypatch, af_env)
         assert res["ok"] and af_env["n"] == 1
         act = _activity()
         assert act["minute"]["ok"] is True and "aktualisiert" in act["minute"]["note"]
-        # 2) Torjaeger-Abruf mit HTTP-Fehler -> Fehlerpfad protokolliert
-        af_env["resp"] = _Resp({"errors": {}}, status=401)
-        res2 = top_scorers.fetch_top_scorers()
-        assert res2.get("http") == 401
+        # 2) Torjaeger (OLB, keyfrei) schreibt in denselben Speicher - die
+        #    af-Budgetkarte haelt aber bewusst raus (eigene Versuche-Zeile)
+        import datasource_activity as ds
+        ds.record("torjaeger", False, "HTTP 503")
         act = _activity()
-        assert act["torjaeger"]["ok"] is False and "HTTP 401" in act["torjaeger"]["note"]
-        # Budget zaehlt pro Gate getrennt
+        assert act["torjaeger"]["ok"] is False and "HTTP 503" in act["torjaeger"]["note"]
         summary = minute_boost.apifootball_activity_summary()
-        assert summary["calls"]["minute"] == 1 and summary["calls"]["torjaeger"] == 1
+        assert summary["calls"]["minute"] == 1
+        assert "torjaeger" not in summary["calls"] and "torjaeger" not in summary["entries"]
 
 
 # ---------------- gemeinsamer Versuchs-Speicher: fd/OLB + Seite ----------------
@@ -112,9 +112,10 @@ _PLAN_MSG = ('{"plan": "Free plans do not have access to this season, '
              'try from 2022 to 2024."}')
 
 
-def test_plan_rejection_pauses_feed_for_the_day(app, monkeypatch, af_env):
-    import datasource_activity as ds
-
+def test_plan_rejection_pauses_goals_feed_for_the_day(app, db, monkeypatch, af_env):
+    # Torjaeger laeuft seit 13.09. keyfrei ueber OpenLigaDB; die Plan-Bremse
+    # betrifft die API-Football-Booster (hier: Torschuetzen/goals-Route, die
+    # payload-Fehler streng prueft und den Feed auf den Tag pausiert).
     class R:
         status_code = 200
         ok = True
@@ -122,43 +123,65 @@ def test_plan_rejection_pauses_feed_for_the_day(app, monkeypatch, af_env):
         def json(self):
             return {"response": [], "errors": {"plan": _PLAN_MSG}}
 
-    # NUR den Counter im af_env-Fixture umhangen, damit die Calls zahlbar bleiben
     af_env["resp"] = R()
     monkeypatch.setitem(app.config, "COMPETITION", "BL1")
+    # Der goals-Boost holt nur, wenn es abschreibbare fertige Spiele gibt:
+    comp = Competition.query.filter_by(code="BL1").first() or Competition(
+        code="BL1", name="Bundesliga", season="2026", matchdays=34, teams_count=18, is_active=True)
+    db.session.add(comp)
+    db.session.commit()
+    bay = Team.query.filter_by(short_name="FCB").first() or Team(name="FC Bayern München", short_name="FCB", logo="x.png")
+    bvb = Team.query.filter_by(short_name="BVB").first() or Team(name="Borussia Dortmund", short_name="BVB", logo="x.png")
+    db.session.add_all([t for t in (bay, bvb) if t.id is None])
+    db.session.commit()
+    m = Match(competition_id=comp.id, matchday=3, home_team_id=bay.id, away_team_id=bvb.id,
+              kickoff=datetime.now(timezone.utc) - timedelta(hours=2), status="finished",
+              home_score=2, away_score=1)
+    db.session.add(m)
+    db.session.commit()
     with app.app_context():
-        res = top_scorers.fetch_top_scorers()
-        assert res.get("api_errors") is True            # echter Versuch
+        res = minute_boost.boost_goal_scorers_from_apifootball()
+        assert res.get("api_errors") is True           # echter Versuch, echter Grund
         assert af_env["n"] == 1
-        res2 = top_scorers.fetch_top_scorers()
-        assert res2.get("skipped") == "plan-blocked"    # zweiter Versuch: Pause, kein HTTP
+        res2 = minute_boost.boost_goal_scorers_from_apifootball()
+        assert res2.get("skipped") == "plan-blocked"   # Pause, kein zweiter HTTP-Versuch
         assert af_env["n"] == 1
-        # Und der Minute-Feed kassiert dieselbe Absage -> pausiert ebenfalls (1 Call)
-        res3 = minute_boost.boost_minutes_from_apifootball()
-        assert res3.get("skipped") in (None, "plan-blocked")
-        assert "plan" in (_activity().get("torjaeger", {}).get("note", "")).lower()
-        # Grund steht als Text im Protokoll (Originalwortlaut, nicht "pruefen")
-        assert "2022 to 2024" in _activity()["torjaeger"]["note"]
+        act = _activity()
+        assert "plan" in (act.get("goals", {}).get("note", "")).lower()
+        assert "2022 to 2024" in act["goals"]["note"]  # Originalwortlaut, nix beschoenigt
+
+
+def test_torjaeger_is_not_apifootball_anymore(app):
+    # Der Torjaeger-Feed darf API-Football nicht mehr anfassen (Budget frei halten)
+    import top_scorers
+    src = open(top_scorers.__file__, encoding="utf-8").read()
+    assert "api-sports" not in src
+    assert "apifootball_token" not in src
+    assert "getgoalgetters" in src
 
 
 def test_torjaeger_page_shows_last_reason(client, db, user, app, monkeypatch):
     import datasource_activity as ds
-    set_setting("apifootball_token", "TESTKEY")
-    set_setting("apifootball_plan_block", __import__("json").dumps(
-        {"torjaeger": datetime.now(timezone.utc).strftime("%Y-%m-%d")}))
+
+    class Resp503:
+        status_code = 503
+
+        def json(self):
+            return {}
+
+    monkeypatch.setattr(top_scorers.requests, "get", lambda *a, **k: Resp503())
     with app.app_context():
-        ds.record("torjaeger", False,
-                   'API: {"plan": "Free plans do not have access to this season, '
-                   'try from 2022 to 2024."}')
         set_setting(top_scorers.CACHE_KEY, "")
+        set_setting(ds.SETTING_KEY, "")
+        ds.record("torjaeger", False, "HTTP 503")
     client.post("/auth/login", data={"email": user.email, "password": "testpass123"},
                 follow_redirects=True)
     html = client.get("/torjaeger", follow_redirects=True).get_data(as_text=True)
     assert "Noch keine Torj\u00e4ger-Daten" in html
-    assert "2022 to 2024" in html                     # echter Grund sichtbar
-    assert "wird heute nicht weiter versucht" in html  # Selbstheilungs-Hinweis
-    set_setting("apifootball_token", "")
-    set_setting("apifootball_plan_block", "")
-    set_setting("datasource_activity", "")
+    assert "HTTP 503" in html                          # echter Grund sichtbar
+    assert "der n\u00e4chste Versuch l\u00e4uft automatisch" in html
+    with app.app_context():
+        set_setting(ds.SETTING_KEY, "")
 
 
 def test_fd_and_olb_attempts_recorded(app, monkeypatch):
@@ -193,7 +216,7 @@ def test_admin_page_shows_attempt_table(app, client, db, admin_user, monkeypatch
     client.post("/auth/login", data={"email": admin_user.email, "password": "admin123"},
                 follow_redirects=True)
     html = client.get("/admin/sync", follow_redirects=True).get_data(as_text=True)
-    assert "Versuche je Quelle" in html
+    assert "Datenquellen" in html
     assert "HTTP 429 Rate-Limit" in html
     assert "noch nicht protokolliert" in html
 
@@ -209,13 +232,13 @@ def test_diagnostics_and_admin_page(app, client, db, admin_user, monkeypatch, af
     client.post("/auth/login", data={"email": admin_user.email, "password": "admin123"},
                 follow_redirects=True)
     html = client.get("/admin/sync", follow_redirects=True).get_data(as_text=True)
-    assert "API-Football · Booster" in html
+    assert "Datenquellen" in html
     assert "Key hinterlegt" in html
-    assert "noch kein Abruf" in html          # kein Activity-Eintrag -> neutral
-    assert "Heutiger Verbrauch" in html
+    assert "noch nicht protokolliert" in html  # kein Activity-Eintrag -> neutral
+    assert "Heutiger API-Football-Verbrauch" in html
 
     # Ohne Key: Kachel wechselt auf Info-Optik, Karte erklaert den Free-Key
     set_setting("apifootball_token", "")
     html2 = client.get("/admin/sync", follow_redirects=True).get_data(as_text=True)
-    assert "ℹ️ Kein Key" in html2
+    assert "ℹ️ API-Football ohne Key" in html2
     assert "api-football.com" in html2

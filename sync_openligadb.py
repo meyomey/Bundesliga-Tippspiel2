@@ -54,6 +54,117 @@ def _olb_score(res):
     )
 
 
+# ------------------------------------------------------- OLB Match-Events -
+# OpenLigaDB fuehrt pro Spiel `matchEvents` (Tore, Gelb/Rot). Stand 13.09.2026
+# ist der BL1-Feed dort leer (alle Spieltage 0 Ereignisse, live geprueft) -
+# dieser Pfad ist bewusst ein kostenloser "wenn Daten da sind, werden sie
+# genutzt"-Abnehmer ohne Key und ohne eigenes HTTP (haengt am getmatchdata-
+# Payload der Syncs). Solange nichts kommt, bleibt er lautlos.
+
+_OLB_CARD_KINDS = (
+    ("yellow red", "yellow_red"),
+    ("yellow", "gelb"),
+    ("red", "rot"),
+)
+
+
+def _olb_event_side(md, ev):
+    t1 = _olb_get(_olb_get(md, "team1", "Team1", default={}) or {}, "teamId", "TeamID")
+    t2 = _olb_get(_olb_get(md, "team2", "Team2", default={}) or {}, "teamId", "TeamID")
+    tid = _olb_get(ev, "teamId", "TeamID")
+    if tid is not None and t1 is not None and str(tid) == str(t1):
+        return "home"
+    if tid is not None and t2 is not None and str(tid) == str(t2):
+        return "away"
+    return None
+
+
+def _olb_event_rows(md):
+    """matchEvents -> normale Zeilen im Seitenformat (Tore wie Goal-Boost)."""
+    rows = []
+    for ev in (_olb_get(md, "matchEvents", "MatchEvents", default=[]) or []):
+        if not isinstance(ev, dict):
+            continue
+        etype_raw = _olb_get(ev, "matchEventType", "EventType", default="") or ""
+        if isinstance(etype_raw, dict):  # manche Builds liefern {"name": ...}
+            etype_raw = etype_raw.get("name") or ""
+        etype = str(etype_raw).strip().lower()
+        try:
+            minute = int(_olb_get(ev, "minute", "Minute", default=0) or 0)
+        except (TypeError, ValueError):
+            minute = 0
+        if minute < 1:
+            continue
+        player = str(_olb_get(ev, "playerName", "PlayerName", default="") or "").strip() or None
+        side = _olb_event_side(md, ev) or "home"
+        if "penalty miss" in etype or etype in ("5", "penalty missed"):
+            continue  # verschossener Elfer: kein Tor, keine Karte - bewusst raus
+        if "own goal" in etype or etype == "6":
+            rows.append({"kind": "gf", "min": minute, "team": side, "player": player,
+                         "assist": None, "penalty": False, "own_goal": True, "src": "olb"})
+        elif "goal" in etype or etype in ("1",):
+            rows.append({"kind": "gf", "min": minute, "team": side, "player": player,
+                         "assist": None, "penalty": "penalty" in etype or bool(
+                             _olb_get(ev, "isPenalty", "IsPenalty", default=False)),
+                         "own_goal": False, "src": "olb"})
+        elif "card" in etype or etype in ("2", "3", "4"):
+            label = {"2": "gelb", "3": "yellow_red", "4": "rot"}.get(etype)
+            if label is None:
+                for needle, k in _OLB_CARD_KINDS:
+                    if needle in etype:
+                        label = k
+                        break
+            if label:
+                rows.append({"kind": "olb", "type": "card", "card": label,
+                             "min": minute, "team": side, "player": player, "src": "olb"})
+        # unbekannte Ereignistypen (Auswechslungen, Taktik ...) bleiben draussen
+    rows.sort(key=lambda r: (r["min"], 0 if r["kind"] == "gf" else 1))
+    return rows
+
+
+def _apply_olb_events(md, match):
+    """Ergaenzt OLB-Ereignisse ins events-JSON - ueberschreibt und verdoppelt nie.
+
+    Tore deckt der Goal-Boost (API-Football, mit Vorlagen) besser ab: hat der
+    fuer Minute+Seite schon eine gf-Zeile, laesst OLB den Platz. Karten kommen
+    nur dazu, wenn dieselbe Kombination noch nicht steht. Gibt Anzahl neu
+    geschriebener Zeilen zurueck (0 = alles unveraendert).
+    """
+    if not _olb_is_finished(md):
+        return 0
+    rows = _olb_event_rows(md)
+    if not rows:
+        return 0
+    import json
+    try:
+        existing = json.loads(match.events or "[]")
+    except (TypeError, ValueError):
+        existing = []
+    if not isinstance(existing, list):
+        existing = []
+    gf_marks = {(int(r.get("min") or 0), r.get("team"))
+                for r in existing if isinstance(r, dict) and r.get("kind") == "gf"}
+    card_marks = {(int(r.get("min") or 0), r.get("team"), str(r.get("card") or ""))
+                  for r in existing if isinstance(r, dict) and r.get("type") == "card"}
+    added = 0
+    for r in rows:
+        if r["kind"] == "gf":
+            if (r["min"], r["team"]) in gf_marks:
+                continue
+            gf_marks.add((r["min"], r["team"]))
+        else:
+            key = (r["min"], r["team"], r["card"])
+            if key in card_marks:
+                continue
+            card_marks.add(key)
+        existing.append(r)
+        added += 1
+    if added:
+        existing.sort(key=lambda x: (int(x.get("min") or 0), 0 if isinstance(x, dict) and x.get("kind") == "gf" else 1))
+        match.events = json.dumps(existing, ensure_ascii=False)
+    return added
+
+
 def sync_with_openligadb():
     """Fallback-Sync gegen OpenLigaDB.
 
@@ -80,6 +191,7 @@ def sync_with_openligadb():
     created = 0
     skipped = 0
     new_teams = 0
+    events_applied = 0
     current_ext_ids = set()
     affected_match_ids = set()
 
@@ -172,6 +284,9 @@ def sync_with_openligadb():
                 affected_match_ids.add(existing.id)
             created += 1
 
+        if _apply_olb_events(md, existing):
+            events_applied += 1
+
     purged_stale = _purge_stale_matches_for_comp(comp_id, current_ext_ids) if current_ext_ids else 0
 
     db.session.commit()
@@ -191,6 +306,8 @@ def sync_with_openligadb():
             check_and_award_badges(users=users)
 
     msg = f"OpenLigaDB: {created} neu, {updated} aktualisiert"
+    if events_applied:
+        msg += f" \u00b7 \U0001f947 {events_applied} Spiele mit neuen Ereignissen (Tore/Karten)"
     if new_teams:
         msg += f", {new_teams} Team(s) angelegt"
     if purged_stale:
@@ -206,6 +323,7 @@ def sync_with_openligadb():
         "new_teams": new_teams,
         "purged_stale": purged_stale,
         "skipped": skipped,
+        "events": events_applied,
         "msg": msg,
     }
 
@@ -247,6 +365,7 @@ def _fill_missing_from_openligadb():
         return 0
 
     filled = 0
+    events_applied = 0
     affected_match_ids = set()
     for md in data:
         if not _olb_is_finished(md):
@@ -266,6 +385,8 @@ def _fill_missing_from_openligadb():
              (Match.matchday == _olb_group_order_id(md, default=0)))
         ).first()
 
+        if match and _apply_olb_events(md, match):
+            events_applied += 1
         if match and match.status == "scheduled":
             results = _olb_results(md)
             h_score = a_score = None
@@ -288,6 +409,8 @@ def _fill_missing_from_openligadb():
         if affected_users:
             users = User.query.filter(User.id.in_(affected_users)).all()
             check_and_award_badges(users=users)
+    elif events_applied:
+        db.session.commit()
     return filled
 
 
@@ -420,6 +543,19 @@ def boost_live_from_openligadb(matchday=None):
     return {"ok": True, "updated": updated}
 
 
+def _refresh_top_scorers_hook():
+    """Torjaeger-Aktualisierung aus OpenLigaDB (keyfrei, 30-min-Takt im Modul).
+
+    Bewusst VOR den Netzwerkaufrufen des Syncs, damit sie auch bei FD-/OLB-
+    Stoerungen laeuft; Fehler bleiben lautlos (Debug-Log), nie fatal.
+    """
+    try:
+        from top_scorers import refresh_top_scorers
+        refresh_top_scorers()
+    except Exception as e:
+        current_app.logger.debug(f"top-scorers Hook uebersprungen: {e}")
+
+
 def sync_results():
     """Haupt-Entry-Point für den Ergebnis-Sync.
 
@@ -431,14 +567,7 @@ def sync_results():
     aufgerufen. Andernfalls (kein Token, Rate-Limit, Netzwerkfehler …)
     übernimmt OLB.
     """
-    # Automatische Torjaeger-Aktualisierung (eigener Budgetwaechter, max.
-    # 2 Calls/Tag; ohne API-Football-Key kompletter No-Op). Bewusst VOR den
-    # Netzwerkaufrufen, damit sie auch bei FD-/OLB-Stoerungen laeuft.
-    try:
-        from top_scorers import refresh_top_scorers
-        refresh_top_scorers()
-    except Exception as e:
-        current_app.logger.debug(f"top-scorers Hook uebersprungen: {e}")
+    _refresh_top_scorers_hook()
 
     # --- 1. football-data.org versuchen ---
     res_fd = sync_with_football_data()

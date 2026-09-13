@@ -496,10 +496,11 @@ def _bl_standings():
 @main_bp.route("/torjaeger", endpoint="top_scorers")
 @login_required
 def _top_scorers():
-    """Torjaeger-Rangliste (Torschuetzenliste) aus dem API-Football-Free-Key.
+    """Torjaeger-Rangliste (Torschuetzenliste) ueber OpenLigaDB (keyfrei).
 
-    Datenquellen-Ehrlichkeit: nur echte Feed-Daten; ohne Key zeigt die Seite
-    einen Hinweistext statt leerer Tabellen.
+    Datenquellen-Ehrlichkeit: nur echte Feed-Daten; bis der erste Abruf
+    durch ist, zeigt die Seite Hinweistext bzw. letzten Fehlergrund statt
+    leerer Tabellen.
     """
     from datetime import datetime as _dt
     from top_scorers import top_scorers_listing

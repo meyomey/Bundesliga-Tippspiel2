@@ -1,8 +1,9 @@
-"""Torjaeger-Rangliste (12.09.2026): Cache, Parsing, Budgetwaechter, Seite.
+"""Torjaeger-Rangliste (13.09.2026): OpenLigaDB-Quelle, Cache, Taktung, Seite.
 
-Datenquelle ist der optionale API-Football-Free-Key (statistics/league/
-top_scorers). Ohne Token kein Request; Fehlerpfade behalten den letzten
-Erfolgs-Cache. Hooks/Fetches sind vollstaendig gemockt.
+Die Liste laeuft seit dem OLB-Umstieg KEYFREI (API-Football-Free-Plan konnte
+die aktuelle Saison nicht liefern). Hier werden Parsing/Sortierung,
+30-min-Taktung inkl. Fehler-Schnellwiederholung, Cache-Ehrlichkeit bei
+Ausfall und die Seitendarstellung gegen gemockte HTTP-Antworten geprueft.
 """
 import json
 from datetime import datetime, timedelta, timezone
@@ -10,24 +11,16 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 import top_scorers
-from models import Team
 from scoring import get_setting, set_setting
 
 
-def _entry(pid, name, team, goals, assists=0, ps=0, pm=0, apps=9):
-    return {"player": {"id": pid, "name": name, "photo": "", "position": "Sturm",
-                       "team": {"id": pid * 2, "name": team, "logo": ""}},
-            "statistics": [{"goals": {"total": goals, "assists": assists},
-                            "penalties": {"scored": ps, "missed": pm},
-                            "games": {"appearences": apps, "minutes": apps * 90}}]}
-
-
-def _payload():
-    return {"errors": {}, "response": [
-        _entry(1, "Harry Kane", "FC Bayern München", 12, 4, 3, 1),
-        _entry(2, "Serhou Guirassy", "Borussia Dortmund", 8, 2, 1, 0),
-        _entry(3, "Tim Klein", "Hannover 96", 0, 0, 0, 0),   # ohne Tor: draussen
-    ]}
+def _olb_payload():
+    return [
+        {"goalGetterId": 1, "goalGetterName": "Younes Ebnoutalib", "goalCount": 4},
+        {"goalGetterId": 2, "goalGetterName": "P. Schick", "goalCount": 4},
+        {"goalGetterId": 3, "goalGetterName": "Harry Kane", "goalCount": 3},
+        {"goalGetterId": 4, "goalGetterName": "Torlos Nobody", "goalCount": 0},
+    ]
 
 
 class _Resp:
@@ -40,168 +33,135 @@ class _Resp:
         return self._p
 
 
+def _activity():
+    import datasource_activity as ds
+    return ds.entries()
+
+
 @pytest.fixture
 def ts_env(app, monkeypatch):
-    calls = {"n": 0, "payload": None}
+    calls = {"n": 0, "payload": None, "status": 200}
 
-    def fake_get(url, headers=None, timeout=None, **kw):
+    def fake_get(url, timeout=None, **kw):
         calls["n"] += 1
-        assert "players/topscorers?league=181" in url
-        return _Resp(calls["payload"] or {"response": [], "errors": {}})
+        assert "api.openligadb.de/getgoalgetters/bl1/" in url  # keyfrei, OLB
+        if calls["status"] != 200:
+            class Bad:
+                status_code = calls["status"]
+
+                def json(self):
+                    return {}
+            return Bad()
+        return _Resp(calls["payload"] if calls["payload"] is not None else [])
 
     monkeypatch.setattr(top_scorers.requests, "get", fake_get)
     monkeypatch.setitem(app.config, "COMPETITION", "BL1")
-    set_setting("apifootball_token", "TESTKEY")
+    import datasource_activity as ds
     set_setting(top_scorers.CACHE_KEY, "")
+    set_setting(ds.SETTING_KEY, "")
+    set_setting("apifootball_token", "")  # Modul darf keinen Key mehr brauchen
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     top_scorers._STATE_FALLBACK.update({"day": today, "count": 0, "last": 0.0})
     yield calls
     top_scorers._STATE_FALLBACK.update({"day": "", "count": 0, "last": 0.0})
-    set_setting("apifootball_token", "")
     set_setting(top_scorers.CACHE_KEY, "")
+    set_setting(ds.SETTING_KEY, "")
 
 
 def test_fetch_parses_sorts_and_caches(app, ts_env):
-    ts_env["payload"] = _payload()
+    ts_env["payload"] = _olb_payload()
     with app.app_context():
         res = top_scorers.fetch_top_scorers()
-        assert res["ok"] and res["count"] == 2 and ts_env["n"] == 1
-        data = top_scorers.load_cache()
+        assert res == {"ok": True, "count": 3}  # torloser Eintrag faellt raus
+        data = json.loads(get_setting(top_scorers.CACHE_KEY))
         assert data["v"] == top_scorers.CACHE_VERSION
-        rows = data["entries"]
-        assert [r["name"] for r in rows] == ["Harry Kane", "Serhou Guirassy"]
-        assert rows[0]["goals"] == 12 and rows[0]["assists"] == 4
-        assert rows[0]["pen_scored"] == 3 and rows[0]["pen_missed"] == 1
-        assert rows[0]["apps"] == 9
+        names = [r["name"] for r in data["entries"]]
+        # Tore desc, bei Gleichstand alphabetisch (redlich, keine Kuenstelordnung)
+        assert names == ["P. Schick", "Younes Ebnoutalib", "Harry Kane"]
+        assert data["entries"][0]["goals"] == 4
+        act = _activity()
+        assert act["torjaeger"]["ok"] is True and "3 Spieler" in act["torjaeger"]["note"]
 
 
-def test_gate_throttle_and_no_token(app, ts_env):
-    ts_env["payload"] = _payload()
+def test_keyfrei_no_token_needed(app, ts_env):
+    ts_env["payload"] = _olb_payload()
     with app.app_context():
-        assert top_scorers.fetch_top_scorers()["ok"]
-        res2 = top_scorers.fetch_top_scorers()   # 6-h-Intervall blockiert
-        assert res2.get("skipped") == "throttled" and ts_env["n"] == 1
-        # Budget aufgebraucht (zweiter Slot verbruacht, dritter abgelehnt)
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        top_scorers._STATE_FALLBACK.update({"day": today, "count": 2, "last": 0.0})
+        assert get_setting("apifootball_token", "") == ""
+        assert top_scorers.fetch_top_scorers()["ok"] is True
+        assert ts_env["n"] == 1
+
+
+def test_gate_throttle_and_fast_retry_after_error(app, ts_env):
+    ts_env["payload"] = _olb_payload()
+    with app.app_context():
+        assert top_scorers.fetch_top_scorers()["ok"] is True
+        # direkt danach: getaktet, kein zweiter HTTP-Versuch
         assert top_scorers.fetch_top_scorers().get("skipped") == "throttled"
         assert ts_env["n"] == 1
-    set_setting("apifootball_token", "")
+        # 31 min spaeter naechster Versuch, der fehlschlaegt (503) ...
+        ts_env["payload"], ts_env["status"] = None, 503
+        top_scorers._STATE_FALLBACK["last"] -= 31 * 60
+        assert top_scorers.fetch_top_scorers().get("http") == 503
+        assert ts_env["n"] == 2
+        assert _activity()["torjaeger"]["ok"] is False
+        assert "HTTP 503" in _activity()["torjaeger"]["note"]
+        # ...und dank Fehlerprotokoll gilt nur noch die 10-min-Regel (kein 30-min-Brachliegen)
+        top_scorers._STATE_FALLBACK["last"] -= 11 * 60
+        ts_env["payload"], ts_env["status"] = _olb_payload(), 200
+        assert top_scorers.fetch_top_scorers()["ok"] is True
+        assert ts_env["n"] == 3
+
+
+def test_error_keeps_last_good_cache(app, ts_env):
+    ts_env["payload"] = _olb_payload()
     with app.app_context():
-        assert top_scorers.fetch_top_scorers(force=True).get("skipped") == "no-token"
-        assert ts_env["n"] == 1
+        top_scorers.fetch_top_scorers()
+        good = get_setting(top_scorers.CACHE_KEY)
+        top_scorers._STATE_FALLBACK["last"] -= 31 * 60  # Intervall vorbei
+        ts_env["payload"], ts_env["status"] = None, 500
+        assert top_scorers.fetch_top_scorers().get("http") == 500
+        assert get_setting(top_scorers.CACHE_KEY) == good  # alte Liste bleibt stehen
 
 
-def test_listing_rich_text_and_error_keeps_cache(app, db, ts_env):
+def test_page_renders_ranking_without_any_key(client, db, user, app, ts_env):
+    ts_env["payload"] = _olb_payload()
     with app.app_context():
-        if not Team.query.filter_by(short_name="FCB").first():
-            db.session.add(Team(name="FC Bayern München", short_name="FCB", logo="x.png"))
-            db.session.commit()
-        # alter Cache -> Listing loest Refresh aus; Request kaputt -> Cache bleibt sichtbar
-        old = datetime.now(timezone.utc) - timedelta(hours=30)
-        set_setting(top_scorers.CACHE_KEY, json.dumps({
-            "v": 1, "fetched_at": old.isoformat(), "season": "2026",
-            "entries": [_ := {"name": "Harry Kane", "team": "FC Bayern München",
-                              "goals": 12, "assists": 4, "pen_scored": 3,
-                              "pen_missed": 1, "apps": 9, "minutes": 810,
-                              "player_id": 1, "photo": None, "position": "Sturm"}]}))
-
-        def boom(url, headers=None, timeout=None, **kw):
-            raise RuntimeError("Netz weg")
-
-        ts_env["payload"] = None
-        top_scorers.requests.get = boom
-        try:
-            entries, meta = top_scorers.top_scorers_listing()
-        finally:
-            top_scorers.requests.get = ts_env.get  # kein Leak auf andere Tests
-        assert entries and entries[0]["name"] == "Harry Kane"
-        assert entries[0]["short"] == "FCB"
-        assert meta["empty"] is False and meta["has_token"] is True
-
-
-def test_torjaeger_page_renders_ranking_and_hint(client, db, user, app, ts_env):
-    ts_env["payload"] = _payload()
-    with app.app_context():
-        if not Team.query.filter_by(short_name="FCB").first():
-            db.session.add(Team(name="FC Bayern München", short_name="FCB", logo="x.png"))
-            db.session.commit()
+        top_scorers.fetch_top_scorers()
     client.post("/auth/login", data={"email": user.email, "password": "testpass123"},
                 follow_redirects=True)
     html = client.get("/torjaeger", follow_redirects=True).get_data(as_text=True)
-    assert "Harry Kane" in html and ">12</strong>" in html
-    assert "davon 3 Elfm" in html and "FCB" in html
-    assert "Tim Klein" not in html          # Spieler ohne Tor tauchen nie auf
+    assert "Younes Ebnoutalib" in html and "OpenLigaDB" in html
+    assert "Noch keine Torj\u00e4ger-Daten" not in html
+    # API-Football wird auf der Seite nicht mehr als Quelle behauptet
+    assert "API-Football" not in html
 
 
-def test_torjaeger_page_hint_without_data(client, db, user, app, monkeypatch):
-    monkeypatch.setattr(top_scorers.requests, "get",
-                        lambda *a, **k: pytest.fail("ohne Token darf nicht gerufen werden"))
+def test_page_empty_state_shows_real_error(client, db, user, app, ts_env, monkeypatch):
+    # Allow-refresh drosseln: fetch im Request wirft 503, Cache leer -> Hinweistext
+    ts_env["payload"], ts_env["status"] = None, 503
     client.post("/auth/login", data={"email": user.email, "password": "testpass123"},
                 follow_redirects=True)
     html = client.get("/torjaeger", follow_redirects=True).get_data(as_text=True)
-    assert "Noch keine Torjäger-Daten" in html
+    assert "Noch keine Torj\u00e4ger-Daten" in html
+    assert "kein Schlüssel und keine Einstellung" in html   # keine Key-Sackgasse mehr
 
 
-def test_sync_results_hook_calls_refresh(app, monkeypatch):
-    """Der Sync-Cron halt die Rangliste automatisch frisch (Hook in sync_results)."""
-    hits = {"n": 0}
+def test_sync_hook_calls_refresh(app, monkeypatch):
+    seen = {"hits": 0}
 
     def spy(force=False):
-        hits["n"] += 1
+        seen["hits"] += 1
         return {"ok": True}
 
-    monkeypatch.setattr(top_scorers, "refresh_top_scorers", spy)
-    import sync_openligadb as so
-    monkeypatch.setattr(so, "sync_with_football_data", lambda *a, **k: {"ok": True, "msg": "stub"})
-    monkeypatch.setattr(so, "_fill_missing_from_openligadb", lambda *a, **k: 0)
-    monkeypatch.setattr(so, "store_sync_result", lambda *a, **k: None)
+    import sync_openligadb
+    monkeypatch.setattr("top_scorers.refresh_top_scorers", spy)
     with app.app_context():
-        so.sync_results()
-    assert hits["n"] == 1
+        sync_openligadb._refresh_top_scorers_hook()
+    assert seen["hits"] == 1
 
-
-def test_error_text_landed_in_activity_and_fast_retry(app, db, monkeypatch):
-    """Fix 12.09.2026: echtes API-Fehlerbild im Protokoll statt Platzhalter;
-    nach Fehlschlag ist der Retry nach 30 min wieder erlaubt (Erfolg: 6 h)."""
-    import datasource_activity as ds
-    set_setting("apifootball_token", "TESTKEY")
-    set_setting("datasource_activity", "")
-    set_setting(top_scorers.CACHE_KEY, "")
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    top_scorers._STATE_FALLBACK.update({"day": today, "count": 0, "last": 0.0})
-    seen = {"n": 0}
-
-    class R:
-        status_code = 200
-
-        def __init__(self, payload):
-            self._p = payload
-
-        def json(self):
-            return self._p
-
-    def fake_get(url, headers=None, timeout=None, **kw):
-        seen["n"] += 1
-        assert "players/topscorers" in url          # korrigierter Endpoint
-        return R({"response": [], "errors": {"all": "The endpoint requires a valid league"}})
-
-    monkeypatch.setattr(top_scorers.requests, "get", fake_get)
-    monkeypatch.setitem(app.config, "COMPETITION", "BL1")
+    # ...und der Hook ist Fehler-sicher: kaputter Feed darf den Sync nicht kippen
+    def kaputt(force=False):
+        raise RuntimeError("Boom")
+    monkeypatch.setattr("top_scorers.refresh_top_scorers", kaputt)
     with app.app_context():
-        res = top_scorers.fetch_top_scorers()
-        assert res.get("api_errors") is True
-        act = ds.entries().get("torjaeger")
-        assert act and act["ok"] is False
-        assert "requires a valid league" in act["note"]   # echter Grund, nicht "pruefen"
-        # unmittelbar danach: drosselt (30-min-Fenster laeuft)
-        assert top_scorers.fetch_top_scorers().get("skipped") == "throttled"
-        # 40 Minuten nach dem Fehlversuch: wieder erlaubt
-        st = dict(top_scorers._STATE_FALLBACK)
-        st["last"] = __import__("time").time() - 2400
-        top_scorers._STATE_FALLBACK.update(st)
-        assert top_scorers.fetch_top_scorers().get("api_errors") is True
-        assert seen["n"] == 2
-    set_setting("apifootball_token", "")
-    set_setting("datasource_activity", "")
-    set_setting(top_scorers.CACHE_KEY, "")
+        sync_openligadb._refresh_top_scorers_hook()  # kein Raise nach aussen

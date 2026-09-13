@@ -40,57 +40,54 @@
 </div>
 
 <div class="card">
-  <h2>API-Football · Booster</h2>
-  {% set af = (diag.get('apifootball') or {}) if diag.get is defined else (diag.apifootball or {}) %}
-  {% set af_entries = af.get('entries') or {} %}
-  {% set af_calls = af.get('calls') or {} %}
-  {% set af_caps = af.get('caps') or {} %}
-  {% if af.get('token') %}
-    <p class="muted" style="margin-top:0">✅ Key hinterlegt – echte Live-Minute, Torschützen im Spielbericht und Torjäger-Liste sind scharf. Die Abrufe laufen bedarfsorientiert (Live-Center, nach Abpfiff, Sync-Cron) – nie über das Free-Budget hinaus.</p>
+  <h2>Sync-Lauf</h2>
+  {% set ls = diag.get('last_sync') or {} %}
+  {% if ls %}
+    <p style="margin:0 0 4px">
+      <strong>{{ '✅ OK' if ls.get('ok') else '❌ Fehler' }}</strong>
+      · {{ ls.get('at_fmt') or ls.get('at') }} · {{ ls.get('source') }}
+    </p>
+    <p class="muted" style="margin:0">
+      {{ ls.get('created') or 0 }} neu, {{ ls.get('updated') or 0 }} aktualisiert, {{ ls.get('live') or 0 }} live
+      {%- if ls.get('venues') is not none %} · 📍 Stadion: {{ ls.get('venues') or 0 }} aus Feed, {{ ls.get('venues_map') or 0 }} aus Festdaten{% endif %}
+      {%- if ls.get('venues_missing') %} · 🛈 ohne Stadion-Karte: {{ ls.get('venues_missing')|join(', ') }}{% endif %}
+      {%- if not ls.get('ok') and ls.get('msg') %} · {{ ls.get('msg') }}{% endif %}
+    </p>
   {% else %}
-    <p class="muted" style="margin-top:0">ℹ️ Kein Key – kostenlos holen unter <a href="https://www.api-football.com/" target="_blank" rel="noopener">api-football.com</a> und unter Einstellungen → APIs eintragen. Danach aktivieren sich die drei Feeds von selbst (kein Neustart).</p>
-  {% endif %}
-  <table class="mini-table">
-    {% for fkey, flabel in [('minute','Live-Minute (bei Live-Center-Besuchen)'), ('goals','Torschützen (nach Abpfiff)'), ('torjaeger','Torjäger-Liste (mit jedem Sync)')] %}
-      {% set e = af_entries.get(fkey) %}
-      <tr>
-        <td>{{ flabel }}</td>
-        <td>{% if e %}{{ '✅' if e.ok else '⚠️' }} {{ e.at[:16].replace('T', ' ') }} Uhr UTC{% if e.note %} · {{ e.note }}{% endif %}{% else %}<span class="muted">noch kein Abruf</span>{% endif %}</td>
-      </tr>
-    {% endfor %}
-  </table>
-  <p class="muted" style="margin-bottom:0">Heutiger Verbrauch: Live-Minute {{ af_calls.get('minute', 0) or 0 }}/{{ af_caps.get('minute', 90) }} · Torschützen {{ af_calls.get('goals', 0) or 0 }}/{{ af_caps.get('goals', 8) }} · Torjäger {{ af_calls.get('torjaeger', 0) or 0 }}/{{ af_caps.get('torjaeger', 2) }} — Freigrenze 100 Abrufe/Tag gesamt.</p>
-</div>
-
-<div class="card">
-  <h2>Letzter Sync</h2>
-  {% if diag.last_sync %}
-    <table class="mini-table">
-      <tr><td>Zeit</td><td>{{ diag.last_sync.at }}</td></tr>
-      <tr><td>Status</td><td>{{ '✅ OK' if diag.last_sync.ok else '❌ Fehler' }}</td></tr>
-      <tr><td>Quelle</td><td>{{ diag.last_sync.source }}</td></tr>
-      <tr><td>Neu/Aktualisiert</td><td>{{ diag.last_sync.created or 0 }} / {{ diag.last_sync.updated or 0 }}</td></tr>
-      <tr><td>Meldung</td><td>{{ diag.last_sync.msg }}</td></tr>
-    </table>
-  {% else %}
-    <p class="muted">Noch kein Sync-Ergebnis gespeichert.</p>
+    <p class="muted" style="margin-top:0">Noch kein Sync-Ergebnis gespeichert.</p>
   {% endif %}
   {% set gaps = diag.get('stadium_gaps') or [] %}
   {% if gaps %}
   <p class="muted" style="margin:8px 0 0">🛈 <strong>Festdaten-Pflege:</strong> {{ gaps|join(", ") }} ohne Stadion-Karte – hier bleiben Pille und Wetter leer. Je ein Eintrag in <code>stadiums.py</code> und <code>stats_live.py</code>, nach dem nächsten Sync ist diese Zeile weg.</p>
   {% endif %}
+</div>
+
+<div class="card">
+  <h2>Datenquellen</h2>
+  {% set af = diag.get('apifootball') or {} %}
+  {% set af_calls = af.get('calls') or {} %}
+  {% set af_caps = af.get('caps') or {} %}
+  <p class="muted" style="margin:0 0 10px">
+  {% if af.get('token') %}
+    ✅ API-Football-Key hinterlegt – Live-Minute, Torschützen und Torjäger-Liste sind scharf und laufen bedarfsorientiert (nie über das Free-Budget hinaus).
+  {% else %}
+    ℹ️ API-Football ohne Key inaktiv. Free-Key gibt es bei <a href="https://www.api-football.com/" target="_blank" rel="noopener">api-football.com</a>; eintragen unter Einstellungen → APIs – die drei Feeds schalten sich dann selbst scharf (kein Neustart).
+  {% endif %}
+  </p>
+  <p class="muted" style="margin:0 0 10px">🥇 <strong>Torjäger-Liste:</strong> läuft seit 13.09. über OpenLigaDB (keyfrei, ohne API-Football-Verbrauch) – nach jedem OLB-Sync frisch, spätestens bei Seitenbesuch (max. alle 30 Minuten).</p>
   {% set srcs = diag.get('source_activity') or [] %}
-  {% if srcs %}
-  <h3 style="margin:14px 0 4px">Versuche je Quelle</h3>
-  <p class="muted" style="margin:0 0 6px">Letzter echter Abruf – auch fehlgeschlagene (mit Grund). Zeigt, ob ein Feed still mitläuft oder stumm ausfällt.</p>
   <table class="mini-table">
     {% for row in srcs %}
     <tr>
       <td>{{ row.label }}</td>
-      <td>{% if row.entry %}{{ '✅' if row.entry.ok else '⚠️' }} {{ row.entry.at[:16].replace('T', ' ') }} Uhr UTC{% if row.entry.note %} · {{ row.entry.note }}{% endif %}{% else %}<span class="muted">noch nicht protokolliert</span>{% endif %}</td>
+      <td>{% if row.entry %}{{ '✅' if row.entry.ok else '⚠️' }} {{ row.entry.at_fmt or row.entry.at[:16].replace('T', ' ') }} Uhr UTC{% if row.entry.note and not (row.key == 'football-data' and row.entry.ok and ls) %} · {{ row.entry.note }}{% endif %}{% else %}<span class="muted">noch nicht protokolliert</span>{% endif %}</td>
     </tr>
+    {% else %}
+    <tr><td colspan="2" class="muted">Noch kein Abruf protokolliert – nach dem nächsten Sync erscheinen hier alle Quellen mit Zeitpunkt und ggf. Fehlergrund.</td></tr>
     {% endfor %}
   </table>
+  {% if af.get('token') %}
+  <p class="muted" style="margin:8px 0 0">Heutiger API-Football-Verbrauch: Live-Minute {{ af_calls.get('minute', 0) or 0 }}/{{ af_caps.get('minute', 90) }} · Torschützen {{ af_calls.get('goals', 0) or 0 }}/{{ af_caps.get('goals', 8) }} — Freigrenze 100 Abrufe/Tag gesamt.</p>
   {% endif %}
 </div>
 {% endblock %}

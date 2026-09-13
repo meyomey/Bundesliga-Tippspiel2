@@ -114,6 +114,19 @@ def force_seed_demo_matches():
 
 
 # ============================================================ Sync Diagnostics -
+def _fmt_utc(iso):
+    """ISO-Zeitstempel -> '13.09.2026 10:30 Uhr UTC' (ohne Sekunden-/
+    Mikrosekunden-Rauschen; bei kaputten Werten roher Anfang)."""
+    try:
+        from datetime import datetime, timezone
+        dt = datetime.fromisoformat(iso)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.strftime("%d.%m.%Y %H:%M Uhr UTC")
+    except Exception:
+        return (iso or "")[:16].replace("T", " ")
+
+
 def get_sync_diagnostics():
     """Prueft API-/Sync-Konfiguration ohne Daten zu veraendern.
 
@@ -190,7 +203,8 @@ def get_sync_diagnostics():
         "remote_logos": remote_logos,
         "checks": checks,
         "warnings": warnings,
-        "last_sync": last_sync,
+        "last_sync": ({**last_sync, "at_fmt": _fmt_utc(last_sync.get("at", ""))}
+                      if isinstance(last_sync, dict) else last_sync),
         "apifootball": apifootball,
         "source_activity": _source_activity(),
         "stadium_gaps": _stadium_gap_list(),
@@ -220,11 +234,20 @@ def _source_activity():
         raw = entries()
         return [
             {"key": key, "label": label,
-             "entry": raw.get(key)}
+             "entry": _fmt_entry(raw.get(key))}
             for key, label in SOURCES
         ]
     except Exception:
         return []
+
+
+def _fmt_entry(e):
+    """Activity-Eintrag inkl. vorformatierter Zeit fuer die Tabelle."""
+    if isinstance(e, dict):
+        out = dict(e)
+        out["at_fmt"] = _fmt_utc(e.get("at", ""))
+        return out
+    return e
 
 
 # ============================================================ Schema-Migration -

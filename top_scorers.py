@@ -1,16 +1,20 @@
-"""Torjaeger-Rangliste (Torschuetzenliste) - gratis ueber den API-Football-Key.
+"""Torjaeger-Rangliste (Torschuetzenliste) - seit 13.09.2026 ueber OpenLigaDB.
 
-Hintergrund (12.09.2026): football-data.org liefert Spieler-/Scorer-Daten nur
-im Bezahlplan; API-Football bietet die offizielle Top-Scorer-Liste der Liga im
-dauerhaft kostenlosen Plan (GET /statistics/league/top_scorers). Kein Key
-gesetzt => Modul ist komplett inaktiv (wie Minute-/Goal-Boost).
+Hintergrund: Der API-Football-Free-Plan beantwortete die aktuelle Saison bei
+players/topscorers planmaessig mit "try from 2022 to 2024" (Live-Test
+12.09.2026), football-data.org liefert Scorer nur im Bezahltier. Die
+Pruefung am 13.09. fand mit OpenLigaDB `GET /getgoalgetters/{liga}/{saison}`
+eine dauerhaft kostenlose, KEYFREIE Quelle fuer die aktuelle
+Torschuetzenliste - sie ist jetzt die einzige Quelle dieses Moduls
+(kein API-Football-Budgetverbrauch, kein Plan-Gate mehr).
 
-Grundsaetze:
-- Nur echte Feed-Daten, kein Geschaetztes. Abruffehler behalten die zuletzt
-  erfolgreiche Liste (Setting-Cache, JSON) - die Seite bleibt stets bedienbar.
-- Budgetwaechter: fruehestens alle 6 h, max. 2 Abrufe/Tag. Zusammen mit
-  Minute-Boost (<=90) und Goal-Boost (<=8) bleiben wir immer <=100 Calls/Tag.
-- Nutzt denselben Token wie die Booster (Admin -> Einstellungen -> APIs).
+Grundsaetze (unveraendert):
+- Nur echte Feed-Daten, kein Geschaetztes. Bei Abruffehlern behaelt die
+  zuletzt erfolgreiche Liste (Setting-Cache, JSON) - die Seite bleibt stets
+  bedienbar, der letzte Fehlergrund wird auf ihr ausgewiesen.
+- Sparsamkeit: fruehestens alle 30 Minuten ein HTTP-Versuch (Seitenbesuch),
+  dazu der Sync-Hook nach jedem OLB-Abgleich; nach Fehlschgen 10 Minuten
+  (Fehler sollen nicht halbtags brachliegen).
 """
 import json
 from datetime import datetime, timedelta, timezone
@@ -18,20 +22,16 @@ from datetime import datetime, timedelta, timezone
 import requests
 from flask import current_app
 
-from minute_boost import (apifootball_token, _gate_cache, _name_tokens,
-                          _AF_LEAGUE_IDS, _plan_blocked, plan_block_mark,
-                          af_errors_text, record_apifootball_activity)
+from minute_boost import _gate_cache
 from scoring import get_setting, set_setting
 
 CACHE_KEY = "top_scorers_data"
-CACHE_VERSION = 1
-# Offizieller Endpoint laut API-Football-Docs (12.09.2026 geprueft):
-# GET /players/topscorers?league=..&season=..  - NICHT statistics/...
-_URL = ("https://v3.football.api-sports.io/players/topscorers"
-        "?league={league}&season={season}")
-_FAIL_RETRY_SECONDS = 1800  # nach fehlgeschlagenem Versuch schneller erneut
-_MIN_INTERVAL = 6 * 3600
-_DAILY_BUDGET = 2
+CACHE_VERSION = 2  # OLB-Umstieg: Felder nur name/goals, altes Schema verwerfen
+_URL = "https://api.openligadb.de/getgoalgetters/{league}/{season}"
+_OLB_LEAGUES = {"BL1": "bl1", "BL2": "bl2"}
+_FAIL_RETRY_SECONDS = 600
+_MIN_INTERVAL = 30 * 60
+_DAILY_BUDGET = 96  # nur Sanftmut-Deckel; OpenLigaDB hat kein Konto
 _GATE_KEY = "topscorers:gate"
 
 # In-Prozess-Fallback, wenn der Redis-Cache deaktiviert ist (Muster wie bei
@@ -46,37 +46,26 @@ def _to_int(value, default=0):
         return default
 
 
-def _parse_top_scorers(payload):
-    """API-Football-Response -> kompakte, sortierte Rangliste (Top 20)."""
+def _activity_record(ok, note=""):
+    """Echte Abruefe (Erfolg WIE Fehler) ins Quellen-Protokoll; nie fatal."""
+    try:
+        import datasource_activity as _ds
+        _ds.record("torjaeger", ok, note)
+    except Exception as e:  # pragma: no cover - Protokoll darf nichts kippen
+        current_app.logger.debug(f"top-scorers activity: {e}")
+
+
+def _parse_goalgetters(payload):
+    """OpenLigaDB-Liste -> [{name, goals}] (Tore desc, dann Name, Top 20)."""
     rows = []
-    for item in (payload.get("response") or []):
+    for item in (payload or []):
         if not isinstance(item, dict):
             continue
-        player = item.get("player") or {}
-        stats = {}
-        for candidate in (item.get("statistics") or []):
-            if isinstance(candidate, dict):
-                stats = candidate
-                break
-        goals_obj = stats.get("goals") or {}
-        goals = _to_int(goals_obj.get("total"))
-        if goals < 1:
-            continue  # nur Spieler mit mindestens einem Tor z00e4hlen
-        pen = stats.get("penalties") or {}
-        games = stats.get("games") or {}
-        rows.append({
-            "player_id": player.get("id"),
-            "name": (player.get("name") or "").strip() or "unbekannt",
-            "photo": (player.get("photo") or "").strip() or None,
-            "position": (player.get("position") or "").strip() or None,
-            "team": ((player.get("team") or {}).get("name") or "").strip(),
-            "goals": goals,
-            "assists": _to_int(goals_obj.get("assists")),
-            "pen_scored": _to_int(pen.get("scored")) or None,
-            "pen_missed": _to_int(pen.get("missed")) or None,
-            "apps": _to_int(games.get("appearences")),   # API-Tipp bleibt so
-            "minutes": _to_int(games.get("minutes")) or None,
-        })
+        goals = _to_int(item.get("goalCount"))
+        name = str(item.get("goalGetterName") or "").strip()
+        if goals < 1 or not name:
+            continue  # nur echte Torschuetzen
+        rows.append({"name": name, "goals": goals})
     rows.sort(key=lambda r: (-r["goals"], r["name"]))
     return rows[:20]
 
@@ -130,7 +119,7 @@ def _gate_allow(now=None):
         import datasource_activity as _ds
         last_entry = (_ds.entries() or {}).get("torjaeger")
         if last_entry and not last_entry.get("ok"):
-            interval = _FAIL_RETRY_SECONDS  # Fehler sollen nicht halben Tag brachliegen
+            interval = _FAIL_RETRY_SECONDS  # Fehler nicht halbtags brachliegen
     except Exception:
         pass
     if (now.timestamp() - float(state.get("last") or 0.0)) < interval:
@@ -144,19 +133,13 @@ def _gate_allow(now=None):
 
 
 def fetch_top_scorers(force=False, now=None):
-    """Holt die Top-Scorer-Liste und legt sie im Setting-Cache ab (Best effort).
+    """Holt die Torschuetzenliste von OpenLigaDB (Setting-Cache, Best effort).
 
-    force=True umgeht das 6-h-Intervall (Admin-Button), verbraucht aber
-    weiterhin das taegliche Budget.
+    force=True umgeht das 30-min-Intervall (Sync-Hook); der Tagesdeckel bleibt.
     """
     now = now or datetime.now(timezone.utc)
-    token = apifootball_token()
-    if not token:
-        return {"ok": False, "skipped": "no-token"}
-    if _plan_blocked("torjaeger"):
-        return {"ok": False, "skipped": "plan-blocked"}
     comp = (current_app.config.get("COMPETITION") or "BL1")
-    league = _AF_LEAGUE_IDS.get(comp)
+    league = _OLB_LEAGUES.get(comp)
     if not league:
         return {"ok": False, "skipped": "league-unsupported"}
     if not force and not _gate_allow(now):
@@ -168,43 +151,41 @@ def fetch_top_scorers(force=False, now=None):
         season = current_app.config.get("SEASON", "2026")
     url = _URL.format(league=league, season=season)
     try:
-        r = requests.get(url, headers={"x-apisports-key": token}, timeout=8)
+        r = requests.get(url, timeout=10)
     except Exception as e:
         current_app.logger.debug(f"top-scorers: Request fehlgeschlagen: {e}")
-        record_apifootball_activity("torjaeger", False, f"Netzwerk: {e}")
+        _activity_record(False, f"Netzwerk: {e}")
         return {"ok": False, "error": str(e)}
     if r.status_code != 200:
-        record_apifootball_activity("torjaeger", False, f"HTTP {r.status_code}")
+        _activity_record(False, f"HTTP {r.status_code}")
         return {"ok": False, "http": r.status_code}
     try:
         payload = r.json()
     except Exception:
-        record_apifootball_activity("torjaeger", False, "Antwort kein JSON")
+        _activity_record(False, "Antwort kein JSON")
         return {"ok": False, "bad_json": True}
-    if payload.get("errors"):
-        current_app.logger.info(f"top-scorers: API-Football meldet: {payload['errors']}")
-        _errtxt = af_errors_text(payload)
-        plan_block_mark("torjaeger", _errtxt)
-        record_apifootball_activity("torjaeger", False, "API: " + _errtxt)
-        return {"ok": False, "api_errors": True}
-    rows = _parse_top_scorers(payload)
+    rows = _parse_goalgetters(payload)
     if not rows:
-        record_apifootball_activity("torjaeger", False, "Liste leer (Spielfrei?)")
+        _activity_record(False, "Liste leer (Saisonstart?)")
         return {"ok": False, "empty": True}
     set_setting(CACHE_KEY, json.dumps({
         "v": CACHE_VERSION, "fetched_at": now.isoformat(),
         "season": str(season), "entries": rows,
     }, ensure_ascii=False))
     current_app.logger.info(f"top-scorers: Rangliste mit {len(rows)} Spielern aktualisiert")
-    record_apifootball_activity("torjaeger", True, f"{len(rows)} Spieler")
+    _activity_record(True, f"{len(rows)} Spieler")
     return {"ok": True, "count": len(rows)}
 
 
-def refresh_top_scorers(force=False):
-    """Stiller Auto-Refresh-Haeckchen (Cron/Hook): Fehler nie laut, nie fatal."""
+def refresh_top_scorers(force=True):
+    """Stiller Auto-Refresh-Haken (Sync): Fehler nie laut, nie fatal.
+
+    force=True, weil der Sync selbst der seltene Taktgeber ist - das
+    30-min-Intervall bleibt als Schutz vor Sync-Lawinen bestehen.
+    """
     try:
         return fetch_top_scorers(force=force)
-    except Exception as e:  # Doppel-Sicherung: Hook darf keinen Sync-Call kippen
+    except Exception as e:  # Doppel-Sicherung: Hook darf keinen Sync kippen
         current_app.logger.debug(f"top-scorers: Refresh uebersprungen: {e}")
         return {"ok": False, "error": str(e)}
 
@@ -216,31 +197,17 @@ def top_scorers_listing(allow_refresh=True):
         fetch_top_scorers()
         data = load_cache() or data
     entries = (data or {}).get("entries") or []
-    if entries:
-        # Kurze Team-Kuerzel + Logos aus der eigenen DB anreichern (best effort)
-        from models import Team
-        teams = Team.query.all()
-        for row in entries:
-            tok = _name_tokens(row.get("team") or "")
-            db_team = None
-            for t in teams:
-                tt = _name_tokens(t.name or "")
-                if tok and tt and (tok <= tt or tt <= tok):
-                    db_team = t
-                    break
-            row["short"] = db_team.short_name if db_team else (row.get("team") or "?")[:8]
-            row["logo"] = (db_team.logo if db_team else None)
     meta = {
         "fetched_at": (data or {}).get("fetched_at"),
         "season": (data or {}).get("season"),
         "empty": not entries,
-        "has_token": bool(apifootball_token()),
+        "source": "OpenLigaDB",
         "last_error": None,
         "last_attempt": None,
     }
     if not entries:
-        # Ehrlichkeit statt Raterei: letzter fehlgeschlagener Versuch inkl.
-        # echtem API-Grund (z. B. Plan-/Saison-Grenze) auf der Seite anzeigen.
+        # Ehrlichkeit statt Raetselraten: letzter fehlgeschlagener Versuch
+        # inkl. echtem Grund auf der Seite anzeigen.
         try:
             import datasource_activity as _ds
             act = (_ds.entries() or {}).get("torjaeger") or {}

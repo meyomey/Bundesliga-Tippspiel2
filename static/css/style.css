@@ -1162,13 +1162,19 @@ label.check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
   border-bottom: 1px solid var(--border);
 }
 .tu-kickoff { display: flex; flex-direction: column; gap: 2px; }
+.tu-kickoff-row { display: inline-flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
 .tu-kickoff-day {
   color: var(--primary-text); font-size: 11px;
   letter-spacing: 1.5px; text-transform: uppercase; font-weight: 800;
 }
 .tu-kickoff strong { font-size: 13px; color: var(--text); }
-.tu-top-badges { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tu-top-badges { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; overflow: hidden; }
+/* Einzeilig erzwingen (12.09., Nutzerfeedback): flex-wrap:wrap warf Combo
+   und Wetter auf zwei Zeilen. Wetter dinnt nie, die Stadion-Pille laeuft bei
+   Platznot mit Ellipse aus. (Status wohnt seit 12.09. neben dem Anpfiff.) */
+.tu-top-badges > .tu-venue-pill { flex: 0 1 auto; min-width: 0; overflow: hidden; }
 .tu-weather-pill {
+  flex: none;
   display: inline-flex; align-items: center; gap: 6px;
   padding: 5px 9px; border-radius: 999px;
   background: rgba(96,165,250,.10); border: 1px solid rgba(96,165,250,.20);
@@ -7242,6 +7248,7 @@ a.tu-venue-route {
 /* Combo-Huelle (12.09.): Stadion-Suche und 🧭-Routing teilen sich EINE Pille.
    Als zwei Badge-Items brachen sie auf schmalen Screens um (zwei Zeilen). */
 .tu-venue-combo {
+  flex: 0 1 auto; min-width: 0;
   display: inline-flex; align-items: stretch; max-width: 100%;
   white-space: nowrap; overflow: hidden;
   border-radius: 999px; background: rgba(148,163,184,.12);
