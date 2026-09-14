@@ -171,6 +171,9 @@ Verwendungszweck: Tippspiel + Spielername') }}
         <small class="muted">Status: {% if apifootball_configured %}✅ Token gespeichert – echte Live-Minute und Torschützen im Spielbericht sind aktiv (Budgetwächter: gesamt ≤ 100 Calls/Tag). Die Torjäger-Rangliste läuft unabhängig davon über OpenLigaDB{% else %}ℹ️ Kein Token – Live-Minute zeigt die „≈"-Uhr und Torschützen im Spielbericht bleiben leer; die Torjäger-Rangliste funktioniert trotzdem (OpenLigaDB, keyfrei). Kostenloser Free-Key von api-sports.io aktiviert die beiden Booster. Achtung: Je nach Plan begrenzt die API bestimmte Endpunkte auf vergangene Saisons – solche Absagen zeigt Admin → API Sync („Versuche je Quelle") im Originaltext, und die App pausiert den betroffenen Feed dann einen Tag.{% endif %}</small>
         <small class="muted">Key holen: <a href="https://www.api-football.com/" target="_blank" rel="noopener">api-football.com</a> registrieren → Dashboard → „API-KEY" kopieren → hier einfügen.</small>
       </label>
+      <label>{{ form.squad_aliases.label }} {{ form.squad_aliases(class_='input', rows=3, placeholder='schick = Bayer 04 Leverkusen&#10;undav = SV Darmstadt 98') }}
+        <small class="muted">Die TheSportsDB-Vereinsuche ordnet nur eindeutige Liga-Treffer zu. Was sie ablehnt (inkl. Fund und Grund), listet Admin → API Sync - und mit diesen Zeilen ordnest du von Hand zu. Format: nachname = Vereinsname/Kürzel aus der Datenbank, ein Eintrag pro Zeile.</small>
+      </label>
       <label>{{ form.public_base_url.label }} {{ form.public_base_url(class_='input', placeholder='https://deine-domain.de') }}
         <small class="muted">{{ form.public_base_url.description }}</small>
       </label>

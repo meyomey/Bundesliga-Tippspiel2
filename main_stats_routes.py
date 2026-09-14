@@ -1,7 +1,7 @@
 """Ausgelagerte Main-Route-Logik: Statistiken, Recap, Live."""
 from datetime import datetime, timedelta, timezone
 
-from flask import render_template
+from flask import abort, flash, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_required
 
 from routes_main import main_bp  # Blueprint-Registrierung statt Lazy-Wrapper in routes_main.py
@@ -510,7 +510,45 @@ def _top_scorers():
         fetched_dt = _dt.fromisoformat(str(meta.get("fetched_at"))) if meta.get("fetched_at") else None
     except (TypeError, ValueError):
         fetched_dt = None
-    return render_template("torjaeger.html", entries=entries, meta=meta, fetched_dt=fetched_dt)
+    squad_teams = []
+    if getattr(current_user, "is_admin", False) and not session.get("player_preview_mode"):
+        # wie base.html: im Spieler-Modus gilt der Admin-Blick als abgelegt
+        from models import Team
+        squad_teams = sorted(
+            [(t.id, t.short_name or t.name, t.name) for t in Team.query.all()],
+            key=lambda x: x[2].lower())
+    return render_template("torjaeger.html", entries=entries, meta=meta,
+                           fetched_dt=fetched_dt, squad_teams=squad_teams)
+
+
+@main_bp.route("/torjaeger/verein", methods=["POST"], endpoint="top_scorers_club")
+@login_required
+def _top_scorers_club():
+    """Admin-Picker: Verein fest zuordnen (als Alias) oder Zuordnung loesen.
+
+    Schreibt durch dieselbe Funktion wie das Textfeld in den Einstellungen -
+    eine Quelle, kein zweiter Mechanismus. Wirkt sofort, weil die Zuordnung
+    vor dem Frische-Cache der Suche angewandt wird.
+    """
+    if not getattr(current_user, "is_admin", False):
+        abort(403)
+    if session.get("player_preview_mode"):
+        # Spieleransicht aktiv: nichts still aendern koennen, nur Hinweis wie
+        # im Adminbereich ueblich
+        flash("Spieleransicht ist aktiv. Beende sie, um Zuordnungen zu ändern.", "info")
+        return redirect(url_for("main.dashboard"))
+    from top_scorers import set_manual_link
+    player = (request.form.get("player") or "").strip()
+    team_id = (request.form.get("team_id") or "").strip()
+    if player and set_manual_link(player, team_id or None):
+        if team_id:
+            flash("Verein zugeordnet – die Zuordnung überholt die automatische Suche "
+                  "(als Alias sichtbar unter Admin → Einstellungen → APIs).")
+        else:
+            flash("Zuordnung gelöscht – die automatische Suche greift beim nächsten Lauf wieder.")
+    else:
+        flash("Das hat nicht geklappt: Spielername oder Verein passt nicht.", "error")
+    return redirect(url_for("main.top_scorers"))
 
 
 @main_bp.route("/tabelle", endpoint="leaderboard")

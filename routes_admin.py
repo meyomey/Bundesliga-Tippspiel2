@@ -623,6 +623,7 @@ def settings():
         form.prize_notes.data = get_setting("prize_notes", "")
         form.football_data_token.data = ""
         form.apifootball_token.data = ""
+        form.squad_aliases.data = get_setting("topscorers_squad_aliases", "")
         form.public_base_url.data = get_setting("public_base_url", current_app.config.get("PUBLIC_BASE_URL", ""))
         form.mail_server.data = get_setting("mail_server", current_app.config.get("MAIL_SERVER", ""))
         form.mail_port.data = get_setting("mail_port", current_app.config.get("MAIL_PORT", 587))
@@ -666,6 +667,7 @@ def settings():
         apifb_token = (form.apifootball_token.data or "").strip()
         if apifb_token:
             set_setting("apifootball_token", apifb_token)
+        set_setting("topscorers_squad_aliases", (form.squad_aliases.data or "").strip())
         set_setting("public_base_url", (form.public_base_url.data or "").strip().rstrip("/"))
 
         set_setting("mail_server", (form.mail_server.data or "").strip())

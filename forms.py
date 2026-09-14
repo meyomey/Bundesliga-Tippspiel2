@@ -242,6 +242,12 @@ class SettingsForm(FlaskForm):
     apifootball_token = PasswordField(
         "API-Football Token (optional: Live-Minute, Torschützen, Torjäger)",
         validators=[Optional()])
+    squad_aliases = TextAreaField(
+        "Torjäger-Aliasse (Nachname = Vereinsname oder Kürzel, eine pro Zeile)",
+        validators=[Optional(), Length(0, 1000)],
+        description="Manuelle Zuordnung, wenn die TheSportsDB-Suche scheitert - "
+                    "siehe Liste unter Admin -> API Sync.",
+    )
     public_base_url = StringField(
         "Öffentliche Basis-URL",
         validators=[Optional(), Length(0, 200)],

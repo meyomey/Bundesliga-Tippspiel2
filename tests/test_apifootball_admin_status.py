@@ -219,6 +219,7 @@ def test_admin_page_shows_attempt_table(app, client, db, admin_user, monkeypatch
     assert "Datenquellen" in html
     assert "HTTP 429 Rate-Limit" in html
     assert "noch nicht protokolliert" in html
+    assert "Uhr UTC Uhr" not in html  # doppeltes Suffix war 13.0. sichtbar
 
 
 def test_diagnostics_and_admin_page(app, client, db, admin_user, monkeypatch, af_env):

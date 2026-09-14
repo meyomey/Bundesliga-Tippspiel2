@@ -1576,4 +1576,90 @@ faker==28.4.1
 - **Anlass:** Nutzerfrage nach weiteren kostenlosen Quellen pro Spiel (Torschuetzen, Karten). Live-Pruefung: TheSportsDB Felder leer, ESPN von hier 403 (unverifizierbar/undokumentiert), football-data events = Paid, API-Football-History bleibt Free-Plan-blockt. Einzige saubere Gratis-Option: **OpenLigaDB matchEvents** im bereits genutzten getmatchdata-Payload (aktuell leer, 0 Ereignisse BL1 - live getestet); nimmt man, damit es automatisch greift.
 - **sync_openligadb.py:** `_olb_event_rows()` normalisiert Goal/OwnGoal/Yellow/YellowRed/Red (Elfer-Fehlschuetze und Wechsel bewusst draussen), numerische UND Text-Eventtypen; `_apply_olb_events()` mergt in das events-JSON beider OLB-Pfade (Vollsync + Nachzug): Goal-Boost-Zeilen haben bei Tor-Minute+Seite Vorrang (keine Duplikate), Fremdformate (live_scoring) bleiben unangetastet, laeuft nur bei finished, idempotent. Sync-Meldung ergaenzt "🥇 n Spiele mit neuen Ereignissen" nur wenn >0 (sonst lautlos), res["events"] Zaehler.
 - **Seite:** match_detail zeigt unter den Torschuetzen eine "🟨 Karten & Platzverweise"-Sektion (Gelb/Gelb-Rot/Rot mit Quelle-Hinweis); gf-Zeilen aus OLB laufen automatisch durch die bestehende Tore-Sektion.
-- **Tests:** +6 (`tests/test_olb_events.py`: Normalisierung/Filter, numerische Typen, Merge ohne Duplikate + Fremdformat-Schutz + Idempotenz, finished-Guard, Vollsync-Integration inkl. Meldungszaehler, Rendering beider Sektionen). Suite **388/388**.
+- **Tests:** +6 (`tests/test_olb_events.py`: Normalisierung/Filter, numerische Typen, Merge ohne Duplikate + Fremdformat-Schutz + Idempotenz, finished-Guard, Vollsync-Integration inkl. Meldungszaehler, Rendering beider Sektionen). Suite **387/387**.
+
+
+## 2026-09-13 (21) - Torjaeger mit Verein: Nachname-Abgleich gegen football-data-Kader
+
+- **Anlass:** Nutzerfrage "mehr Infos zu den Torjaegern, zumindest die Mannschaft?". OLB `getgoalgetters` nennt nur Name+Tore; `getplayers` ist 404. Die gratis-Loesung nutzt den LAENGST vorhandenen football-data-Free-Token: `/competitions/BL1/clubs` (+ ggf. `/clubs/{id}` fuer die `squad`-Listen) liefert die Kader - daraus Nachname->Verein-Tabelle.
+- **`top_scorers.refresh_squad_map()`:** 1 Listen-Request pro Lauf, max. 4 Vereins-Detailabruefe als Nachzug pro Auffrischung (Rate-Limit-freundlich), Ergebnis 7 Tage gecacht (`topscorers_squad_map`), bei Gegenwind bleibt der alte Stand stehen; ohne fd-Token kompletter Skip (Liste laeuft dann wie bisher). Nach einem erfolgreichen Ranglisten-Fetch wird die Map automatisch dazugebucht.
+- **Zuordnung ehrlich:** Nur EINDEUTIGE Nachnamen bekommen Verein (+Logo aus der eigenen DB, Umlaut-normalisiert, Klammersuffixe bereinigt); zwei "Mueller" in der Liga -> Feld bleibt leer statt zu raten. Anzeige unter dem Spielernamen.
+- **Tests:** +4 (Annotation eindeutig/mehrdeutig, Skip ohne Token, Cache-Zweitaufruf, Seitenrendering mit "FCB") - ein selbst eingebauter Tautologie-assert wurde vor Release entfernt. Suite **391/391**.
+
+
+## 2026-09-13 (22) - Admin-Zeitdoppler behoben + Vereinsabgleich sichtbar gemacht
+
+- **Nutzer-Screenshots (Live, 13.09. abends):** (a) Torjaeger-Seite ohne Vereins-Anzeige, (b) Datenquellen-Zeilen mit "13.09.2026 19:20 Uhr UTC Uhr UTC".
+- **Duplikat:** `_fmt_utc` liefert bereits "...Uhr UTC", die Datenquellen-Zeile haengte zusaetzlich ein hartes " Uhr UTC" an (seit ㉳ unentdeckt, weil der Test nur den Praefix pruefte). Fix in templates/admin/sync.html: `{{ at_fmt or (at[:16] ~ ' Uhr UTC') }}` - Fallback-Pfad bleibt lesbar. Regressionstest: "Uhr UTC Uhr" darf nicht im HTML stehen.
+- **Zeiten erklaert (kein Bug):** Torjaeger "Stand 21:20" ist Lokalzeit (de_local), Admin "19:20 Uhr UTC" dieselbe Minute in UTC (CEST=UTC+2). Bewusst gemischt: Seite = fuer Spieler, Admin = fuer Feed-Vergleich.
+- **Sichtbarmachung:** Nach einem erfolgreichen Torjaeger-Fetch steht im Quellen-Protokoll jetzt "n Spieler · x/n mit Verein" (bzw. "... (Kader-Aufbau laeuft, m Clubs erkannt)" oder "· ohne Vereinsabgleich (kein football-data-Token)"). Damit ist auf einen Blick erkennbar, ob der Vereinsabgleich laeuft, teilaufgebaut ist, oder das Modul auf dem Server noch ohne Map-Code ist (Notiz bleibt dann beim alten Wortlaut) - Ferndiagnose statt Raten. fetch liefert zusaetzlich res["teams"].
+- Suite **392/392** (+1 Notiz-Test, +1 Dup-Regression). Alle drei Hotfix-Ordner per SHA-Check auf Repo-Stand gebracht (sync.html-Update in torjaeger_olb UND stadien_festdaten nachgezogen).
+
+
+## 2026-09-13 (23) - Modul-Stempel + Pycache-Falle + Akzent-Match (Torjaeger)
+
+- **Beweislage aus dem Nutzer-Screenshot:** Sync um 19:34 UTC lief, aber die Torjaeger-Notiz blieb beim ALTEN Wortlaut "20 Spieler" (kein "x/n mit Verein", kein Skip-Hinweis) -> auf dem Server aendert die neue top_scorers.py nichts, waehrend das neue Template (sync.html, Dup-Fix sichtbar) wirkt. Klassischer Verdacht: FTP-Client hat alte Timestamps mitgesetzt, Python nutzt das __pycache__ weiter.
+- **Gegenmittel:** (a) HINWEIS erzaehlt jetzt das Loeschen von __pycache__ nach Upload. (b) Modul-Selbstausweis: top_scorers.MODULE_VERSION "2026-09-13c" steht am Ende der Quellen-Notiz UND dezent auf der Torjaeger-Seite (meta.module_version) - eine Screenshot-Zeile entscheidet kinftig, welche Version laeuft (alter Stand ohne Stempel = Beweis "nicht deployt").
+- **Eigener Bug gefunden:** Nachname-Match zerlegte nur deutsche Umlaute; football-data schreibt Spieleramen mit Akzenten (Matanovic') - OLB-Kuerzel trafen dann nie. _surname_key normalisiert jetzt NFKD (combining marks entfernt), Test mit Matanovic'/Matanovic + KOE-Kurzel.
+- Suite **394/394** (+3: Akzentmatch, Stempel in Notiz+Meta). Alle Hotfix-Ordner wieder SHA-synchron.
+
+
+## 2026-09-13 (24) - Stummer Kader-Ausfall ist vorbei: Grund + Abbruch nach erstem Fehler
+
+- **Aus dem Live-Bild (19:34-Deploy):** "Uhr UTC"-Doppler weg (Fix wirkt!), Torjaeger-Notiz blieb aber nuchtern "20 Spieler" -> Vereinsabgleich schlug fehl, ohne Grund zu nennen. Genau dafuer war der Stempel-Ansatz zu grob: Der else-Zweig nennt jetzt den echten Grund ("Vereinsabgleich ausgesetzt (HTTP 429)" o.a.), der Fertig-Zweig den Baustatus "(Kader-Aufbau laeuft, 18 Clubs erkannt)".
+- **Eigener Bug im Detail-Loop:** bei Nicht-200 (Rate-Limit) wurden alle restlichen 18 Clubs schnell durchgeprobt - bricht jetzt nach dem ersten Fehlschlag ab; done-Schwelle beruecksichtigt den Abbruch (kein falsches "fertig").
+- **Umlaut-Falle im eigenen Test:** Notizen in Moduldateien sind ASCII ("laeuft"), Assertion mit "laeuft" korrigiert - und eine Tautologie-Regression ("Kader-Aufbau" NOT in note bei voller Map) gleich mit raus.
+- Suite **395/395** (+1 Rate-Limit-Test, +1 Baustatus-Fall im Notiz-Test). Hotfix-Ordner nachgezogen.
+
+
+## 2026-09-13 (25) - 404-Ursache gefunden: erfundener fd-Endpoint durch /standings ersetzt
+
+- **Ferndiagnosetest bestanden:** Das neue Protokoll zeigte sofort "Vereinsabgleich ausgesetzt (404) · Modul 2026-09-13c" - die eigene Diagnose hat ihren Zweck erfuellt.
+- **Fehler:** football-data v4 hat KEINEN Endpoint /competitions/{code}/clubs (den hatte ich aus aelteren API-Generationen "gewusst"). Korrekter Weg: GET /competitions/{code}/standings (gratis) -> Team-Referenzen der Hinrundentabelle -> GET /clubs/{id} fuer die squad-Felder (wie schon vorher etappenweise, 4/Lauf). Tabelle leer (vor MD1) -> eigener Zweig "keine Tabelle (Saisonstart?)" im Protokoll statt stummem Fehler.
+- **Zusaetzlich:** Map fertig + 0 Treffer wird ausdruecklich als moegliche Free-Plan-Grenze ("fd-Kader ohne squad-Felder") benannt. Stempel hoch auf 2026-09-13d.
+- **Tests:** 16 im ts-File (neuer Regressionstest "kein erfundener clubs-Endpoint mehr"; Akzentfall korrigiert: "Matanovic" <-> "Matanovic'" mit korrekter Transliteration). Suite **396/396**.
+
+
+## 2026-09-13 (26) - Kader-Abrufe komplett auf den fd-Wrapper des Hauptsyncs umgestellt
+
+- **Erkenntnis aus Stempel d (Server: weiter HTTP 404):** auch der standings-Abruf als roher requests-Call scheiterte - der Hauptsync ruft NIE nackige URLs, sondern _fd_request(...): Base-URL aus Config, Token, PFLICHT-Parameter `?season=`, Response-Cache mit 10-min stale fallback und anstaendige Fehlertexte. Mein Eigenbau hatte (a) ohne Saisonparameter gefragt und (b) ggf. andere Base/Pfade. Der Wegfall des Eigenbaus loescht beide Fehlerklassen.
+- **Umbau top_scorers.refresh_squad_map:** steht/saemt jetzt ausschliesslich ueber `sync_football_data._fd_request(path, ttl)` (standings 1 h, /clubs/{id} 1 Tag) - kein eigenes requests-, kein eigenes Token-, kein Rate-Limit-Handling mehr; Fehlermeldungen des Wrappers (Token fehlt, 429, 404, Netzwerk) erscheinen unveraendert in der Admin-Notiz. no-fd-token-Sonderzweig entfernt (der Wrapper meldet das selbst, inkl. "Admin → Einstellungen"-Hinweis). Stempel 2026-09-13e.
+- **Tests:** Fakes haeangen jetzt am selben Punkt wie das Leben (`_fd_request` statt requests+URL-Raetsel): Abbruch-Test zaehlt genau EINEN Detail-Versuch bei Rate-Limit; Map-Cache-Zustand wird in Szenario-Tests explizit geleert (ein Test lief zuerst durch den cached-Short-circuit ins Leere). Suite **396/396**.
+
+
+## 2026-09-13 (27) - Drittes 404, aber selbstgebaut keins mehr: Club-Referenzen aus dem Match-Feed
+
+- **Protokoll (Stempel e):** "Vereinsabgleich ausgesetzt (API-Fehler 404 (Token/Quota pruefen))" - der korrekte Wrapper-Aufruf `/competitions/BL1/standings?season=2026` ist auf dem Server also genuine 404 (Free-Plan ohne standings fuer die aktuelle Saison). Nebenbefund: die Tabellen-Seite nutzt denselben Endpunkt, faellt bei Fehler aber still auf DB-Berechnung (`compute_live_standings`) zurueck - deshalb fiel der 404 dort nie auf.
+- **Loesung ohne Raten:** Vereins-Referenzen (id/name/shortName) stecken laengst im BEWAEHRTEN `/competitions/BL1/matches?season=` - exakt der Call, der 306 Spiele zuverlaessig liefert - und teilen sich den `_fd_request`-Cache (frischer Sync -> 0 zusaetzliche HTTP). Kader bleiben `/clubs/{id}`, etappenweise. Neue Fehlerzweige: "Match-Feed ohne Vereine (Saisonstart?)".
+- Stempel 2026-09-13f. Regressionstest verbietet jetzt BOTH erfundene/stumme Pfade (clubs + standings) und verlangt matches?season=. Suite **396/396** (16 ts-Tests). Falls /clubs/{id} auf dem Server ebenfalls 404t, sagt die Notiz das wrtlich - dann ist die Liste honest ohne Vereine (mehr lsst fd-Free nicht zu) und ich wrde zurueckbauen auf "nur OLB, ohne Map".
+
+
+## 2026-09-13 (28) - Vereinsabgleich auf TheSportsDB umgestellt (dritter Anlauf, keyfrei)
+
+- **Beweiskette komplett:** Stempel g-Protokoll zeigte nach erfolgreichem Match-Feed-Schritt "ausgesetzt (API-Fehler 404)" - damit ist auch /clubs/{id} mit dem Free-Key dicht. Alle football-data-Wege (competitions/clubs, standings, clubs/{id}) sind serverseitig als 404 belegt; der Modul-Code ruft football-data jetzt GAR NICHT mehr auf (Regressionstest sichert das).
+- **Neue Basis:** TheSportsDB-Spielersuche (searchplayers.php, kostenlos + keyfrei, live verifiziert 13.09.). Regeln gegen die dreckigen Daten: Treffer nur bei exakter Nachname-PLUS Initial-Uebereinstimmung; Vereinsstring muss eindeutig einem DB-Liga-Team zuordenbar sein (Token-Subset); "_Retried Soccer" & Co. -> als Niete gemerkt, 7 Tage kein erneuter Anlauf; Netzfehler werden NICHT als Niete gespeichert (naechster Lauf erneut). Budget 6 Nachschlagungen pro Ranglisten-Aktualisierung -> 20er-Liste in <=4 Laeufen durch; woechentliche Auffrischung (Transfers!).
+- **Notizformat:** "20 Spieler · 14/20 mit Verein (TheSportsDB: 6 nachgeschlagen)" bzw. "(TheSportsDB-Panne, n offen)" · Stempel 2026-09-13g.
+- **Tests:** File neu geschnitten (12): Parsing/Notiz, keyfrei, Drossel+Fehler-Cache, Hit-Bindung (Kurzname dynamisch aus DB - Order-Bug im eigenen Test behoben), Muell-/Fremdverein-Ablehnung + kein Nachpollern, Initial-/Nachnamens-Fehltreffer, Netz-Panne-Retries, "kein football-data mehr im Code", Sync-Hook, Seite mit/ohne Daten. Suite **392/392** (4 fd-Map-Tests entfielen).
+
+
+## 2026-09-13 (29) - Aliassammlung: Ablehnungen sichtbar + manuelle Zuordnung mit Sofortwirkung
+
+- **Anlass:** Nutzerwunsch nach der versprochenen "kleinen haendischen Aliassammlung" fuer die 8 von 20 abgelehnten Torjaeger-Namen. (Hinweis: dieser Round war beim ersten Versuch mittig abgebrochen - nur das Modul kam an, Kabel drunter/Drueber fehlten; jetzt vollstaendig und gegengeprueft.)
+- **top_scorers (Stempel h):** Ablehnungen landen im Map-Feld 'rejected' mit Grund (Fund+Verein der Suche, Alias-Fehler) - Pruning gegenueber lebenden Namen; squad_review() liefert (Spieler, Grund, Schluessel) fuer die Admin-Seite; Aliasse (Setting 'topscorers_squad_aliases', Zeilen 'nachname = Verein/Kuerzel', Trenner =/:/->/→) werden VOR dem done_at-Cache-Kurzschluss angewandt - echte Logikverbesserung, sonst haette eine Handzuordnung bis zu 7 Tage auf Wirkung warten muessen; kaputte Aliasse ueberschreiben nichts und erklaeren sich in der Review-Liste. Notiz: "... · n abgelehnt (Aliasse moeglich)".
+- **Admin:** API-Sync-Seite zeigt unter der 🥇-Zeile eine Karte mit allen unzugeordneten Namen inkl. Grund und kopierfertigem "key = ..."-Vorschlag; Einstellungen -> APIs bekommt das TextArea "Torjäger-Aliasse" (forms.py-Feld + routes_admin-Vorbelegen/Speichern, 1000 Zeichen).
+- **Tests:** +5 (Rejected-Recording, Alias ueberholt Suche ohne neuen HTTP-Aufruf, kaputter Alias meldet statt zu ueberschreiben, Admin-Liste rendert, Settings-Feld zeigt gespeicherten Text). Beim Umbau zweimal in eigene Fallen getappt und transparent behoben: (1) 7-Tage-Cache frass Alias-Aenderungen, (2) function-slicing hat squad_review verschluckt. Suite **397/397**.
+
+
+## 2026-09-13 (30) - Torjaeger-Seite bekommt den Vereins-Picker fuer Admins
+
+- **Wunsch:** Zuordnung direkt am Spieler per Auswahlliste statt Textfeld-Frickeln.
+- **Wie:** `main_stats_routes` haengt der Seite nur fuer Admins `squad_teams` (alle DB-Teams, sortiert) an; pro Zeile ein kleines `select` (JS-onchange-Submit, CSRF-Token aus base-Konvention) + POST `/torjaeger/verein` (endpoint main.top_scorers_club, login+is_admin, sonst 403). Der Picker schreibt **durch dieselbe Funktion** (`set_manual_link` in top_scorers) wie das Einstellungs-Textfeld - eine Aliassammlung, kein zweiter Mechanismus. Reset ("— ohne Verein —") loescht Alias + Map-Eintrag + tried-Merkblatt; Suche darf dann wieder. Stempel i.
+- **Beim Bau gefangen und behoben:** Blueprint-Namespace - `url_for('top_scorers')` baut ohne `main.` keine URL (BuildError im Redirect und im Sync-Hinweis); Tests auf Teilstring-Namen und Logout-zwischen-Logins korrigiert.
+- **Tests:** +4 (Picker setzt Alias+Zeile ohne HTTP, Reset entlaeuft names/tried, 403 fuer tippende Nutzer + 'passt nicht' bei unbekannter Team-id, Picker nur im Admin-HTML). Suite **401/401**.
+
+
+## 2026-09-13 (31) - Picker respektiert die Spieleransicht
+
+- **Fund des Nutzers:** Im Spieler-Modus (Session-Flag `player_preview_mode`) zeigte die Torjaeger-Seite weiter die Vereins-Dropdowns - base.html gateet Admin-UI seit je mit `is_admin and not player_preview_mode`, die neue Stats-Route nur mit `is_admin`.
+- **Fix:** GET uebergibt `squad_teams` im Preview leer (Template blendet den Picker automatisch aus, Liste bleibt); POST `/torjaeger/verein` antwortet im Modus wie der Adminbereich: Info-Flash + Redirect auf die Startseite, KEIN stiller Schreibvorgang. Stempel j.
+- **Tests:** +2 (Picker unsichtbar im Modus bei weiter voller Liste; POST blockiert und schreibt nichts). Suite **403/403**. Nebenfund: venv-Rebuild aus repo-eigener requirements.txt (zuverlaessiger als das fruehere /tmp-Konstrukt).

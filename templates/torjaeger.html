@@ -9,6 +9,7 @@
       Torschützenliste{% if meta.season %} · Saison {{ meta.season }}{% endif %}
       · 📡 Feed: <strong>OpenLigaDB</strong> (kostenlos, ohne Key)
       {% if fetched_dt %}<span class="muted">· Stand: {{ fetched_dt|de_local('%d.%m.%Y %H:%M') }} Uhr</span>{% endif %}
+      {% if meta.module_version %}<span class="muted" title="Modulstand zur Deploy-Kontrolle">· v{{ meta.module_version }}</span>{% endif %}
     </p>
   </div>
 </div>
@@ -24,7 +25,24 @@
       <tr class="{{ 'ts-leader' if loop.first }}">
         <td class="ts-rank">{{ loop.index }}</td>
         <td class="ts-player">
-          <span class="ts-names"><strong>{{ e.name }}</strong></span>
+          {% if e.logo %}<img class="ts-photo" src="{{ e.logo }}" alt="" loading="lazy" width="22" height="22">{% endif %}
+          <span class="ts-names">
+            <strong>{{ e.name }}</strong>
+            {% if e.team %}<small>{{ e.team }}</small>{% endif %}
+          </span>
+          {% if squad_teams %}
+          <form method="post" action="{{ url_for('main.top_scorers_club') }}" style="margin:3px 0 0">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="player" value="{{ e.name }}">
+            <select name="team_id" onchange="this.form.submit()" style="font-size:12px;max-width:100%"
+                    title="Verein zuordnen – überholt die automatische Suche (Aliassammlung in den Einstellungen)">
+              <option value="">{# leer = Zuordnung loeschen #}— ohne Verein —</option>
+              {% for tid, tshort, tname in squad_teams %}
+              <option value="{{ tid }}" {{ 'selected' if (e.team_name == tname) or (e.team and e.team == tshort) }}>{{ tshort }} · {{ tname }}</option>
+              {% endfor %}
+            </select>
+          </form>
+          {% endif %}
         </td>
         <td class="right ts-goals"><strong>{{ e.goals }}</strong></td>
       </tr>

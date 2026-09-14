@@ -74,13 +74,25 @@
     ℹ️ API-Football ohne Key inaktiv. Free-Key gibt es bei <a href="https://www.api-football.com/" target="_blank" rel="noopener">api-football.com</a>; eintragen unter Einstellungen → APIs – die drei Feeds schalten sich dann selbst scharf (kein Neustart).
   {% endif %}
   </p>
-  <p class="muted" style="margin:0 0 10px">🥇 <strong>Torjäger-Liste:</strong> läuft seit 13.09. über OpenLigaDB (keyfrei, ohne API-Football-Verbrauch) – nach jedem OLB-Sync frisch, spätestens bei Seitenbesuch (max. alle 30 Minuten).</p>
+  <p class="muted" style="margin:0 0 10px">🥇 <strong>Torjäger-Liste:</strong> läuft seit 13.09. über OpenLigaDB (keyfrei, ohne API-Football-Verbrauch) – nach jedem OLB-Sync frisch, spätestens bei Seitenbesuch (max. alle 30 Minuten). Vereinsnamen ergänzt eine TheSportsDB-Spielersuche (ebenfalls keyfrei; übernommen werden nur eindeutige Treffer auf Liga-Teams der DB).</p>
+  {% set squad_review = diag.get('squad_review') or [] %}
+  {% if squad_review %}
+  <div class="card" style="margin:0 0 10px;padding:10px 12px">
+    <strong>🔎 Von der Vereinssuche nicht zugeordnete Namen</strong>
+    <ul class="muted small" style="margin:6px 0 0;padding-left:18px">
+      {% for r in squad_review %}
+      <li><strong>{{ r.name }}</strong> – {{ r.why }} <code style="opacity:.75">{{ r.key }} = ...</code></li>
+      {% endfor %}
+    </ul>
+    <p class="muted small" style="margin:6px 0 0">Zuordnung per Hand gefällig? Am schnellsten direkt auf der <a href="{{ url_for('main.top_scorers') }}">Torjäger-Seite</a> den Verein aus der Liste wählen – alternativ (oder zum Feilen) eine Zeile je Name unter <em>Einstellungen → APIs</em> bei „Torjäger-Aliasse“, z.B. <code>schick = Bayer 04 Leverkusen</code>. Beides schreibt dieselbe Aliassammlung; Zuordnungen überholen die Suche sofort (links steht der vorgeschlagene Schlüssel).</p>
+  </div>
+  {% endif %}
   {% set srcs = diag.get('source_activity') or [] %}
   <table class="mini-table">
     {% for row in srcs %}
     <tr>
       <td>{{ row.label }}</td>
-      <td>{% if row.entry %}{{ '✅' if row.entry.ok else '⚠️' }} {{ row.entry.at_fmt or row.entry.at[:16].replace('T', ' ') }} Uhr UTC{% if row.entry.note and not (row.key == 'football-data' and row.entry.ok and ls) %} · {{ row.entry.note }}{% endif %}{% else %}<span class="muted">noch nicht protokolliert</span>{% endif %}</td>
+      <td>{% if row.entry %}{{ '✅' if row.entry.ok else '⚠️' }} {{ row.entry.at_fmt or (row.entry.at[:16].replace('T', ' ') ~ ' Uhr UTC') }}{% if row.entry.note and not (row.key == 'football-data' and row.entry.ok and ls) %} · {{ row.entry.note }}{% endif %}{% else %}<span class="muted">noch nicht protokolliert</span>{% endif %}</td>
     </tr>
     {% else %}
     <tr><td colspan="2" class="muted">Noch kein Abruf protokolliert – nach dem nächsten Sync erscheinen hier alle Quellen mit Zeitpunkt und ggf. Fehlergrund.</td></tr>

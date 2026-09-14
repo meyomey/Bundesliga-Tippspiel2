@@ -208,7 +208,20 @@ def get_sync_diagnostics():
         "apifootball": apifootball,
         "source_activity": _source_activity(),
         "stadium_gaps": _stadium_gap_list(),
+        "squad_review": _squad_review(),
     }
+
+
+def _squad_review():
+    """Was die TheSportsDB-Vereinsuche nicht zuordnen konnte (Admin-Ansicht).
+
+    Fehlerfrei nach unten: ohne Modul/Cache ist die Liste einfach leer.
+    """
+    try:
+        import top_scorers
+        return top_scorers.squad_review()
+    except Exception:
+        return []
 
 
 def _stadium_gap_list():
