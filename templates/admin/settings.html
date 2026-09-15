@@ -160,6 +160,16 @@ Verwendungszweck: Tippspiel + Spielername') }}
     </div>
   </details>
 
+  {# Community #}
+  <details class="section-group">
+    <summary>💬 Community</summary>
+    <div class="section-body">
+      <label>{{ form.whatsapp_group_url.label }} {{ form.whatsapp_group_url(class_='input', placeholder='https://chat.whatsapp.com/…') }}
+        <small class="muted">{{ form.whatsapp_group_url.description }} {% if whatsapp_group_configured %}Status: ✅ Link hinterlegt – Eingang erscheint auf Startseite und Mehr-Seite für alle Eingeloggten.{% else %}Status: ⬜ kein Eingang sichtbar{% endif %}</small>
+      </label>
+    </div>
+  </details>
+
   {# APIs #}
   <details class="section-group" {% if api_missing or not apifootball_configured %}open{% endif %}>
     <summary>🌐 APIs {% if api_missing %}<span class="missing-badge">⚠ Nicht konfiguriert</span>{% elif not apifootball_configured %}<span class="missing-badge" style="opacity:.7">ℹ Free-Key empfohlen</span>{% endif %}</summary>

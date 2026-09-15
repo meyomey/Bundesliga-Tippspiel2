@@ -238,6 +238,10 @@ class SettingsForm(FlaskForm):
                                       validators=[Optional(), Length(0, 1000)])
     prize_notes = TextAreaField("Hinweis zu Gewinnen / Preisgeldern",
                                 validators=[Optional(), Length(0, 1000)])
+    whatsapp_group_url = StringField("WhatsApp-Gruppe (Einladungslink)",
+                                     validators=[Optional(), Length(0, 300)],
+                                     description="Link wie https://chat.whatsapp.com/… – "
+                                                 "nur eingeloggten Spielern sichtbar; leer lassen = kein Eingang.")
     football_data_token = PasswordField("football-data.org Token", validators=[Optional()])
     apifootball_token = PasswordField(
         "API-Football Token (optional: Live-Minute, Torschützen, Torjäger)",

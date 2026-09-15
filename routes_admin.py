@@ -621,6 +621,7 @@ def settings():
         form.payment_info_title.data = get_setting("payment_info_title", "Zahlung an den Spielleiter")
         form.payment_info_text.data = get_setting("payment_info_text", "")
         form.prize_notes.data = get_setting("prize_notes", "")
+        form.whatsapp_group_url.data = get_setting("whatsapp_group_url", "")
         form.football_data_token.data = ""
         form.apifootball_token.data = ""
         form.squad_aliases.data = get_setting("topscorers_squad_aliases", "")
@@ -660,6 +661,19 @@ def settings():
         set_setting("payment_info_title", (form.payment_info_title.data or "").strip())
         set_setting("payment_info_text", (form.payment_info_text.data or "").strip())
         set_setting("prize_notes", (form.prize_notes.data or "").strip())
+
+        wa_url = (form.whatsapp_group_url.data or "").strip()
+        if wa_url and not wa_url.startswith(("https://", "http://")):
+            wa_url = "https://" + wa_url  # 'chat.whatsapp.com/…' allein tippt man schneller
+        if " " in wa_url:
+            # Die Settings-Vorlage zeigt Feldfehler nicht, also auf dem
+            # bewiesenen Weg: Flash-Meldung (base.html rendert die).
+            flash("WhatsApp-Link enthält ein Leerzeichen – das Speichern war leer, "
+                  "der alte Eintrag ist entfernt. Bitte ohne Abstand einfügen.", "error")
+            wa_url = ""
+            set_setting("whatsapp_group_url", "")  # kaputten Stand nicht stehen lassen
+        else:
+            set_setting("whatsapp_group_url", wa_url)
 
         api_token = (form.football_data_token.data or "").strip()
         if api_token:
@@ -745,6 +759,7 @@ def settings():
                            vapid_missing=vapid_missing, pts_missing=pts_missing,
                            pot_missing=pot_missing,
                            api_configured=not api_missing,
+                           whatsapp_group_configured=bool(get_setting("whatsapp_group_url", "")),
                            mail_password_configured=bool(get_setting("mail_password", current_app.config.get("MAIL_PASSWORD", ""))),
                            vapid_private_configured=bool(get_setting("vapid_private", current_app.config.get("VAPID_PRIVATE_KEY", ""))),
                            apifootball_configured=bool(get_setting("apifootball_token", current_app.config.get("APIFOOTBALL_TOKEN", ""))),

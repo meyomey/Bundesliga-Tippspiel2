@@ -7293,3 +7293,9 @@ a.tu-venue-route {
 .ts-goals strong { font-size: 16px; }
 .ts-goals small { display: block; font-size: 10.5px; white-space: nowrap; }
 .ts-foot { margin: 10px 12px 0; }
+
+/* WhatsApp-Gruppen-Eingang (dezente Zeile, Startseite) */
+.wa-quiet { display: inline-flex; align-items: center; gap: 8px; margin: 2px 2px 14px;
+            font-size: 14px; color: var(--muted, #9ca3af); text-decoration: none; }
+.wa-quiet:hover, .wa-quiet:focus-visible { color: var(--text, #e5e7eb); text-decoration: underline; }
+.wa-quiet svg { flex: none; display: block; }

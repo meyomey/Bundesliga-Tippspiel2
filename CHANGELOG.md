@@ -1663,3 +1663,22 @@ faker==28.4.1
 - **Fund des Nutzers:** Im Spieler-Modus (Session-Flag `player_preview_mode`) zeigte die Torjaeger-Seite weiter die Vereins-Dropdowns - base.html gateet Admin-UI seit je mit `is_admin and not player_preview_mode`, die neue Stats-Route nur mit `is_admin`.
 - **Fix:** GET uebergibt `squad_teams` im Preview leer (Template blendet den Picker automatisch aus, Liste bleibt); POST `/torjaeger/verein` antwortet im Modus wie der Adminbereich: Info-Flash + Redirect auf die Startseite, KEIN stiller Schreibvorgang. Stempel j.
 - **Tests:** +2 (Picker unsichtbar im Modus bei weiter voller Liste; POST blockiert und schreibt nichts). Suite **403/403**. Nebenfund: venv-Rebuild aus repo-eigener requirements.txt (zuverlaessiger als das fruehere /tmp-Konstrukt).
+
+
+## 2026-09-14 (32) - WhatsApp-Gruppeneingang fuer die App
+
+- **Wunsch:** Die Vereins-WhatsApp-Gruppe soll aus der App erreichbar sein. Speicherort-Entscheidung des Nutzers: Admin-Feld (nicht im Repo), sichtbar nur für Eingeloggte, Ort Startseite + Mehr-Seite.
+- **Umsetzung:** Setting `whatsapp_group_url`; neuer Settings-Block „💬 Community" (Feld + Statuszeile „Link hinterlegt/kein Eingang"). `routes_main._whatsapp_group_url()` liefert den Wert nur, wenn er mit http(s):// beginnt (kaputte/giftige Werte rendern nichts), Dashboard zeigt einen `payment-reminder-card`-Kasten (gleiche Optik, 💬 + Button „Gruppe öffnen", target=_blank rel=noopener), Mehr-Seite eine `more-card` unter „Mitspieler einladen". Speichern ergänzt fehlendes https:// automatisch; Link mit Leerzeichen => Flash-Fehler (Vorlage zeigt keine Feldfehler, Umweg über das bewährte Flash) + alter Eintrag bewusst geleert. Der Invite-Link lebt nur in der DB, nie im Code/GitHub.
+- **Neuer Hotfix-Ordner** `hotfix_whatsapp_gruppe/` (sechs Dateien, HINWEIS mit Selbstbeweis-Hinweis: Block „Community" fehlte vorher). Suite **408/408** (+5: Roundtrip inkl. Schema-Auto, Leerzeichen-Ablehnung, Dashboard show/hide, Mehr show/hide, No-Render bei `javascript:`-Wert).
+
+
+## 2026-09-15 (33) - WhatsApp-Eingang dezenter, mit echtem Logo
+
+- **Userfeedback (Screenshot):** Die gestrige Startseite-Karte klang zu wichtig neben der Naechster-Schritt-Box; Wunsch nach dezenter Darstellung + WhatsApp-Logo.
+- **Umsetzung:** Dashboard block by block zur Einzeiler-Zeile `.wa-quiet` (inline-flex, 14 px, Muted-Text, Hover unterstrichen) umgebaut - Text "In die WhatsApp-Gruppe der Tipprunde" + halbleiser Klammer "Los-Tausch, Fragen, Feiern", davor das offizielle WhatsApp-Glyph als Inline-SVG (#25D366, CC0-Pfad, aria-hidden). Kein Riesen-Button mehr, keine payment-reminder-Kartenoptik, keine neue Statische-Datei (SVG im Template, CSS-Regel in style.css). Mehr-Seiten-Karte behaelt ihre Kachel-Form (fuigt sich dort ein), nur das Icon: Emoji -> Logo. Ziel-Attribute (target=_blank rel=noopener) unveraendert.
+- **Test-Anpassung mit Lehre:** Der erste Patch-Versuch scheiterte an einem `\u`-Escape im Heredoc (literaler Backslash traf echten O-Umlaut) - der Patch wurde nicht geschrieben, pytest zeigte den alten Stand; Nachzug mit echten Umlauten, zusaetzliche Regressions-Asserts (kein Grossbutton "Gruppe oeffnen" mehr, Logo-Farbe im HTML). Suite **408/408** wie vorher (nur umgeschrieben, keine Zahl getauscht).
+
+
+## 2026-09-15 (34) - WhatsApp-Zeile ohne Untertitel
+
+- Nutzerwunsch: der Klammerzusatz "Los-Tausch, Fragen, Feiern" fliegt - die Zeile ist nur noch Logo + "In die WhatsApp-Gruppe der Tipprunde". Die damit tote CSS-Regel `.wa-quiet small` wurde gleich mit entfernt (keine Leiche im Stylesheet), Test-Assert verriegelt das Wegbleiben. Rein kosmetisch, keine Logik veraendert. Suite 408/408.

@@ -1,4 +1,4 @@
-GITHUB-UPLOAD-PAKET - fuer GitHub Desktop (Stand 2026-09-14)
+GITHUB-UPLOAD-PAKET - fuer GitHub Desktop (Stand 2026-09-15)
 ====================================================
 
 Dieses Paket enthaelt die Dateien, die auf GitHub fehlen bzw. sich
