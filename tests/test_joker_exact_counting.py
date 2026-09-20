@@ -9,6 +9,17 @@ from models import Badge, Match, Prediction, User
 from scoring import recompute_matchday_winners
 
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def badge_saison_laeuft(db):
+    """(78): Badge-Trigger sind saison-scoped — die Tests erzeugen Matches im
+    September 2026, also läuft das Saison-Label auf '2026/27'."""
+    from scoring import set_setting
+    set_setting("current_season", "2026/27")
+
+
 def _match(db, competition, teams, matchday, result_h, result_a):
     m = Match(
         competition_id=competition.id, matchday=matchday,

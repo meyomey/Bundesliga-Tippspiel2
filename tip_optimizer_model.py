@@ -16,6 +16,7 @@ frischen Datenbanken unverändert läuft.
 """
 import math
 from datetime import datetime
+from functools import lru_cache
 
 STATIC_RHO = (1.00, 1.09, 0.97)
 STATIC_GOAL_PRIOR = 3.20  # BL-Mittel 25/26 (Standalone-Tool-Default)
@@ -36,6 +37,14 @@ NMAX = 11
 
 def _poisson_vec(l):
     return [math.exp(-l) * (l ** k) / math.factorial(k) for k in range(NMAX + 1)]
+
+
+@lru_cache(maxsize=8192)
+def _poisson_vec_cached(l):
+    """Begrenzt gepufferter Poisson-Vektor — der λ-Grid-Solver des Odds-Ankers
+    bewertet dieselben λ im Grobgitter tausendfach (Backtest über mehrere
+    Spiele/Spieltage); maxsize bremst ungezügeltes Wachstum im Dauerbetrieb."""
+    return tuple(_poisson_vec(l))
 
 
 def build_matrix(lh, la, rho0, rhoD, rho1):
@@ -371,6 +380,287 @@ def backtest(matches):
         "note": ("Ohne Odds-Anker (historische Quoten nicht verfuegbar) – "
                  "Mass fuer die Modell-Grundlage (Teamstaerken + Dixon-Coles), "
                  "Untergrenze der echten Tipp-Qualitaet."),
+    }
+
+
+def _matrix_stats_fast(ph, pa, rho0, rhoD, rho1):
+    """1X2 + Ü2,5/Ü3,5/BTTS einer Dixon-Coles-Matrix direkt aus den
+    Poisson-Vektoren — mathematisch identisch zum Abgriff der normierten
+    build_matrix-Matrix, aber O(N) statt O(N²): Die DC-Korrektur ändert nur
+    die Zellen (0,0)/(1,1)/(1,0)/(0,1), alles andere ist ein Produkterm.
+    (Verifiziert gegen build_matrix im Test, 1e-12.)"""
+    n = NMAX + 1
+    sph, spa = sum(ph), sum(pa)          # Poisson-Vektoren sind end-of-range-trunkiert
+    cumpa = []
+    acc = 0.0
+    for j in range(n):
+        acc += pa[j]
+        cumpa.append(acc)
+    pij = sum(ph[i] * cumpa[i - 1] for i in range(1, n))   # P(i > j) roh
+    pxij = sum(ph[i] * pa[i] for i in range(n))            # P(i == j) roh
+    gross = sph * spa
+    pless = gross - pij - pxij
+    c1 = (rho1 - 1.0) * ph[1] * pa[0]
+    cx = (rho0 - 1.0) * ph[0] * pa[0] + (rhoD - 1.0) * ph[1] * pa[1]
+    c2 = (rho1 - 1.0) * ph[0] * pa[1]
+    norm = gross + c1 + cx + c2
+    # Ü 2,5 (i+j <= 2; DC-Zellen (0,0),(1,0),(0,1),(1,1) stecken komplett drin):
+    low2 = (ph[0] * pa[0] * rho0 + ph[1] * pa[0] * rho1 + ph[0] * pa[1] * rho1
+            + ph[1] * pa[1] * rhoD + ph[2] * pa[0] + ph[0] * pa[2])
+    # Ü 3,5 (i+j <= 3; zusätzliche Zellen sind korrekturfrei):
+    low3 = (low2 + ph[2] * pa[1] + ph[1] * pa[2] + ph[0] * pa[3] + ph[3] * pa[0])
+    # BTTS (i,j >= 1; einzige DC-Zelle darin ist (1,1)):
+    btts = (sph - ph[0]) * (spa - pa[0]) + (rhoD - 1.0) * ph[1] * pa[1]
+    return {
+        "p1": (pij + c1) / norm,
+        "px": (pxij + cx) / norm,
+        "p2": (pless + c2) / norm,
+        "ou25": 1.0 - low2 / norm,
+        "ou35": 1.0 - low3 / norm,
+        "btts": btts / norm,
+    }
+
+
+def de_margin(o1, ox, o2, method="power"):
+    """Python-Abbild von TOEngine.deMargin: 1X2-Quoten → faire Wahrscheinlichkeiten.
+    'power' korrigiert den Favorite-Longshot-Bias (p_i ∝ (1/o_i)^k, Σ = 1)."""
+    i1, ix, i2 = 1.0 / o1, 1.0 / ox, 1.0 / o2
+    if method == "prop":
+        s = i1 + ix + i2
+        return [i1 / s, ix / s, i2 / s]
+    lo, hi = 1.0, 3.0
+    for _ in range(60):
+        k = (lo + hi) / 2.0
+        if i1 ** k + ix ** k + i2 ** k > 1.0:
+            lo = k
+        else:
+            hi = k
+    kk = (lo + hi) / 2.0
+    s = i1 ** kk + ix ** kk + i2 ** kk
+    return [i1 ** kk / s, ix ** kk / s, i2 ** kk / s]
+
+
+PRIOR_WEIGHT = 0.15  # Produktionsgewicht des Teamstärken-Ankers, s. Runde (57)
+
+
+def fit_lambdas_odds(target, rho, prior=None, goal_prior=None, ex=None, grid=0.05):
+    """Python-Abbild von TOEngine.fitLambdas: sucht (λh, λa), die die Matrix-1X2
+    auf die fairen Quoten-Ziele ziehen. Die Quoten bleiben das Hauptsignal, die
+    Teamstärken wirken als weicher Anker (prior = [lh, la, w]), die Torsumme
+    als Sanft-Prior solange keine Tor-Märkte vorliegen — exakt die Live-Pipeline
+    der UI. ex: optionale Zusatzmärkte {"ou25", "ou35", "btts"} (None-fähig).
+    grid: Grobgitterweite (0.05 wie die UI; Tests dürfen gröber rechnen)."""
+    r0, rD, r1 = rho
+    gp = goal_prior if (goal_prior and goal_prior > 0) else STATIC_GOAL_PRIOR
+    ex = ex or {}
+    w = PRIOR_WEIGHT if prior is None else (prior[2] if len(prior) > 2 else PRIOR_WEIGHT)
+
+    def obj(lh, la):
+        st = _matrix_stats_fast(_poisson_vec(lh), _poisson_vec(la), r0, rD, r1)
+        e = ((st["p1"] - target[0]) ** 2 + (st["px"] - target[1]) ** 2
+             + (st["p2"] - target[2]) ** 2)
+        if ex.get("ou25") is not None:
+            e += 0.3 * (st["ou25"] - ex["ou25"]) ** 2
+        if ex.get("ou35") is not None:
+            e += 0.2 * (st["ou35"] - ex["ou35"]) ** 2
+        if ex.get("btts") is not None:
+            e += 0.2 * (st["btts"] - ex["btts"]) ** 2
+        if ex.get("ou25") is None and ex.get("ou35") is None:
+            e += (0.015 if ex.get("btts") is not None else 0.05) * (lh + la - gp) ** 2
+        if prior is not None and prior[0] is not None:
+            e += w * ((lh - prior[0]) ** 2 + (la - prior[1]) ** 2)
+        return e
+
+    bl, bh, bv = 0.05, 0.05, float("inf")
+    lh = 0.05
+    while lh <= 6.001:
+        la = 0.05
+        while la <= 6.001:
+            v = obj(lh, la)
+            if v < bv:
+                bv, bl, bh = v, lh, la
+            la += grid
+        lh += grid
+    step = grid / 10.0
+    pad = grid * 1.2
+    lh = max(0.05, bl - pad)
+    while lh <= bl + pad + 1e-9:
+        la = max(0.05, bh - pad)
+        while la <= bh + pad + 1e-9:
+            v = obj(lh, la)
+            if v < bv:
+                bv, bl, bh = v, lh, la
+            la += step
+        lh += step
+    return [round(bl, 4), round(bh, 4)]
+
+
+def calibration_summary(obs):
+    """Kalibrierung gespeicherter 1X2-Prognosen: geplante vs. realisierte
+    Häufigkeiten je Ergebnisklasse + P(1)-Zuverlässigkeits-Buckets.
+
+    obs: Liste von (p1, px, p2, outcome) mit outcome in (1, "X", 2).
+    Returns None bei leerer Liste."""
+    n = len(obs)
+    if n == 0:
+        return None
+    s1 = sum(float(o[0]) for o in obs)
+    sx = sum(float(o[1]) for o in obs)
+    s2 = sum(float(o[2]) for o in obs)
+    c1 = sum(1 for o in obs if o[3] == 1)
+    cx = sum(1 for o in obs if o[3] == "X")
+    c2 = sum(1 for o in obs if o[3] == 2)
+    m1, mx, m2 = s1 / n, sx / n, s2 / n
+    r1, rx, r2 = c1 / n, cx / n, c2 / n
+    dmax = max(abs(m1 - r1), abs(mx - rx), abs(m2 - r2))
+    if dmax <= 0.05:
+        stufe = "gut kalibriert"
+    elif dmax <= 0.12:
+        stufe = "akzeptabel"
+    else:
+        stufe = "prüfen"
+    grenzen = [(0.0, 0.25), (0.25, 0.5), (0.5, 0.75), (0.75, 1.0001)]
+    buckets = []
+    for lo, hi in grenzen:
+        grp = [o for o in obs if lo <= float(o[0]) < hi]
+        if not grp:
+            continue
+        buckets.append({
+            "label": "P(1) %s–%s %%" % (int(lo * 100), int(min(hi, 1.0) * 100)),
+            "n": len(grp),
+            "mean_p1": round(sum(float(o[0]) for o in grp) / len(grp), 3),
+            "real_rate": round(sum(1 for o in grp if o[3] == 1) / len(grp), 3),
+        })
+    return {
+        "n": n,
+        "p1_soll": round(m1, 3), "p1_ist": round(r1, 3), "delta1": round(m1 - r1, 3),
+        "px_soll": round(mx, 3), "px_ist": round(rx, 3), "deltax": round(mx - rx, 3),
+        "p2_soll": round(m2, 3), "p2_ist": round(r2, 3), "delta2": round(m2 - r2, 3),
+        "delta_max": round(dmax, 3),
+        "stufe": stufe,
+        "buckets": buckets,
+    }
+
+
+def backtest_odds_anchored(matches, snapshots, grid=0.05):
+    """Walk-Forward-Backtest MIT Odds-Anker (die „echte“ Pipeline).
+
+    Für jeden abgeschlossenen Spieltag MIT gespeicherten Quoten (erste, also
+    älteste OddsSnapshot-Zeile je Spiel — der „Quoten online laden“-Stand) wird
+    dasselbe Walk-Forward-Verfahren wie im Blind-Backtest gefahren, nur dass
+    die λ je Spiel über die fairen Quoten-Wahrscheinlichkeiten (Power-Entfernung)
+    + weichen Teamstärken-Anker + vorhandene Zusatzmärkte gefittet werden —
+    1:1 die Live-Pipeline der UI (de_margin + fit_lambdas_odds).
+
+    Bewertet werden NUR Spiele mit Snapshot; die Blind-Kennzahlen derselben
+    Spiele laufen daneben (faire Paarbildung auf identischer Spielmenge).
+    Returns None, wenn noch keine auswertbaren Snapshots vorliegen."""
+    first_snap = {}
+    for s in sorted(snapshots, key=lambda x: (x.created_at or datetime.min, x.id or 0)):
+        if s.match_id in first_snap:
+            continue
+        if s.o1 is None or s.ox is None or s.o2 is None:
+            continue
+        if s.o1 <= 1.01 or s.ox <= 1.01 or s.o2 <= 1.01:
+            continue
+        first_snap[s.match_id] = s
+    if not first_snap:
+        return None
+
+    finished = finished_matches(matches)
+    finished.sort(key=lambda m: (m.matchday or 0, m.kickoff or datetime.min, m.id or 0))
+    mds = []
+    for m in finished:
+        if mds and mds[-1][0] == m.matchday:
+            mds[-1][1].append(m)
+        else:
+            mds.append((m.matchday, [m]))
+
+    tot = {"n": 0, "a_ep": 0.0, "a_hit": 0, "a_pge2": 0, "a_brier": 0.0,
+           "b_ep": 0.0, "b_hit": 0, "b_brier": 0.0}
+    per_md = []
+    preceding = []
+    for md, group in mds:
+        if len(preceding) < MIN_MATCHES:
+            preceding.extend(group)
+            continue
+        model = fit_season_model(preceding)
+        if not model.get("fitted"):
+            preceding.extend(group)
+            continue
+        snap_matches = [m for m in group if m.id in first_snap]
+        if not snap_matches:
+            preceding.extend(group)
+            continue
+        r0, rD, r1 = model["rho"]
+        row = {"md": md, "n": 0, "a_ep": 0.0, "a_hit": 0, "a_pge2": 0,
+               "a_brier": 0.0, "b_ep": 0.0, "b_hit": 0, "b_brier": 0.0}
+        for m in snap_matches:
+            h, a = m.home_score, m.away_score
+            outcome = 1 if h > a else ("X" if h == a else 2)
+            pl = prior_lambdas(model, m.home_team.name, m.away_team.name)
+            # --- Anchored (Live-Pipeline): Quoten → Ziel → λ-Fit ---
+            snap = first_snap[m.id]
+            target = de_margin(snap.o1, snap.ox, snap.o2, "power")
+            ex = {"ou25": snap.ou25, "ou35": snap.ou35, "btts": snap.btts}
+            prior = [pl[0], pl[1], PRIOR_WEIGHT] if pl else None
+            lh, la = fit_lambdas_odds(target, model["rho"], prior,
+                                      model["goal_prior"], ex, grid=grid)
+            M = build_matrix(lh, la, r0, rD, r1)
+            (th, ta), ep = _argmax_tip(ep_table(M))
+            st = _matrix_stats_fast(_poisson_vec(lh), _poisson_vec(la), r0, rD, r1)
+            # --- Blind (Modell-Grundlage) auf DEMSELBEN Spiel ---
+            blh, bla = pl if pl else [model["mu_home"], model["mu_away"]]
+            Mb = build_matrix(blh, bla, r0, rD, r1)
+            (bth, bta), bep = _argmax_tip(ep_table(Mb))
+            bst = _matrix_stats_fast(_poisson_vec(blh), _poisson_vec(bla), r0, rD, r1)
+            pts_a, pts_b = tip_points(h, a, th, ta), tip_points(h, a, bth, bta)
+            pred_a = max(((st["p1"], 1), (st["px"], "X"), (st["p2"], 2)), key=lambda t: t[0])[1]
+            pred_b = max(((bst["p1"], 1), (bst["px"], "X"), (bst["p2"], 2)), key=lambda t: t[0])[1]
+            row["n"] += 1
+            row["a_ep"] += ep
+            row["a_hit"] += 1 if pred_a == outcome else 0
+            row["a_pge2"] += 1 if pts_a >= 2 else 0
+            row["a_brier"] += _brier(st["p1"], st["px"], st["p2"], outcome)
+            row["b_ep"] += bep
+            row["b_hit"] += 1 if pred_b == outcome else 0
+            row["b_brier"] += _brier(bst["p1"], bst["px"], bst["p2"], outcome)
+            preceding.append(m)
+        if row["n"] == 0:
+            continue
+        for k in ("a_ep", "a_hit", "a_pge2", "a_brier", "b_ep", "b_hit", "b_brier"):
+            tot[k] += row[k]
+        tot["n"] += row["n"]
+        per_md.append({
+            "md": md, "n": row["n"],
+            "anchored_ep": round(row["a_ep"] / row["n"], 2),
+            "anchored_hit": round(row["a_hit"] / row["n"], 3),
+            "anchored_pge2": round(row["a_pge2"] / row["n"], 3),
+            "anchored_brier": round(row["a_brier"] / row["n"], 4),
+            "blind_ep": round(row["b_ep"] / row["n"], 2),
+            "blind_hit": round(row["b_hit"] / row["n"], 3),
+            "blind_brier": round(row["b_brier"] / row["n"], 4),
+        })
+
+    if tot["n"] == 0:
+        return None
+    n = tot["n"]
+    return {
+        "n_matches": n,
+        "n_matchdays": len(per_md),
+        "min_matches": MIN_MATCHES,
+        "ep_per_match": round(tot["a_ep"] / n, 3),
+        "hit1x2": round(tot["a_hit"] / n, 3),
+        "pge2_rate": round(tot["a_pge2"] / n, 3),
+        "brier": round(tot["a_brier"] / n, 4),
+        "blind_ep_per_match": round(tot["b_ep"] / n, 3),
+        "blind_hit1x2": round(tot["b_hit"] / n, 3),
+        "blind_brier": round(tot["b_brier"] / n, 4),
+        "per_md": per_md,
+        "note": ("Mit Odds-Anker: Anker = erster gespeicherter Quoten-Stand je Spiel "
+                 "(„Quoten online laden“); bewertet werden nur Spiele mit Snapshot, "
+                 "daneben dieselben Spiele blind (Modell-Grundlage). Erhöht nichts — "
+                 "reine Messung der Live-Pipeline."),
     }
 
 

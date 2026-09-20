@@ -1,6 +1,58 @@
 # Changelog – Wulmstörper Tipprunde
 
 
+## [3.1.50] - 2026-09-20
+
+### 📲 Quoten-Erinnerung per Telegram (48-h-Fenster, Admin-only)
+
+- **Neu:** der Scheduler prüft stündlich, ob das **nächste geplante Spiel des laufenden Wettbewerbs innerhalb von 48 Stunden** anstößt (`ODDS_REMINDER_WINDOW_H = 48`). Trifft das zu **und** es liegen für diesen Spieltag noch keine Quoten-Stände vor, bekommen alle **Telegram-Admins** (`phone` beginnt mit `tg:`) eine kurze Info mit Spieltag, Paarung und Anstoßzeit plus direktem Link zur Optimizer-Quoten-Seite („Quoten online laden").
+- **Einmal je Spieltag:** der Versand wird im Setting `odds_reminder_sent` (Spieltag + Wettbewerb + Zeitstempel) gemerkt — keine Wiederholung, auch nicht nach Scheduler-Neustart. Ein späterer Snapshot hat Vorrang vor dem Dedupe („Stände da → nichts zu tun").
+- **Stille Ausnahmen (Dauerregel 2):** ohne `the_odds_api_key` (ℹ️, nie ⚠️) oder bei `odds_reminder_enabled = false` tut der Job nichts. Telegram-Fehler werden still geschluckt, ein Catch-all verhindert Scheduler-Ausfälle.
+- **Bedienung:** läuft automatisch im Dauer-Scheduler (Stunden-Intervall); für Plesk-Cron gibt es den neuen Task **`odds`** (`cron_jobs.py run_odds_reminder()`, Usage `[sync|reminder|bots|odds|backup|status|all]`), z. B. stündlich per wget — parallel zum Scheduler harmlos (Snapshot-Check + Dedupe).
+- **+5 Tests** (523 gesamt): Versand ins Fenster + Dedupe (zwei Läufe → eine Nachricht), Stumm bei vorhandenen Ständen, Stumm ohne Key/deaktiviert, Stumm außerhalb des Fensters, Cron-Task ruft Scheduler-Job. Suite **523/523**, flake8-Hartgate 0, Coverage **85 %**.
+- **Deploy:** Dateien nur geändert (keine neuen): `scheduler.py`, `cron_jobs.py`, `tests/test_scheduler.py` → FTP → `__pycache__` löschen → Plesk-Restart. Selbstbeweis: 48 h vor dem nächsten Spieltag erscheint die Telegram-Info einmalig bei den Admins; wer Stände lädt, bekommt sie nicht mehr. Spieler sehen von allem nichts.
+
+## [3.1.49] - 2026-09-20
+
+### 🤖 Optimizer als Mitspieler (Admin-Rückblick „Hätte der Optimizer gewonnen?")
+
+- **Neu:** die Optimizer-Admin-Seite zeigt eine neue Karte **„🤖 Optimizer als Mitspieler"** (über „📊 Quoten-Bewegung"): je abgelaufenem Spieltag wird der jeweils **neueste Optimizer-Lauf** ausgewertet (`evaluate_run_tips` → erwartete Punkte pro Tipp), daraus ein virtueller Mitspieler gebaut — Summe der Erwartungswerte (`opt_pts`) und die **Joker-Simulation** (Joker = doppelter `tip_points` auf dem Tipp mit der höchsten EP, Fallback: höchste Basis-Punkte).
+- **Reale Rangfolge:** der virtuelle Mitspieler wird in die echte Tipprunde einsortiert — reale Punkte pro Spieltag aus `Prediction`×`Match` (nur beendete Spiele des Wettbewerbs, gruppiert je User), Platz = 1 + Anzahl der User mit mehr Punkten; daneben die Punktedifferenz zum besten echten Spieler. Kumuliert über die Saison: Ø erwartete Punkte/Journey, Joker-Summe, kumulierter Platz (von n).
+- **Fairness/Grenzen:** nur **beendete** Spiele fließen ein (läuft ein Run-Spiel noch, bleibt die Auswertung leer), je Spieltag zählt nur der neueste Lauf (spätere Neuläufe überschreiben), Anbieter-EP und echte Tipp-Punkte nutzen dieselbe Punkteregel. Wie gehabt: **Optimizer-Daten sind nie für Spieler sichtbar** — die Karte existiert nur in der Admin-Ansicht (Produktentscheidung Runde 55).
+- **+4 Tests** (519 → 523): Mitspieler-Rang/Joker/Kumulus (eigene Testdaten, 0:0 exakt = 4 Punkte), nur-neuester-Lauf je Spieltag, Karte leer/mit Daten, Quelltext-Guards. Hilfs-Query auf die aktive Competition gepinnt (`app.config["COMPETITION"]`).
+
+## [3.1.48] - 2026-09-20
+
+### 🏅 Karriere-Badges gelten ab jetzt pro laufender Saison (Nutzer-Anforderung)
+
+- **Frage (Nutzer):** „Karriere-Badges sollen als Standard immer nur für die laufende Saison gelten. Ist das so eingerichtet?" — **Befund: Nein.** `first_tip`, `tips_count`, `total_points`, `exact_count` und `joker_exact` zählten saisonübergreifend alle Tipps ever (nur `matchday_winner` war Saison-scoped, `perfect_day` wettbewerbs-scoped). Ein Saison-Bezug war nur indirekt über den Saisonwechsel-Assistenten denkbar („Spielplan löschen" entfernt alte Tipps, „Badges zurücksetzen" löscht alle UserBadges).
+- **Jetzt als Standard:** alle Karriere-Trigger zählen nur noch Tipps, deren **Anstoß in der laufenden Saison** liegt. Saison-Anker ist das Setting `current_season` (vom Saisonwechsel-Assistenten gesetzt), Rückgriff `Competition.season`; Intervall aus dem Label („2026/27" → 1.7.2026–30.6.2027, auch „2025/2026" lesbar). **Fehlertoleranz:** ohne auswertbares Label ist der Filter inaktiv und es zählt weiter alles (nie still falsch — ℹ️-Prinzip). `matchday_winner`/`perfect_day` bleiben wie gehabt, `perfect_day`-Kandidaten sind jetzt zusätzlich saison-gefiltert.
+- **Wirkung mit dem Wartungslauf:** `revalidate_badges()` (Admin → Wartung → „badges") **widerruft jetzt Karriere-Badges, die nur auf Vorsaison-Zählungen beruhen** — nach dem Deploy einmal auslösen, das ist der gewollte Saison-Schnitt. Seeding-Texte der Karriere-Badges sagen jetzt „in der Saison" (Bestand-DBs: Admin → Badges → Beschreibung manuell anpassen, wie bei „Perfekter Tag").
+- **+4 Tests** (514 gesamt): Intervall-Parsing inkl. Fehlertoleranz, Karriere-Scope (10 exakte in der Vorsaison → kein Scharfschütze; ein Saison-Tipp → Tipp-Premiere; Archiv-Blick zurück zählt wieder), Revalidate-Widerruf nach Saisonwechsel, Seed-Texte. Bestehende Badge-Tests auf die laufende Saison gepinnt (autouse-Fixture `current_season = 2026/27` in den drei Badge-Testdateien; MatchdayWinner-Labels entsprechend). Suite **514/514**, flake8-Hartgate 0, Coverage **85 %**.
+- **Deploy:** keine neuen Dateien — 16er-Liste bleibt (frischer Inhalt: `badges.py`, `tests/test_badge_*.py`) → FTP → `__pycache__` löschen → Plesk-Restart → **einmal Wartung → „badges"** (Saison-Schnitt). Selbstbeweis: ein Spieler, dessen Scharfschützen-Zählung überwiegend aus der Vorsaison stammt, verliert das Badge beim Wartungslauf; neue Tipps der laufenden Saison zählen wieder hoch.
+
+## [3.1.47] - 2026-09-20
+
+### 🕓 Quoten-Laden: angepfiffene Spiele sauber gemeldet (Nutzer-Fund ST4 „plötzlich nur noch 3/9")
+
+- **Meldung (Nutzer, Screenshot ST4):** Statuszeile „✓ 3/9 Spiele mit Quoten befüllt … Nicht zugeordnet (Name): …" für 6 Spiele — obwohl die Namenszuordnung in Ordnung war.
+- **Ursache (datenbasiert, kein Bug im Laden):** die The-Odds-API listet **nur zukünftige Spiele** — beendete/angefangene fallen aus der Antwort. Beim letzten Laden (Do, 17.09.) waren alle 9 Spiele des ST4 zukünftig (9/9 ✓); beim Laden am So, 20.09. (14:04) waren die Fr/SA-Partien (u. a. HSV–Köln, Gladbach–Mainz, Werder–Augsburg, Frankfurt–Freiburg, Stuttgart–Dortmund) bereits gespielt, nur die So-Partien (Leverkusen–Leipzig, Schalke–Elversberg, Paderborn–Hoffenheim) lagen noch vorne → genau die 3 bekamen Quoten. Die Meldung „Nicht zugeordnet (Name)" war für diesen Fall irreführend.
+- **Fix (Transparenz, Dauerregel 2):** die JS klassifiziert leere Karten jetzt über `data-kick`: **„Bereits angepfiffen/beendet — die Odds-API listet nur zukünftige Spiele: …"** (Karte mit Anstoß ≤ jetzt) getrennt von **„Nicht zugeordnet (Name): …"** (zukünftige Spiele, (61)-Klasse). Zusätzlich zeigt die Meldung das **tatsächliche API-Angebot** („API-Angebot (zukünftige Spiele): …", neues Antwortfeld `event_pairs`/`event_count`) — sichtbar statt geraten.
+- **Beiher fix:** `DE_NAMES` mappte Gladbach auf „Bor. Mönchengladbach", der DB-Name lautet aber „Borussia Mönchengladbach" (gleiche Falle wie Elversberg in (61); `namesMatch` fing es ab, der Exakt-Pfad nicht) → Mapping korrigiert + Kürzel-Form ergänzt.
+- **+3 Tests** (510 gesamt): Gladbach-Mapping auf DB-Namen, Endpunkt liefert `event_pairs`, JS-Guard für die getrennte Meldung. Suite **510/510**, flake8-Hartgate 0, Coverage **85 %**.
+- **Deploy:** keine neuen Dateien — die 16er-Liste bleibt (frischer Inhalt: `admin_tip_optimizer_routes.py`, `static/js/tip_optimizer.js`, `tests/test_tip_optimizer.py`) → FTP → `__pycache__` löschen → Plesk-Restart. Selbstbeweis: „Quoten online laden" an einem laufenden Spieltag meldet die vergangenen Partien mit obigem Wortlaut + zeigt das API-Angebot; an einem zukünftigen Spieltag bleibt es bei ✓ 9/9.
+
+## [3.1.46] - 2026-09-20
+
+### 📈 Tipp-Optimizer: Backtest mit Odds-Anker + Kalibrierungs-/Trend-Karte
+
+- **Der vereinbarte Schritt (seit 16.09.):** solange 2–3 Spieltage mit „⬇ Quoten online laden“ + „💾 Vorhersage speichern“ gesammelt sind, misst der Optimizer jetzt die **echte Tipp-Qualität der Live-Pipeline** — nicht mehr nur die Blind-Untergrenze.
+- **① Backtest mit Odds-Anker** (Erweiterung der Backtest-Karte, selbster Endpunkt): für jeden abgeschlossenen Spieltag **mit gespeicherten Quoten-Ständen** (`odds_snapshots`, erster/ältester Stand je Spiel) wird die Live-Pipeline nachgebaut — faire 1X2-Ziele per Power-Margen-Entfernung (`de_margin`), λ-Fit gegen die Ziele mit weichem Teamstärken-Anker W = 0,15 + vorhandenen Zusatzmärkten Ü2,5/BTTS (`fit_lambdas_odds` — 1:1-Port von `TOEngine.deMargin`/`fitLambdas`, O(N)-Schnellform der Matrix-Statistik mit Poisson-lru_cache statt O(N²) pro Grid-Punkt). Daneben laufen die **Blind-Kennzahlen derselben Spiele** (faire Paarbildung): EP/Spiel, 1X2-Treffer, Brier — als „blind → Anker“-Vergleich je Spieltag + Summenzeile. Spiele ohne Snapshot bleiben unbewertet (nichts geraten). Der Blind-Backtest selbst ist unverändert (Untergrenze).
+- **② Karte „🎚 Kalibrierung & Trend“** (servergerendert, nach der Modellgüte-Karte): je abgerechnetem Spieltag der letzte gespeicherte Lauf (keine Doppelzählung) → **Σ P(1)/P(X)/P(2) prognostiziert vs. reale Ergebnishäufigkeiten** mit Stufen-Urteil (max. Abweichung ≤ 5 % „gut kalibriert“, ≤ 12 % „akzeptabel“, sonst „prüfen“), **P(1)-Zuverlässigkeits-Buckets** (Ø Prognose vs. reale Heimsiegquote je Bereich) und **EP-Trend je Spieltag** (erwartet vs. real mit Mini-Balken `.to-bar`, P(≥2 P) e/r, Brier). Kleine Stichproben (< 30 Spiele) werden als Richtwerte gekennzeichnet; ohne Daten ℹ️-Hinweis (nie ⚠).
+- **Neu:** `tip_optimizer_model.py`: `_matrix_stats_fast`, `de_margin`, `fit_lambdas_odds`, `PRIOR_WEIGHT=0.15`, `calibration_summary`, `backtest_odds_anchored` (+ `_poisson_vec_cached`, lru 8192). Routes: `_kalibrierung_stats()`, Backtest-Endpunkt liefert `anchored`-Sektion (None ohne Snapshots). Template/CSS/JS: Kalibrierungs-Karte, Balken-Visual (inkl. 640-px-Kompaktform), Anker-Block im Backtest-Render.
+- **+8 Tests** (508 gesamt): Schnellform exakt gegen `build_matrix` (1e-12), Power-/Prop-Margin, Solver trifft Ziele (ohne Prior eng, mit Prior messtbar weich — (57)-Verhalten), Anker-Backtest mit ergebnisgerechten Quoten (schlägt blind, Lücken-Spiel bleibt unbewertet), Endpunkt `anchored`-Feld, Kalibrierungs-Stufen/Buckets exakt, Karte leer/mit Daten, Quelltext-Guards. Suite **508/508**, flake8-Hartgate 0, Coverage **85 %**. `verify_04.py` grün, SHA-Baumcheck identisch.
+- **Deploy:** keine neuen Dateien — die **16-Datei-Liste aus (62)** deckt alles ab (Inhalt frischer: `admin_tip_optimizer_routes.py`, `tip_optimizer_model.py`, `static/js/tip_optimizer.js`, `static/css/style.css`, `templates/admin/tip_optimizer.html`, `tests/test_tip_optimizer.py`) → FTP → `__pycache__` löschen → Plesk-Restart. Selbstbeweis: Backtest-Button zeigt bei vorhandenen Snapshots den „🎯 Mit Odds-Anker“-Block; die Kalibrierungs-Karte füllt sich nach dem nächsten abgerechneten Spieltag automatisch.
+
 ## [3.1.45] - 2026-09-20
 
 ### 🧪 Badge-Vollabdeckung: 22 neue Tests über alle Badge-Logiken

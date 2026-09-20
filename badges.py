@@ -1,4 +1,6 @@
 """Badge-System: Vergabe, Prüfung, Seeding."""
+from datetime import datetime
+
 from extensions import db
 from models import User, Badge, UserBadge, Prediction, MatchdayWinner, Setting, Team, Match
 
@@ -14,13 +16,13 @@ def seed_badges():
 
 
 DEFAULT_BADGES = [
-    ("first_tip",    "Tipp-Premiere",  "Ersten Tipp abgegeben",                  "🎯", "#10b981", "first_tip",    1),
-    ("loyal",        "Treuer Tipper",  "30 Tipps abgegeben",                     "🏆", "#f59e0b", "tips_count",   30),
-    ("veteran",      "Veteran",        "100 Tipps abgegeben",                    "🎖", "#8b5cf6", "tips_count",  100),
-    ("100_points",   "Hundertschaft",  "100 Punkte erreicht",                    "💯", "#ef4444", "total_points",100),
-    ("500_points",   "Halbtausend",    "500 Punkte erreicht",                    "🚀", "#3b82f6", "total_points",500),
-    ("sharp_shooter","Scharfschütze",  "10 exakte Tipps",                        "🎯", "#ec4899", "exact_count",  10),
-    ("joker_master", "Joker-Meister",  "Joker mit exaktem Tipp eingelöst",       "⚡", "#fbbf24", "joker_exact",   0),
+    ("first_tip",    "Tipp-Premiere",  "Ersten Tipp in der Saison abgegeben",                  "🎯", "#10b981", "first_tip",    1),
+    ("loyal",        "Treuer Tipper",  "30 Tipps in der Saison abgegeben",                     "🏆", "#f59e0b", "tips_count",   30),
+    ("veteran",      "Veteran",        "100 Tipps in der Saison abgegeben",                    "🎖", "#8b5cf6", "tips_count",  100),
+    ("100_points",   "Hundertschaft",  "100 Punkte in der Saison erreicht",                    "💯", "#ef4444", "total_points",100),
+    ("500_points",   "Halbtausend",    "500 Punkte in der Saison erreicht",                    "🚀", "#3b82f6", "total_points",500),
+    ("sharp_shooter","Scharfschütze",  "10 exakte Tipps in der Saison",                        "🎯", "#ec4899", "exact_count",  10),
+    ("joker_master", "Joker-Meister",  "Joker in der Saison mit exaktem Tipp eingelöst",       "⚡", "#fbbf24", "joker_exact",   0),
     ("perfect_day",  "Perfekter Tag",  "Alle Spiele eines Spieltags exakt",      "👑", "#fbbf24", "perfect_day",   0),
     ("md_winner_1",  "Spieltagsieger", "Erster Spieltagsieg",                    "🏆", "#14b8a6", "matchday_winner", 1),
     ("md_winner_3",  "Triple-Sieger",  "3 Spieltage gewonnen",                   "🥇", "#f59e0b", "matchday_winner", 3),
@@ -84,6 +86,46 @@ def revoke_badge(user, badge):
     return False
 
 
+def _season_interval(label):
+    """'2026/27' -> (1.7.2026, 30.6.2027) als naive-UTC-Grenzen (Match.kickoff
+    ist naive UTC). Auch '2025/2026' wird gelesen; kaputtes/leeres Label ->
+    None (Filter dann inaktiv, es zaehlt weiter alles — nie still falsch)."""
+    try:
+        parts = str(label or "").split("/")
+        y0 = int(str(parts[0]).strip())
+        raw1 = str(parts[1]).strip() if len(parts) > 1 else ""
+        y1 = int(raw1) if len(raw1) == 4 else y0 + 1
+        if y1 < y0:
+            y0, y1 = y1, y0
+        return datetime(y0, 7, 1), datetime(y1, 6, 30, 23, 59, 59)
+    except (ValueError, IndexError, TypeError):
+        return None
+
+
+def _current_season_interval():
+    """Intervall der laufenden Saison: Setting 'current_season' hat Vorrang
+    (der Saisonwechsel-Assistent setzt es), sonst Competition.season. Ohne
+    beides None (kein Filter)."""
+    from scoring import get_setting
+    from competition_helpers import get_active_competition
+    label = get_setting("current_season", None)
+    if not label:
+        comp = get_active_competition()
+        label = getattr(comp, "season", None) if comp is not None else None
+    return _season_interval(label)
+
+
+def _in_season(kickoff, interval):
+    """Kickoff im Saison-Intervall? aware Kickoffs werden auf naive UTC
+    gekappt (die DB liefert ohnehin naive UTC)."""
+    if kickoff is None or interval is None:
+        return False
+    if kickoff.tzinfo is not None:
+        kickoff = kickoff.replace(tzinfo=None)
+    start, end = interval
+    return start <= kickoff <= end
+
+
 def _user_qualifies(user, badge):
     """Prüft, ob ein User die Bedingungen eines Badges erfüllt."""
     from scoring import get_setting
@@ -93,21 +135,37 @@ def _user_qualifies(user, badge):
     if t == "manual":
         return False
 
+    # Karriere-Zaehler gelten pro laufender Saison ((78)): Anker ist die
+    # 'current_season' (Saisonwechsel-Assistent), Rueckgriff Competition.season.
+    # Ohne auswertbares Label (None) zaehlt weiter alles — nie still falsch.
+    interval = _current_season_interval()
+
     if t == "first_tip":
-        return user.predictions.count() >= 1
+        if interval is None:
+            return user.predictions.count() >= 1
+        return any(_in_season(p.match.kickoff, interval) for p in user.predictions)
 
     if t == "tips_count":
-        return user.predictions.count() >= threshold
+        if interval is None:
+            return user.predictions.count() >= threshold
+        return sum(1 for p in user.predictions
+                   if _in_season(p.match.kickoff, interval)) >= threshold
 
     if t == "total_points":
-        return sum(p.points or 0 for p in user.predictions) >= threshold
+        if interval is None:
+            return sum(p.points or 0 for p in user.predictions) >= threshold
+        return sum((p.points or 0) for p in user.predictions
+                   if _in_season(p.match.kickoff, interval)) >= threshold
 
     if t in ("exact_count", "joker_exact"):
         # "Exakt" = Endstand exakt (Klassifikation), nicht per Punkte:
         # ein Joker-Tipp mit 2+2=4 Punkten ist kein exakter Treffer
         # (und ein Joker-Diff mit 3+3=6 waere sonst einer, (73)).
         from scoring import classify_prediction
-        finished_preds = [p for p in user.predictions if p.match.status == "finished"]
+        finished_preds = [p for p in user.predictions
+                          if p.match.status == "finished"
+                          and (interval is None
+                               or _in_season(p.match.kickoff, interval))]
         n_exact = sum(1 for p in finished_preds
                       if classify_prediction(p, p.match) == "exact")
         if t == "exact_count":
@@ -121,7 +179,11 @@ def _user_qualifies(user, badge):
         from sqlalchemy import func
         from competition_helpers import get_active_competition
         comp = get_active_competition()
-        finished_preds = [p for p in user.predictions if p.match.status == "finished" and (not comp or p.match.competition_id == comp.id)]
+        finished_preds = [p for p in user.predictions
+                          if p.match.status == "finished"
+                          and (not comp or p.match.competition_id == comp.id)
+                          and (interval is None
+                               or _in_season(p.match.kickoff, interval))]
         # Gruppiere nach Spieltag
         md_groups = {}
         for p in finished_preds:

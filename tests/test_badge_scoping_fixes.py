@@ -12,6 +12,17 @@ from badges import DEFAULT_BADGES, revalidate_badges
 from models import Badge, Competition, Match, MatchdayWinner, Prediction, UserBadge
 
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def badge_saison_laeuft(db):
+    """(78): Badge-Trigger sind saison-scoped — die Tests erzeugen Matches im
+    September 2026, also läuft das Saison-Label auf '2026/27'."""
+    from scoring import set_setting
+    set_setting("current_season", "2026/27")
+
+
 def _match(db, competition, teams, matchday, finished=True, result_h=1, result_a=0):
     m = Match(
         competition_id=competition.id, matchday=matchday,
@@ -79,12 +90,12 @@ def test_matchday_winner_badge_scoped_wie_profil(app, db, competition, teams, us
                                   user_id=user.id, points=10, season="2024/25"))
     # Zeile aus anderem Wettbewerb (aktuelle Saison)
     db.session.add(MatchdayWinner(competition_id=comp2.id, matchday=1,
-                                  user_id=user.id, points=10, season="2025/26"))
+                                  user_id=user.id, points=10, season="2026/27"))
     db.session.commit()
     assert _user_qualifies(user, b) is False  # alt: True (2 Zeilen gezählt)
     # Korrekte Zeile: aktive Saison + aktiver Wettbewerb
     db.session.add(MatchdayWinner(competition_id=competition.id, matchday=2,
-                                  user_id=user.id, points=10, season="2025/26"))
+                                  user_id=user.id, points=10, season="2026/27"))
     db.session.commit()
     assert _user_qualifies(user, b) is True
 

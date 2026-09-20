@@ -18,13 +18,16 @@ from flask_login import current_user, login_required
 
 from routes_admin import admin_bp, admin_required
 from extensions import csrf
-from models import Match, OddsSnapshot, OptimizerRun, OptimizerRunTip, db
+from models import (Match, OddsSnapshot, OptimizerRun, OptimizerRunTip,
+                    Prediction, User, db)
 from scoring import get_setting, set_setting
 from stats import get_current_matchday
+from sqlalchemy import func
 from competition_helpers import active_match_query, get_active_competition
 from datasource_activity import record as dsrc_record
-from tip_optimizer_model import (backtest, evaluate_run_tips,
-                                 fit_season_model, prior_lambdas)
+from tip_optimizer_model import (backtest, backtest_odds_anchored,
+                                 calibration_summary, evaluate_run_tips,
+                                 fit_season_model, prior_lambdas, tip_points)
 
 SETTINGS_KEY = "the_odds_api_key"
 BUDGET_KEY = "the_…budget"
@@ -41,7 +44,8 @@ DE_NAMES = {
     "borussia dortmund": "Borussia Dortmund", "rb leipzig": "RB Leipzig",
     "bayer leverkusen": "Bayer 04 Leverkusen", "eintracht frankfurt": "Eintracht Frankfurt",
     "vfb stuttgart": "VfB Stuttgart", "sc freiburg": "SC Freiburg",
-    "borussia monchengladbach": "Bor. Mönchengladbach", "borussia mönchengladbach": "Bor. Mönchengladbach",
+    "borussia monchengladbach": "Borussia Mönchengladbach", "borussia mönchengladbach": "Borussia Mönchengladbach",
+    "bor. mönchengladbach": "Borussia Mönchengladbach",
     "fc augsburg": "FC Augsburg", "werder bremen": "SV Werder Bremen", "sv werder bremen": "SV Werder Bremen",
     "mainz 05": "1. FSV Mainz 05", "fsv mainz 05": "1. FSV Mainz 05", "1. fsv mainz 05": "1. FSV Mainz 05",
     "fc cologne": "1. FC Köln", "1. fc cologne": "1. FC Köln", "fc koln": "1. FC Köln", "1. fc koln": "1. FC Köln",
@@ -176,6 +180,138 @@ def _tracking_stats():
         "pge2_rate": mean("pge2_rate"),
         "brier": mean("brier"),
         "brier_zufall": round(2.0 / 3.0, 4),
+        "rows": rows,
+    }
+
+
+def _kalibrierung_stats():
+    """Kalibrierung + Trend aus den gespeicherten Vorhersagen: je abgelaufenem
+    Spieltag der LETZTE gespeicherte Lauf (keine Doppelzählung mehrerer Läufe),
+    dessen 1X2-Wahrscheinlichkeiten gegen die realen Ergebnishäufigkeiten
+    (Kalibrierung) und EP erwartet/real als Zeitreihe (Trend).
+    Returns None, wenn noch nichts bewertbar ist."""
+    comp = get_active_competition()
+    if not comp:
+        return None
+    current_md = get_current_matchday()
+    runs = (OptimizerRun.query.filter_by(competition_id=comp.id)
+            .filter(OptimizerRun.matchday < current_md)
+            .order_by(OptimizerRun.matchday.asc(), OptimizerRun.id.desc())
+            .all())
+    latest = {}
+    for run in runs:                       # id desc je Spieltag → erster = neuester
+        latest.setdefault(run.matchday, run)
+    obs = []
+    trend = []
+    for md in sorted(latest):
+        run = latest[md]
+        res = evaluate_run_tips(run.tips.all())
+        if res is None:
+            continue
+        for t in run.tips:
+            m = t.match
+            if m is None or m.status != "finished" or m.home_score is None:
+                continue
+            outcome = 1 if m.home_score > m.away_score else \
+                ("X" if m.home_score == m.away_score else 2)
+            obs.append((float(t.p1 or 0.0), float(t.px or 0.0),
+                        float(t.p2 or 0.0), outcome))
+        n = res["n"] or 1
+        trend.append({
+            "md": md, "n": res["n"],
+            "ep_exp_pm": round(res["ep_exp"] / n, 2),
+            "ep_real_pm": res["ep_per_match"],
+            "pge2_exp": res["pge2_exp"], "pge2_rate": res["pge2_rate"],
+            "brier": res["brier"],
+        })
+    if not obs:
+        return None
+    cal = calibration_summary(obs)
+    peak = max([r["ep_exp_pm"] for r in trend] + [r["ep_real_pm"] for r in trend] + [1.0])
+    for r in trend:
+        r["bar_exp"] = int(round(r["ep_exp_pm"] / peak * 100))
+        r["bar_real"] = int(round(r["ep_real_pm"] / peak * 100))
+    return {
+        "n": len(obs), "mds": len(trend), "cal": cal, "trend": trend,
+        "small": len(obs) < 30,
+    }
+
+
+def _mitspieler_stats():
+    """🤖 Optimizer als virtueller Mitspieler ((79), Admin-only): je abgerechnetem
+    Spieltag der letzte gespeicherte Lauf — die real erreichten Punkte (4/3/2)
+    der Optimizer-Tipps, mit und ohne simulierten Joker (Joker = Tipp mit dem
+    höchsten EP, exakt der Vorschlag des JS), einsortiert in die reale
+    Spieltags-Rangfolge aller Mitspieler (inkl. Bots, wie beim Spieltagsieger).
+    Returns None, wenn noch nichts bewertbar ist."""
+    comp = get_active_competition()
+    if not comp:
+        return None
+    current_md = get_current_matchday()
+    runs = (OptimizerRun.query.filter_by(competition_id=comp.id)
+            .filter(OptimizerRun.matchday < current_md)
+            .order_by(OptimizerRun.matchday.asc(), OptimizerRun.id.desc())
+            .all())
+    latest = {}
+    for run in runs:                       # id desc je Spieltag → erster = neuester
+        latest.setdefault(run.matchday, run)
+    rows = []
+    opt_total = joker_total = matches_total = 0
+    user_totals = {}                       # user_id -> [name, punkte] über alle bewerteten ST
+    for md in sorted(latest):
+        run = latest[md]
+        tips = run.tips.order_by(OptimizerRunTip.id.asc()).all()
+        res = evaluate_run_tips(tips)
+        if res is None:
+            continue
+        opt_pts = res["ep_real"]
+        # Joker-Simulation: ×2 auf den Tipp mit dem höchsten EP (JS-Vorschlag)
+        best = None
+        for t in tips:
+            if m := t.match:
+                ep = float(t.ep or 0.0)
+                if best is None or ep > best[0]:
+                    best = (ep, t)
+        joker_pts = None
+        if best is not None:
+            m = best[1].match
+            joker_pts = 2 * tip_points(m.home_score, m.away_score,
+                                       best[1].tip_h, best[1].tip_a)
+        # Reale Spieltags-Rangfolge aller Tipper (Quelle der Wahrheit: Predictions)
+        q = (db.session.query(Prediction.user_id,
+                              func.coalesce(func.sum(Prediction.points), 0).label("pts"),
+                              User.username)
+             .join(Match, Prediction.match_id == Match.id)
+             .join(User, Prediction.user_id == User.id)
+             .filter(Match.matchday == md, Match.status == "finished",
+                     Match.competition_id == comp.id)
+             .group_by(Prediction.user_id, User.username).all())
+        if not q:
+            continue
+        best_pts = max(r.pts for r in q)
+        winners = sorted(r.username for r in q if r.pts == best_pts)
+        rank = 1 + sum(1 for r in q if r.pts > opt_pts)
+        for r in q:
+            e = user_totals.setdefault(r.user_id, [r.username, 0])
+            e[1] += int(r.pts)
+        rows.append({
+            "md": md, "n": res["n"], "opt_pts": opt_pts,
+            "joker_pts": joker_pts,
+            "rank": rank, "of": len(q),
+            "winner": ", ".join(winners), "winner_pts": int(best_pts),
+            "delta": int(best_pts) - int(opt_pts),
+        })
+        opt_total += int(opt_pts)
+        joker_total += int(joker_pts) if joker_pts is not None else int(opt_pts)
+        matches_total += res["n"]
+    if not rows:
+        return None
+    cum_rank = 1 + sum(1 for _, (_, p) in user_totals.items() if p > opt_total)
+    return {
+        "mds": len(rows), "n": matches_total,
+        "opt_total": opt_total, "joker_total": joker_total,
+        "opt_avg": round(opt_total / matches_total, 2) if matches_total else 0.0,
+        "cum_rank": cum_rank, "cum_of": len(user_totals),
         "rows": rows,
     }
 
@@ -320,6 +456,8 @@ def fetch_odds_online():
                 f"{len(matches)} anstehende Spiele · Credits übrig: "
                 + (str(credits) if credits is not None else "?"))
     return {"ok": True, "matches": matches, "credits_remaining": credits,
+            "event_count": len(matches),
+            "event_pairs": ["%s – %s" % (m["h"], m["a"]) for m in matches],
             "budget": int(budget.get("used", 0)),
             "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
 
@@ -364,6 +502,8 @@ def tip_optimizer():
         rho=model["rho"], goal_prior=model["goal_prior"], priors=priors,
         model_fitted=model.get("fitted", False), model_n=model.get("n", 0),
         model_stats=_tracking_stats(),
+        kalib=_kalibrierung_stats(),
+        mitspieler=_mitspieler_stats(),
         odds_move=_odds_movement(md, matches),
         has_key=bool((get_setting(SETTINGS_KEY, "") or "").strip()),
         budget_used=int(budget.get("used", 0)), budget_cap=MONTHLY_CALL_CAP,
@@ -384,12 +524,25 @@ def tip_optimizer_odds():
 @admin_required
 def tip_optimizer_backtest():
     """Walk-Forward-Backtest der Modell-Grundlage (nur fertige Spiele der
-    App-DB; historische Quoten sind nicht verfügbar – s. tip_optimizer_model)."""
+    App-DB; historische Quoten sind nicht verfügbar – s. tip_optimizer_model).
+    Wenn gespeicherte Quoten-Stände (odds_snapshots) vorliegen, kommt zusätzlich
+    der Backtest MIT Odds-Anker mit (echte Live-Pipeline, s. Runde (76))."""
     try:
         matches = active_match_query().all()
     except Exception:
         matches = []
-    return jsonify(backtest(matches))
+    resp = backtest(matches)
+    anchored = None
+    try:
+        comp = get_active_competition()
+        if comp:
+            snaps = (OddsSnapshot.query
+                     .filter_by(competition_id=comp.id).all())
+            anchored = backtest_odds_anchored(matches, snaps)
+    except Exception:
+        anchored = None
+    resp["anchored"] = anchored
+    return jsonify(resp)
 
 
 # CSRF: Die beiden fetch()-Endpunkte senden kein Form-Token (die Tests laufen

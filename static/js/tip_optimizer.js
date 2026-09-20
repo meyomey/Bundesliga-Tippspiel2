@@ -363,8 +363,11 @@
         var apiMatches = d.matches || [];
         var used = {};
         var filled = 0;
-        var unmatched = [];
+        var unmatched = [];   // zukünftig, kein Angebot zugeordnet ((61)-Klasse)
+        var kicked = [];      // bereits angepfiffen/beendet — die Odds-API listet
+                              // nur zukünftige Spiele ((77), Nutzer-Fund ST4)
         var logItems = [];
+        var nowMs = Date.now();
         cards.forEach(function (card, idx) {
           var h = card.getAttribute("data-h"), a = card.getAttribute("data-a");
           var idxMatch = apiMatches.findIndex(function (p, i) {
@@ -376,7 +379,12 @@
             var o1v = card.querySelector(".to-o1").value,
                 oxv = card.querySelector(".to-ox").value,
                 o2v = card.querySelector(".to-o2").value;
-            if (!o1v || !oxv || !o2v) unmatched.push(h + " – " + a);
+            if (!o1v || !oxv || !o2v) {
+              var kickIso = card.getAttribute("data-kick");
+              var kickMs = kickIso ? Date.parse(kickIso) : NaN;
+              if (!isNaN(kickMs) && kickMs <= nowMs) kicked.push(h + " – " + a);
+              else unmatched.push(h + " – " + a);
+            }
             return;
           }
           used[idxMatch] = true;
@@ -402,10 +410,17 @@
         } catch (e) { /* ohne Store läuft es trotzdem */ }
         renderLoadChip();
         var cr = d.credits_remaining != null ? " · Credits übrig: " + d.credits_remaining : "";
-        var miss = unmatched.length ? " · Nicht zugeordnet (Name): " + unmatched.join("; ") : "";
+        var miss = "";
+        if (kicked.length) miss += " · Bereits angepfiffen/beendet — die Odds-API listet nur zukünftige Spiele: " + kicked.join("; ");
+        if (unmatched.length) miss += " · Nicht zugeordnet (Name): " + unmatched.join("; ");
+        if (kicked.length || unmatched.length) {
+          var pairs = d.event_pairs || [];
+          miss += pairs.length ? " · API-Angebot (zukünftige Spiele): " + pairs.join(" | ")
+                               : " · Die Odds-API listet derzeit kein zukünftiges Spiel dieser Liga.";
+        }
         var baseMsg = "✓ " + filled + "/" + cards.length + " Spiele mit Quoten befüllt (Median-Konsens)" + miss + cr +
           (d.budget ? " · Monat: " + d.budget + "/" + (CFG.budget_cap || 60) + " Abrufe" : "") + loadStamp();
-        var baseKind = filled ? (unmatched.length ? "to-warn" : "to-good") : "to-warn";
+        var baseKind = filled ? ((unmatched.length || kicked.length) ? "to-warn" : "to-good") : "to-warn";
         // Quoten-Stand als Zeitstempel in der DB merken (Quoten-Bewegung, 0 €).
         var logP = Promise.resolve({ ok: false, skip: true });
         if (logItems.length) {
@@ -506,7 +521,7 @@
             return "<tr><td>ST " + r.md + "</td><td>" + r.n + "</td><td>" + fmt(r.ep_per_match) + "</td>" +
               "<td>" + pct(r.hit1x2) + "</td><td>" + pct(r.pge2_rate) + "</td><td>" + fmt(r.brier, 3) + "</td></tr>";
           }).join("");
-          bt.innerHTML =
+          var html =
             '<div class="to-chips-row">' +
             "<span class=\"to-chip\">Spiele <b>" + d.n_matches + "</b></span>" +
             "<span class=\"to-chip\">bewertet. Spieltage <b>" + d.n_matchdays + "</b></span>" +
@@ -520,6 +535,21 @@
             '<div class="to-row" title="Brier: Zuverlässigkeit der Prozentzahlen (0 = perfekt, 0,67 = Zufallstipp). Das Modell ist gut, wenn sein Wert deutlich unter dem Zufall-Wert liegt.">Brier 1X2 (kleiner = besser): <b>' + fmt(d.brier, 3) + "</b> · Immer-Heim " + fmt(d.brier_immer_heim, 3) + " · Liga-Durchschnitt " + fmt(d.brier_liga, 3) + " · Zufall " + fmt(d.brier_zufall, 3) + "</div>" +
             '<div class="muted" style="font-size:12px">' + esc(d.note || "") + "</div>" +
             '<div class="to-tblwrap"><table class="to-tblwide-narrow"><thead><tr><th title="Spieltag">ST</th><th>Spiele</th><th title="Erwartungswert je Spiel (4/3/2-Regel)">EP/Spiel</th><th title="Anteil der Spiele, in denen die richtige 1X2-Wahl (1/X/2) getippt wurde">1X2-Treffer</th><th title="Anteil der Spiele, in denen der Tipp mindestens 2 Punkte bringt">P(≥2 P)</th><th title="Qualität der 1X2-Wahrscheinlichkeitsprognose: 0 = perfekt, ~0,67 = Zufall, kleiner ist besser">Brier</th></tr></thead><tbody>' + rows + "</tbody></table></div>";
+          if (d.anchored && d.anchored.n_matches > 0) {
+            var a = d.anchored;
+            var arows = (a.per_md || []).map(function (r) {
+              return "<tr><td>ST " + r.md + "</td><td>" + r.n + "</td><td>" + fmt(r.blind_ep) + " → <b>" + fmt(r.anchored_ep) + "</b></td>" +
+                "<td>" + pct(r.blind_hit) + " → " + pct(r.anchored_hit) + "</td><td>" + fmt(r.blind_brier, 3) + " → " + fmt(r.anchored_brier, 3) + "</td></tr>";
+            }).join("");
+            html +=
+              '<div class="to-row" style="margin-top:8px"><b>🎯 Mit Odds-Anker</b> — erste gespeicherte Quoten je Spiel („Quoten online laden“), dieselben Spiele wie blind: ' +
+              "EP/Spiel <b>" + fmt(a.ep_per_match) + "</b> vs. blind " + fmt(a.blind_ep_per_match) +
+              " · 1X2-Treffer <b>" + pct(a.hit1x2) + "</b> vs. " + pct(a.blind_hit1x2) +
+              " · Brier <b>" + fmt(a.brier, 3) + "</b> vs. " + fmt(a.blind_brier, 3) + "</div>" +
+              '<div class="to-tblwrap"><table class="to-tblwide-narrow"><thead><tr><th title="Spieltag">ST</th><th>Spiele</th><th title="Punkte je Spiel: blind (Modell-Grundlage) → mit Quoten-Anker (Live-Pipeline)">EP/Spiel blind → Anker</th><th title="1X2-Trefferquote: blind → mit Anker">1X2 blind → Anker</th><th title="Brier der 1X2-Prognosen: blind → mit Anker (kleiner = besser)">Brier blind → Anker</th></tr></thead><tbody>' + arows + "</tbody></table></div>" +
+              '<div class="muted" style="font-size:12px">' + esc(a.note || "") + "</div>";
+          }
+          bt.innerHTML = html;
         })
         .catch(function (e) {
           if (bt) bt.innerHTML = '<div class="to-online-status to-bad">Netzwerkfehler: ' + esc(e.message) + "</div>";

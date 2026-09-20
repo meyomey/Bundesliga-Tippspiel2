@@ -161,6 +161,9 @@ def test_odds_endpunkt_parsen_protokoll_und_budget(client, db, admin_user, monke
     assert d["credits_remaining"] == 412 and d["budget"] == 1
     # Server-Zeitstempel für die „Quotenstand“-Anzeige
     assert "ts" in d and d["ts"].endswith("Z")
+    # Transparenz ((77)): das tatsächliche API-Angebot für die Status-Meldung
+    assert d["event_count"] == len(d["matches"])
+    assert d["event_pairs"] == ["%s – %s" % (m["h"], m["a"]) for m in d["matches"]]
     # Versuchs-Protokoll + Monatsbudget
     assert entries().get("the_odds_api", {}).get("ok") is True
     budget = json.loads(get_setting(to_mod.BUDGET_KEY, "{}"))
@@ -608,6 +611,29 @@ def test_odds_namen_alias_trifft_den_db_namen():
     assert m["h"] == "FC Schalke 04" and m["a"] == "SV 07 Elversberg"
 
 
+def test_odds_namen_gladbach_mappt_auf_db_namen():
+    """((77), Nutzer-Fund): DE_NAMES mappte Gladbach auf 'Bor. Mönchengladbach' —
+    der echte DB-Name lautet aber 'Borussia Mönchengladbach' (gleiche Falle wie
+    Elversberg in (61); namesMatch fings zwar ab, der Exakt-Pfad aber nicht)."""
+    import admin_tip_optimizer_routes as to_mod
+    assert to_mod._de_name("Borussia Monchengladbach") == "Borussia Mönchengladbach"
+    assert to_mod._de_name("Borussia Mönchengladbach") == "Borussia Mönchengladbach"
+    assert to_mod._de_name("Bor. Mönchengladbach") == "Borussia Mönchengladbach"
+
+
+def test_js_quoten_status_untercheidet_angepfiffene_spiele():
+    """((77), Nutzer-Fund ST4: 'plötzlich nur noch 3/9') — die Odds-API listet
+    nur zukünftige Spiele; die Status-Meldung muss angepfiffene/beendete Spiele
+    eigens benennen (data-kick) und das tatsächliche API-Angebot zeigen, statt
+    alles als 'Nicht zugeordnet (Name)' auszugeben."""
+    js = open("static/js/tip_optimizer.js", encoding="utf-8").read()
+    assert "data-kick" in js and "Date.parse(kickIso)" in js
+    assert "Bereits angepfiffen/beendet" in js and "listet nur zukünftige Spiele" in js
+    assert "event_pairs" in js and "API-Angebot (zukünftige Spiele)" in js
+    # Bleibt für zukünftige Spiele ohne Zuordnung erhalten ((61)-Klasse):
+    assert "Nicht zugeordnet (Name" in js
+
+
 # ============================================================
 # Quoten-Bewegung (Runde 62): Zeitstempel-Stände + Endpunkt + Anzeige
 # ============================================================
@@ -845,3 +871,336 @@ def test_zeitstempel_lokal_konsistent_dargestellt():
     aware = datetime(2026, 9, 19, 14, 4, 5, tzinfo=timezone(timedelta(hours=2)))
     assert _iso_z(aware) == "2026-09-19T12:04:05Z"
     assert _iso_z(None) == ""
+
+
+# ============================================================
+# Runde (76): Backtest mit Odds-Anker + Kalibrierungs-/Trend-Karte
+# ============================================================
+
+def test_matrix_stats_schnellform_identisch_zur_matrix():
+    """Die O(N)-Schnellform muss exakt die Werte der normierten
+    build_matrix-Matrix liefern (1X2, Ü2,5, Ü3,5, BTTS)."""
+    from tip_optimizer_model import (_matrix_stats_fast, _poisson_vec,
+                                     build_matrix)
+    for lh, la, rho in [(1.6, 1.2, (0.97, 1.05, 0.99)), (2.6, 0.7, (1.0, 1.09, 0.97)),
+                        (0.4, 3.1, (1.1, 0.9, 1.05)), (1.35, 1.35, (0.95, 1.0, 1.0))]:
+        M = build_matrix(lh, la, *rho)
+        p1 = sum(M[i][j] for i in range(12) for j in range(12) if i > j)
+        px = sum(M[i][j] for i in range(12) for j in range(12) if i == j)
+        p2 = sum(M[i][j] for i in range(12) for j in range(12) if i < j)
+        ou25 = sum(M[i][j] for i in range(12) for j in range(12) if i + j >= 3)
+        ou35 = sum(M[i][j] for i in range(12) for j in range(12) if i + j >= 4)
+        btts = sum(M[i][j] for i in range(1, 12) for j in range(1, 12))
+        fast = _matrix_stats_fast(_poisson_vec(lh), _poisson_vec(la), *rho)
+        for soll, ist in [(p1, fast["p1"]), (px, fast["px"]), (p2, fast["p2"]),
+                          (ou25, fast["ou25"]), (ou35, fast["ou35"]), (btts, fast["btts"])]:
+            assert abs(soll - ist) < 1e-12, (lh, la, rho, soll, ist)
+
+
+def test_de_margin_power_entfernt_marge_und_stuetzt_favoriten():
+    """Power-Entfernung: Summe = 1, Favorit höher und Außenseiter niedriger
+    als bei proportionaler Entfernung (Favorite-Longshot-Bias)."""
+    from tip_optimizer_model import de_margin
+    o = (2.0, 3.4, 3.8)
+    prop = de_margin(*o, method="prop")
+    pow_ = de_margin(*o, method="power")
+    assert abs(sum(prop) - 1.0) < 1e-12 and abs(sum(pow_) - 1.0) < 1e-12
+    # prop exakt nachgerechnet:
+    inv = [1.0 / x for x in o]
+    s = sum(inv)
+    assert all(abs(a - b / s) < 1e-12 for a, b in zip(prop, inv))
+    assert pow_[0] > prop[0] and pow_[2] < prop[2]
+
+
+def test_fit_lambdas_odds_trifft_ziel_mit_weichem_prior():
+    """Der Solver zieht die Matrix-1X2 auf die fair-Quoten-Ziele; der
+    Teamstärken-Anker wirkt nur weich (W 0.15), Richtung stimmt."""
+    from tip_optimizer_model import (STATIC_RHO, de_margin, fit_lambdas_odds,
+                                     _matrix_stats_fast, _poisson_vec_cached)
+    ziel = de_margin(1.6, 4.0, 6.0, "power")
+    fit = fit_lambdas_odds(ziel, STATIC_RHO, prior=[1.9, 1.5, 0.15],
+                           goal_prior=3.2, grid=0.1)
+    assert fit[0] > fit[1]                     # klarer Heimsieger-Markt
+    st = _matrix_stats_fast(_poisson_vec_cached(fit[0]), _poisson_vec_cached(fit[1]), *STATIC_RHO)
+    # Mit Prior 0.15 darf die Matrix die Quoten-Ziele verfehlen (weicher Anker,
+    # dokumentiertes Live-Pipeline-Verhalten aus (57)) — aber messbar nah:
+    assert abs(st["p1"] - ziel[0]) < 0.09
+    assert abs(st["px"] - ziel[1]) < 0.09
+    assert abs(st["p2"] - ziel[2]) < 0.09
+    # ohne Prior trifft der Solver die Quoten-Ziele eng (nur Ziel + Torsummen-Prior):
+    fit_ohne = fit_lambdas_odds(ziel, STATIC_RHO, goal_prior=3.2, grid=0.1)
+    assert fit_ohne[0] > fit_ohne[1]
+    st2 = _matrix_stats_fast(_poisson_vec_cached(fit_ohne[0]), _poisson_vec_cached(fit_ohne[1]), *STATIC_RHO)
+    assert abs(st2["p1"] - ziel[0]) < 0.05
+    assert abs(st2["px"] - ziel[1]) < 0.05
+
+
+def _md5_mit_quoten_anlegen(db, competition, teams, mit_luecke=False):
+    """Spieltag 5 mit festen Ergebnissen + je einem Odds-Snapshot, der die
+    tatsächliche Ausgangsrichtung stark bepreist (Heimsieg → enge 1 usw.)."""
+    ergebnisse = [(2, 0), (0, 1), (1, 1), (3, 1)]
+    richtung = ["h", "a", "x", "h"]
+    quoten = {"h": (1.5, 4.2, 6.5), "a": (6.5, 4.2, 1.5), "x": (3.6, 2.9, 3.6)}
+    now = datetime.now(timezone.utc)
+    matches = []
+    for i, ((hg, ag), r) in enumerate(zip(ergebnisse, richtung)):
+        m = Match(competition_id=competition.id, matchday=5,
+                  home_team_id=teams[i % 4].id, away_team_id=teams[(i + 1) % 4].id,
+                  kickoff=now - timedelta(days=1, hours=i),
+                  status="finished", home_score=hg, away_score=ag)
+        db.session.add(m)
+        matches.append(m)
+    if mit_luecke:
+        leer = Match(competition_id=competition.id, matchday=5,
+                     home_team_id=teams[1].id, away_team_id=teams[2].id,
+                     kickoff=now - timedelta(days=1), status="finished",
+                     home_score=1, away_score=0)
+        db.session.add(leer)
+        matches.append(leer)
+    db.session.commit()
+    from models import OddsSnapshot
+    for m, r in zip(matches, richtung + (["ohne"] if mit_luecke else [])):
+        if r == "ohne":
+            continue                                  # Spiel ohne Anker
+        o1, ox, o2 = quoten[r]
+        db.session.add(OddsSnapshot(competition_id=competition.id, match_id=m.id,
+                                    matchday=5, o1=o1, ox=ox, o2=o2))
+    db.session.commit()
+    return matches
+
+
+def test_backtest_mit_odds_anker_blind_vs_anchored(db, competition, teams):
+    """Mit gespeicherten Quoten läuft der Anker-Backtest neben dem Blind-Backtest
+    auf DENSELBEN Spielen; ergebnisgerechte Quoten müssen die 1X2-Trefferquote
+    auf 100 % ziehen und mindestens die Blind-EP erreichen."""
+    from tip_optimizer_model import backtest_odds_anchored
+    from models import OddsSnapshot
+    _fertige_saison_machen(db, competition, teams)
+    # 5 Spiele im Spieltag 5, aber nur 4 mit Quoten-Snapshot (Lücke):
+    _md5_mit_quoten_anlegen(db, competition, teams, mit_luecke=True)
+    matches = Match.query.filter_by(competition_id=competition.id).all()
+    snaps = OddsSnapshot.query.all()
+    res = backtest_odds_anchored(matches, snaps)
+    assert res is not None
+    assert res["n_matches"] == 4 and res["n_matchdays"] == 1  # nur Spiele mit Anker
+    # ergebnisgerechte Quoten müssen den Blind-Vergleich schlagen:
+    assert res["hit1x2"] >= res["blind_hit1x2"]
+    assert res["brier"] < res["blind_brier"]         # 1X2-Prognosen näher dran
+    assert res["pge2_rate"] == 1.0                   # jeder Anker-Tipp holt ≥ 2 P
+    assert res["ep_per_match"] >= res["blind_ep_per_match"]
+    assert 0.0 <= res["brier"] < 0.67
+    row = res["per_md"][0]
+    for key in ("md", "n", "anchored_ep", "anchored_hit", "anchored_pge2",
+                "anchored_brier", "blind_ep", "blind_hit", "blind_brier"):
+        assert key in row
+    assert "Odds-Anker" in res["note"]
+
+
+def test_backtest_endpunkt_mit_und_ohne_anker(client, db, admin_user, competition, teams):
+    """Der Backtest-Endpunkt liefert das Anker-Feld: ohne Snapshots None,
+    mit Snapshots die Kennzahlen."""
+    _login(client, admin_user)
+    _use_test_comp(client)
+    _fertige_saison_machen(db, competition, teams)
+    _md5_mit_quoten_anlegen(db, competition, teams)
+    r = client.get("/admin/tip-optimizer/backtest")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert "anchored" in body
+    assert body["anchored"]["n_matches"] == 4
+
+
+def test_kalibrierung_zusammenfassung_stufen_und_buckets():
+    """Geplante vs. realisierte Häufigkeiten exakt nachgerechnet; Stufen-Schwellen
+    (≤ 5 % gut, ≤ 12 % akzeptabel, sonst prüfen) und P(1)-Buckets stimmen."""
+    from tip_optimizer_model import calibration_summary
+    obs = [(0.6, 0.25, 0.15, 1), (0.3, 0.4, 0.3, "X"), (0.2, 0.3, 0.5, 2)]
+    cal = calibration_summary(obs)
+    assert cal["n"] == 3
+    assert abs(cal["p1_soll"] - 0.367) < 0.001 and abs(cal["p1_ist"] - 0.333) < 0.001
+    assert cal["stufe"] == "gut kalibriert"
+    labels = [b["label"] for b in cal["buckets"]]
+    assert len(labels) == 3 and "P(1) 50–75 %" in labels
+    b05 = [b for b in cal["buckets"] if b["label"] == "P(1) 50–75 %"][0]
+    assert b05["n"] == 1 and b05["real_rate"] == 1.0
+    # akzeptabel (Abweichung genau 0,10):
+    obs10 = [(0.5, 0.25, 0.25, o) for o in [1, 1, 1, 1, "X", "X", "X", 2, 2, 2]]
+    assert calibration_summary(obs10)["stufe"] == "akzeptabel"
+    # prüfen (große Abweichung):
+    obs_bad = [(0.8, 0.1, 0.1, 2)]
+    assert calibration_summary(obs_bad)["stufe"] == "prüfen"
+    assert calibration_summary([]) is None
+
+
+def test_kalibrierungs_trend_karte_leer_und_mit_daten(client, db, admin_user, competition, teams):
+    """Die Karte zeigt ohne Daten den Hinweis, mit abgerechnetem Spieltag
+    Kalibrierungs-Kacheln, Bucket-Tabelle und Trend-Zeile (serverseitig)."""
+    now = datetime.now(timezone.utc)
+    m3 = Match(competition_id=competition.id, matchday=3,
+               home_team_id=teams[0].id, away_team_id=teams[1].id,
+               kickoff=now - timedelta(days=2), status="finished",
+               home_score=2, away_score=1)
+    m9 = Match(competition_id=competition.id, matchday=9,
+               home_team_id=teams[2].id, away_team_id=teams[3].id,
+               kickoff=now + timedelta(days=2), status="scheduled")
+    db.session.add_all([m3, m9])
+    db.session.commit()
+    _login(client, admin_user)
+    _use_test_comp(client)
+
+    html = client.get("/admin/tip-optimizer", follow_redirects=True).get_data(as_text=True)
+    assert "Kalibrierung" in html
+    assert "Noch keine abgerechneten Spieltage mit gespeicherten Vorhersagen" in html
+
+    r = _vorhersage_run_speichern(client, 3, [{
+        "match_id": m3.id, "tip_h": 2, "tip_a": 1,
+        "ep": 1.5, "p1": 0.5, "px": 0.25, "p2": 0.25,
+        "pge2": 0.75, "pge3": 0.2, "pex": 0.15,
+        "lh": 2.0, "la": 0.9, "o1": 1.9, "ox": 3.3, "o2": 4.2}])
+    assert r.status_code == 200 and r.get_json()["ok"] is True
+
+    html = client.get("/admin/tip-optimizer", follow_redirects=True).get_data(as_text=True)
+    assert "Σ P(1) prognostiziert" in html
+    assert "Heimsiege real" in html
+    assert "P(1) 50–75 %" in html                    # Bucket-Tabelle
+    assert "ST 3" in html and "to-bar" in html       # Trend-Zeile mit Balken
+    assert "prüfen" in html                          # 50 % prognostiziert, 100 % real
+
+
+def test_js_und_template_anker_guards():
+    """Quelltext-Guards: JS rendert die Anker-Sektion, Template/CSS tragen die
+    Kalibrierungs-Karte samt Balken-Visual."""
+    js = open("static/js/tip_optimizer.js", encoding="utf-8").read()
+    assert "d.anchored" in js and "Mit Odds-Anker" in js
+    assert "anchored_ep" in js and "blind_brier" in js
+    tpl = open("templates/admin/tip_optimizer.html", encoding="utf-8").read()
+    assert "Kalibrierung &amp; Trend" in tpl
+    assert "kalib.cal.stufe" in tpl and "kalib.trend" in tpl
+    css = open("static/css/style.css", encoding="utf-8").read()
+    assert ".to-bar" in css
+
+
+# ============================================================
+# Runde (79): 🤖 Optimizer als Mitspieler (Admin-only-Report)
+# ============================================================
+
+def _md_gesetzt_und_teilnehmer(db, competition, teams):
+    """Spieltag 3 komplett finished (2 Spiele, feste Ergebnisse) + ein
+    geplanter ST 9 (schiebt current_md hoch) + zwei reale Tipper mit Punkten."""
+    from models import Prediction, User
+    now = datetime.now(timezone.utc)
+    m1 = Match(competition_id=competition.id, matchday=3,
+               home_team_id=teams[0].id, away_team_id=teams[1].id,
+               kickoff=now - timedelta(days=2), status="finished",
+               home_score=2, away_score=1)
+    m2 = Match(competition_id=competition.id, matchday=3,
+               home_team_id=teams[2].id, away_team_id=teams[3].id,
+               kickoff=now - timedelta(days=2, hours=2), status="finished",
+               home_score=0, away_score=0)
+    m9 = Match(competition_id=competition.id, matchday=9,
+               home_team_id=teams[0].id, away_team_id=teams[2].id,
+               kickoff=now + timedelta(days=5), status="scheduled")
+    db.session.add_all([m1, m2, m9])
+    u1 = User(username="mitspieler-a", email="mitspieler-a@example.com",
+              full_name="Mitspieler A")
+    u1.set_password("testpass123")
+    u2 = User(username="mitspieler-b", email="mitspieler-b@example.com",
+              full_name="Mitspieler B")
+    u2.set_password("testpass123")
+    db.session.add_all([u1, u2])
+    db.session.commit()
+    # A: 2:1 exakt (4) + 0:0 exakt (4) = 8 P — Sieger
+    # B: 1:1 diff bei 2:1 (3) + 1:0 falsch (0) = 3 P
+    db.session.add_all([
+        Prediction(user_id=u1.id, match_id=m1.id, home_tip=2, away_tip=1, points=4),
+        Prediction(user_id=u1.id, match_id=m2.id, home_tip=0, away_tip=0, points=4),
+        Prediction(user_id=u2.id, match_id=m1.id, home_tip=1, away_tip=1, points=3),
+        Prediction(user_id=u2.id, match_id=m2.id, home_tip=1, away_tip=0, points=0),
+    ])
+    db.session.commit()
+    return m1, m2
+
+
+def test_mitspieler_rang_joker_und_kumulus(client, app, db, admin_user, competition, teams):
+    """Optimizer-Punkte landen korrekt einsortiert: Basis, Joker-Simulation
+    (×2 auf höchste EP), Platz von N, Sieger + Delta, Saison-Kumulus."""
+    import admin_tip_optimizer_routes as to_mod
+    m1, m2 = _md_gesetzt_und_teilnehmer(db, competition, teams)
+    _login(client, admin_user)
+    _use_test_comp(client)
+    app.config["COMPETITION"] = competition.code   # direkter Helper-Aufruf ohne Session
+    # Optimizer: Tipp auf m1 2:1 (exakt, EP 1.9 = höchster) + m2 1:2 (falsch)
+    # Basis: 4 + 0 = 4 P -> Platz 2 von 2 (A=8 vorn), Delta 4.
+    # Joker: ×2 auf m1 -> 8 P.
+    r = _vorhersage_run_speichern(client, 3, [
+        {"match_id": m1.id, "tip_h": 2, "tip_a": 1, "ep": 1.9,
+         "p1": 0.55, "px": 0.25, "p2": 0.2, "pge2": 0.8, "pge3": 0.3, "pex": 0.2,
+         "lh": 1.8, "la": 1.0, "o1": 1.7, "ox": 3.6, "o2": 5.0},
+        {"match_id": m2.id, "tip_h": 1, "tip_a": 2, "ep": 1.1,
+         "p1": 0.3, "px": 0.3, "p2": 0.4, "pge2": 0.55, "pge3": 0.25, "pex": 0.25,
+         "lh": 1.0, "la": 1.4, "o1": 3.1, "ox": 3.2, "o2": 2.3},
+    ])
+    assert r.status_code == 200 and r.get_json()["ok"] is True
+    stats = to_mod._mitspieler_stats()
+    assert stats is not None
+    assert stats["mds"] == 1 and stats["n"] == 2
+    row = stats["rows"][0]
+    assert row["md"] == 3 and row["opt_pts"] == 4
+    assert row["joker_pts"] == 8              # exakter Tipp mit höchster EP ×2
+    assert row["rank"] == 2 and row["of"] == 2
+    assert row["winner"] == "mitspieler-a" and row["winner_pts"] == 8
+    assert row["delta"] == 4
+    # Kumulus: A 7 (bzw. 8 mit m2 exakt? — A hat m2 mit 0:0 exakt getippt = 4 P,
+    # laut Daten oben also 4+4=8? — die Prediction-Punkte hier sind fix gesetzt:
+    # A = 4+4 = 8? Nein: oben steht A m2 = 4 P, also 8 gesamt. Optimizer 4.
+    assert stats["opt_total"] == 4 and stats["joker_total"] == 8
+    assert stats["cum_of"] == 2
+    assert stats["cum_rank"] == 2                  # A hat 8 P (2x exakt), Optimizer 4
+
+
+def test_mitspieler_nur_letzter_lauf_je_spieltag(client, app, db, admin_user, competition, teams):
+    """Mehrere Läufe für denselben Spieltag: gewertet wird der NEUESTE."""
+    import admin_tip_optimizer_routes as to_mod
+    m1, _ = _md_gesetzt_und_teilnehmer(db, competition, teams)
+    _login(client, admin_user)
+    _use_test_comp(client)
+    app.config["COMPETITION"] = competition.code   # direkter Helper-Aufruf ohne Session
+
+    def _tip(paket):
+        return {"match_id": m1.id, "p1": 0.5, "px": 0.25, "p2": 0.25,
+                "pge2": 0.7, "pge3": 0.2, "pex": 0.15,
+                "lh": 1.7, "la": 1.1, "o1": 1.9, "ox": 3.4, "o2": 4.1, **paket}
+    # Lauf 1: 0:3 (falsch -> 0 P) — Lauf 2: 2:1 (exakt -> 4 P)
+    assert _vorhersage_run_speichern(client, 3, [_tip({"tip_h": 0, "tip_a": 3, "ep": 1.0})]).status_code == 200
+    assert _vorhersage_run_speichern(client, 3, [_tip({"tip_h": 2, "tip_a": 1, "ep": 1.4})]).status_code == 200
+    stats = to_mod._mitspieler_stats()
+    assert stats is not None and stats["rows"][0]["opt_pts"] == 4
+
+
+def test_mitspieler_karte_leer_und_mit_daten(client, db, admin_user, competition, teams):
+    """Karte: ohne Daten ℹ️-Hinweis, mit Daten Rangfolge-Zeile (servergerendert)."""
+    m1, _ = _md_gesetzt_und_teilnehmer(db, competition, teams)
+    _login(client, admin_user)
+    _use_test_comp(client)
+    html = client.get("/admin/tip-optimizer", follow_redirects=True).get_data(as_text=True)
+    assert "Optimizer als Mitspieler" in html
+    assert "Noch nichts bewertbar" in html
+    r = _vorhersage_run_speichern(client, 3, [
+        {"match_id": m1.id, "tip_h": 2, "tip_a": 1, "ep": 1.9,
+         "p1": 0.55, "px": 0.25, "p2": 0.2, "pge2": 0.8, "pge3": 0.3, "pex": 0.2,
+         "lh": 1.8, "la": 1.0, "o1": 1.7, "ox": 3.6, "o2": 5.0}])
+    assert r.status_code == 200
+    html = client.get("/admin/tip-optimizer", follow_redirects=True).get_data(as_text=True)
+    assert "Saison-Kumulus" in html
+    assert "mitspieler-a" in html              # Sieger-Spalte
+    assert "von 2" in html                     # Platzierung
+
+
+def test_template_und_helper_mitspieler_guards():
+    """Quelltext-Guard: Karte + Labels + Admin-only-Hinweis vorhanden."""
+    tpl = open("templates/admin/tip_optimizer.html", encoding="utf-8").read()
+    assert "Optimizer als Mitspieler" in tpl
+    assert "mitspieler.cum_rank" in tpl and "mitspieler.rows" in tpl
+    assert "nie für Spieler sichtbar" in tpl
+    routes_src = open("admin_tip_optimizer_routes.py", encoding="utf-8").read()
+    assert "_mitspieler_stats" in routes_src

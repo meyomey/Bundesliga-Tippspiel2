@@ -137,3 +137,105 @@ def test_season_archive_job_archiviert_nach_letztem_spieltag(app, db, competitio
     from models import Setting
     s = Setting.query.get("season_archived")
     assert s is not None and s.value == "true"
+
+
+# ============================================================
+# (80) Quoten-Erinnerung: 48-h-Fenster, Dedupe, stille Ausnahmen
+# ============================================================
+
+def _naechsten_anstoss_anlegen(db, competition, teams, stunden, md=5):
+    """Ein geplantes Spiel des Spieltags `md` in `stunden` Stunden."""
+    kickoff = datetime.now(timezone.utc) + timedelta(hours=stunden)
+    m = Match(competition_id=competition.id, matchday=md,
+              home_team_id=teams[0].id, away_team_id=teams[1].id,
+              kickoff=kickoff, status="scheduled")
+    db.session.add(m)
+    db.session.commit()
+    return m
+
+
+def test_odds_reminder_sendet_einmal_je_spieltag(app, db, competition, teams, admin_user, monkeypatch):
+    """Fenster (+24 h), Key gesetzt, keine Stände → 1 Telegram-Info an den
+    Admin; der zweite Lauf im selben Spieltag schweigt (Dedupe)."""
+    monkeypatch.setattr(scheduler, "app", app)
+    monkeypatch.setitem(app.config, "COMPETITION", competition.code)
+    from scoring import set_setting
+    set_setting("the_odds_api_key", "TESTKEY")
+    _naechsten_anstoss_anlegen(db, competition, teams, 24)
+    admin_user.phone = "tg:TESTCHAT"
+    db.session.commit()
+    tgram = []
+    monkeypatch.setattr("telegram_bot.notify_user_telegram",
+                        lambda user, msg: tgram.append(msg))
+    scheduler.odds_reminder_job()
+    assert len(tgram) == 1
+    assert "ST 5" in tgram[0] and "Quoten online laden" in tgram[0]
+    scheduler.odds_reminder_job()
+    assert len(tgram) == 1                     # Dedupe: einmal je Spieltag
+
+
+def test_odds_reminder_stumm_bei_vorhandenen_staenden(app, db, competition, teams, admin_user, monkeypatch):
+    """Schon ein Snapshot für den Spieltag → keine Erinnerung."""
+    monkeypatch.setattr(scheduler, "app", app)
+    monkeypatch.setitem(app.config, "COMPETITION", competition.code)
+    from scoring import set_setting
+    from models import OddsSnapshot
+    set_setting("the_odds_api_key", "TESTKEY")
+    m = _naechsten_anstoss_anlegen(db, competition, teams, 24)
+    db.session.add(OddsSnapshot(competition_id=competition.id, match_id=m.id,
+                                matchday=5, o1=2.0, ox=3.4, o2=3.8))
+    admin_user.phone = "tg:TESTCHAT"
+    db.session.commit()
+    tgram = []
+    monkeypatch.setattr("telegram_bot.notify_user_telegram",
+                        lambda user, msg: tgram.append(msg))
+    scheduler.odds_reminder_job()
+    assert tgram == []
+
+
+def test_odds_reminder_stumm_ohne_key_oder_deaktiviert(app, db, competition, teams, admin_user, monkeypatch):
+    """Ohne The-Odds-API-Key und bei odds_reminder_enabled=false: still
+    (fehlender optionaler Key ist ℹ️, nie ⚠️ — Dauerregel 2)."""
+    monkeypatch.setattr(scheduler, "app", app)
+    monkeypatch.setitem(app.config, "COMPETITION", competition.code)
+    _naechsten_anstoss_anlegen(db, competition, teams, 24)
+    admin_user.phone = "tg:TESTCHAT"
+    db.session.commit()
+    tgram = []
+    monkeypatch.setattr("telegram_bot.notify_user_telegram",
+                        lambda user, msg: tgram.append(msg))
+    scheduler.odds_reminder_job()              # kein Key gesetzt
+    assert tgram == []
+    from scoring import set_setting
+    set_setting("the_odds_api_key", "TESTKEY")
+    set_setting("odds_reminder_enabled", False)
+    scheduler.odds_reminder_job()              # explizit deaktiviert
+    assert tgram == []
+
+
+def test_odds_reminder_stumm_ausserhalb_des_fensters(app, db, competition, teams, admin_user, monkeypatch):
+    """Erster Anstoß erst in 72 h (außerhalb 48-h-Fenster) → keine Erinnerung."""
+    monkeypatch.setattr(scheduler, "app", app)
+    monkeypatch.setitem(app.config, "COMPETITION", competition.code)
+    from scoring import set_setting
+    set_setting("the_odds_api_key", "TESTKEY")
+    _naechsten_anstoss_anlegen(db, competition, teams, 72)
+    admin_user.phone = "tg:TESTCHAT"
+    db.session.commit()
+    tgram = []
+    monkeypatch.setattr("telegram_bot.notify_user_telegram",
+                        lambda user, msg: tgram.append(msg))
+    scheduler.odds_reminder_job()
+    assert tgram == []
+
+
+def test_odds_cron_task_ruft_scheduler_job(app, monkeypatch):
+    """Der wget-Cron-Task 'odds' (cron_jobs.run_odds_reminder) ruft den
+    Scheduler-Job im App-Kontext auf."""
+    monkeypatch.setattr(scheduler, "app", app)
+    calls = []
+    monkeypatch.setattr(scheduler, "odds_reminder_job",
+                        lambda: calls.append(1))
+    from cron_jobs import run_odds_reminder
+    assert run_odds_reminder() is True
+    assert calls == [1]

@@ -106,6 +106,90 @@
 </div>
 
 <div class="card">
+  <h2>🎚 Kalibrierung &amp; Trend</h2>
+  {% if kalib %}
+  <p class="muted" style="margin-top:0">Geplante vs. realisierte Wahrscheinlichkeiten aus den gespeicherten Vorhersagen ({{ kalib.mds }} abgerechnete Spieltage, jeweils der letzte Lauf je Spieltag, {{ kalib.n }} Spiele{% if kalib.small %} — <b>kleine Stichprobe</b>, nur Richtwerte{% endif %}).</p>
+  <div class="to-statgrid">
+    <div class="to-stat" title="Summe aller gespeicherten P(Heimsieg)-Prognosen über alle bewerteten Spiele."><span>Σ P(1) prognostiziert</span><b>{{ '%.0f' % (kalib.cal.p1_soll * 100) }} %</b></div>
+    <div class="to-stat"><span>Heimsiege real</span><b>{{ '%.0f' % (kalib.cal.p1_ist * 100) }} %</b></div>
+    <div class="to-stat" title="Summe aller gespeicherten P(Unentschieden)-Prognosen."><span>Σ P(X) prognostiziert</span><b>{{ '%.0f' % (kalib.cal.px_soll * 100) }} %</b></div>
+    <div class="to-stat"><span>Unentschieden real</span><b>{{ '%.0f' % (kalib.cal.px_ist * 100) }} %</b></div>
+    <div class="to-stat" title="Summe aller gespeicherten P(Auswärtssieg)-Prognosen."><span>Σ P(2) prognostiziert</span><b>{{ '%.0f' % (kalib.cal.p2_soll * 100) }} %</b></div>
+    <div class="to-stat"><span>Auswärtssiege real</span><b>{{ '%.0f' % (kalib.cal.p2_ist * 100) }} %</b></div>
+    <div class="to-stat" title="Größte Abweichung zwischen Prognose und Realität über alle drei Klassen: ≤ 5 % = gut kalibriert, ≤ 12 % = akzeptabel, darüber prüfen.">Kalibrierung (max. Abweichung {{ '%.0f' % (kalib.cal.delta_max * 100) }} % Pkt.)<b>{{ kalib.cal.stufe }}</b></div>
+  </div>
+  {% if kalib.cal.buckets %}
+  <p class="muted" style="margin:6px 0 4px">Zuverlässigkeit nach P(1)-Bereichen — „Ø P(1)“ ist die mittlere Prognose, „real“ der tatsächliche Heimsieg-Anteil in dem Bereich:</p>
+  <div class="to-tblwrap">
+    <table class="to-tblwide-narrow">
+      <thead><tr><th>Bereich</th><th>Spiele</th><th>Ø P(1) prognostiziert</th><th>Heimsiege real</th></tr></thead>
+      <tbody>
+      {% for b in kalib.cal.buckets %}
+      <tr><td>{{ b.label }}</td><td>{{ b.n }}</td><td>{{ '%.0f' % (b.mean_p1 * 100) }} %</td><td><b>{{ '%.0f' % (b.real_rate * 100) }} %</b></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+  <p class="muted" style="margin:8px 0 4px">Trend je Spieltag — EP erwartet (Modell) gegen Punkte real:</p>
+  <div class="to-tblwrap">
+    <table class="to-tblwide-narrow">
+      <thead><tr><th title="Spieltag">ST</th><th title="Erwartungswert je Spiel (4/3/2-Regel)">EP erwartet</th><th title="Tatsächlich erzielte Punkte je Spiel">Punkte real</th><th title="Erwartete vs. realisierte Trefferquote von ≥ 2 Punkten">P(≥2 P)</th><th title="0 = perfekt, ~0,67 = Zufallstipp">Brier</th></tr></thead>
+      <tbody>
+      {% for r in kalib.trend %}
+      <tr>
+        <td>ST {{ r.md }}</td>
+        <td><span class="to-bar"><span style="width:{{ r.bar_exp }}%"></span></span> {{ '%.2f' % r.ep_exp_pm }}</td>
+        <td><span class="to-bar to-bar-real"><span style="width:{{ r.bar_real }}%"></span></span> <b>{{ '%.2f' % r.ep_real_pm }}</b></td>
+        <td>{{ '%.0f' % (r.pge2_exp * 100) }} % / {{ '%.0f' % (r.pge2_rate * 100) }} %</td>
+        <td>{{ '%.3f' % r.brier }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="muted" style="margin:6px 0 0;font-size:12px">Liegt „Punkte real“ dauerhaft über „EP erwartet“, schlägt das Modell seine eigene Erwartung — ein Zeichen, dass der Odds-Anker arbeitet. Unter 30 Spielen sind alle Werte Richtwerte.</p>
+  {% else %}
+  <p class="muted" style="margin:0">Noch keine abgerechneten Spieltage mit gespeicherten Vorhersagen — Karte füllt sich automatisch: „💾 Vorhersage speichern“ drücken, nach Spieltags-Ende erscheinen Kalibrierung (Prognose-% gegen reale Ergebnisse) und EP-Trend hier. (Nur Admin-Sicht.)</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>🤖 Optimizer als Mitspieler</h2>
+  {% if mitspieler %}
+  <p class="muted" style="margin-top:0">Wo hätte der Optimizer in der <b>realen Spieltags-Rangfolge</b> platziert — gerechnet mit den zuletzt gespeicherten Vorhersagen je abgerechnetem Spieltag (Mitspieler inkl. Bots, wie beim Spieltagsieger; nur Admin-Sicht).</p>
+  <div class="to-statgrid">
+    <div class="to-stat"><span>Bewertete Spieltage</span><b>{{ mitspieler.mds }}</b></div>
+    <div class="to-stat"><span title="Real erzielte Punkte (4/3/2-Regel) der optimierten Tipps, summiert über alle bewerteten Spiele">Optimizer Punkte</span><b>{{ mitspieler.opt_total }}</b></div>
+    <div class="to-stat"><span title="Punkte pro Spiel">Ø / Spiel</span><b>{{ '%.2f' % mitspieler.opt_avg }}</b></div>
+    <div class="to-stat" title="Simulation: ×2 auf den Tipp mit dem höchsten Erwartungswert — derselbe Vorschlag wie der Joker-Hinweis oben. Fallback ohne Joker-Tipp: Basis-Punkte."><span>Mit Joker-Simulation</span><b>{{ mitspieler.joker_total }}</b></div>
+    <div class="to-stat" title="Optimizer-Gesamtpunkte eingeordnet in die Summe aller Mitspieler über dieselben Spieltage"><span>Saison-Kumulus</span><b>Platz {{ mitspieler.cum_rank }} / {{ mitspieler.cum_of }}</b></div>
+  </div>
+  <div class="to-tblwrap">
+    <table class="to-tblwide-narrow">
+      <thead><tr><th title="Spieltag">ST</th><th>Spiele</th><th title="Real erzielte Punkte der Optimizer-Tipps (4/3/2)">Optimizer</th><th title="Mit simuliertem Joker (×2 auf höchste EP)">mit Joker</th><th title="Wäre-Platzierung in der realen Spieltags-Rangfolge">Platz</th><th>Sieger</th><th title="Punkte Rückstand auf den Sieger">Δ</th></tr></thead>
+      <tbody>
+      {% for r in mitspieler.rows %}
+      <tr>
+        <td>ST {{ r.md }}</td>
+        <td>{{ r.n }}</td>
+        <td><b>{{ r.opt_pts }}</b></td>
+        <td>{{ r.joker_pts if r.joker_pts is not none else "–" }}</td>
+        <td><b>{{ r.rank }}.</b> <span class="muted">von {{ r.of }}</span></td>
+        <td>{{ r.winner }} <span class="muted">({{ r.winner_pts }} P)</span></td>
+        <td>{% if r.delta > 0 %}<span class="muted">−{{ r.delta }}</span>{% else %}<span title="Optimizer wäre vorn gelegen">🏆</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="muted" style="margin:6px 0 0;font-size:12px">Nur Admin-Sicht (Optimizer-Daten sind nie für Spieler sichtbar). „Mit Joker“ ist eine Simulation — gespielt werden weiterhin die menschlichen Tipps.</p>
+  {% else %}
+  <p class="muted" style="margin:0">Noch nichts bewertbar: Sobald ein Spieltag mit gespeicherter Vorhersage („💾 Vorhersage speichern“) komplett abgerechnet ist, erscheint hier, auf welchem Platz der Optimizer in der realen Rangfolge gelandet wäre. (Nur Admin-Sicht.)</p>
+  {% endif %}
+</div>
+
+<div class="card">
   <h2>📊 Quoten-Bewegung</h2>
   {% if odds_move %}
   <p class="muted" style="margin-top:0">Erster vs. letzter gespeicherter Stand je Spiel – jeder „⬇ Quoten online laden“-Abruf legt einen Zeitstempel-Stand an (0 €, eigene abgerufene Werte; manuelle Eingaben bleiben in Ruhe).

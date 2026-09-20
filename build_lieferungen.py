@@ -65,6 +65,9 @@ GITHUB_UPLOAD_FILES = [
     "tests/test_bot_joker.py",
     # 06.09.2026 (7): Bot-Runden robust + verpasste Runden sichtbar
     "cron_jobs.py",
+    # 20.09.2026 (80): Quoten-Erinnerung im Scheduler - Scheduler gehoert jetzt
+    # aufs GitHub (Standalone-Skript mit testbarem Job, CI uebernimmt die Tests)
+    "scheduler.py",
     # 06.09.2026 (8): Sync-Purge - Tipps-Umzug auf Ersatz-Spiele + Integritaetscheck
     "sync_shared.py",
     "sync_openligadb.py",

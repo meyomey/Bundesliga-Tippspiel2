@@ -188,6 +188,17 @@ def run_bot_tips():
         return True
 
 
+def run_odds_reminder():
+    """Prueft das 48-h-Fenster des nächsten Spieltags und erinnert Admins per
+    Telegram an „Quoten online laden“, wenn noch keine Stände gespeichert sind
+    ((80) — die Odds-API listet nur zukuenftige Spiele, zu spaet ist zu spaet)."""
+    from app import app
+    from scheduler import odds_reminder_job
+    with app.app_context():
+        odds_reminder_job()
+        return True
+
+
 def run_backup():
     """Erstellt das taegliche SQLite-Backup (Heartbeat schreibt backup.py selbst)."""
     from app import app
@@ -226,6 +237,8 @@ def main():
         _run_task_safe("reminder", run_reminders)
     elif task == "bots":
         _run_task_safe("bots", run_bot_tips)
+    elif task == "odds":
+        _run_task_safe("odds", run_odds_reminder)
     elif task == "backup":
         _run_task_safe("backup", run_backup)
     elif task == "status":
@@ -236,7 +249,7 @@ def main():
         _run_task_safe("reminder", run_reminders)
     else:
         print(f"Unbekannte Task: {task}")
-        print("Verwendung: python cron_jobs.py [sync|reminder|bots|backup|status|all]")
+        print("Verwendung: python cron_jobs.py [sync|reminder|bots|odds|backup|status|all]")
         sys.exit(1)
 
 

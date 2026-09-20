@@ -25,6 +25,14 @@ def user2(db):
     return u
 
 
+@pytest.fixture(autouse=True)
+def badge_saison_laeuft(db):
+    """(78): Badge-Trigger sind saison-scoped — die Tests erzeugen Matches im
+    September 2026, also läuft das Saison-Label auf '2026/27'."""
+    from scoring import set_setting
+    set_setting("current_season", "2026/27")
+
+
 @pytest.fixture(scope="function")
 def seeded(db):
     """Seedet die Standard-Badges (idempotent, Badge-Tabelle ist vorher leer)."""
@@ -107,7 +115,7 @@ def test_recompute_eindeutiger_sieger_setzt_punkte_und_exakt_count(
     assert len(rows) == 1
     r = rows[0]
     assert r.user_id == user.id and r.points == 4 and r.exact_count == 1
-    assert r.is_shared is False and r.season == "2025/26"
+    assert r.is_shared is False and r.season == "2026/27"  # laufende Saison (Fixture)
     assert r.competition_id == competition.id
 
 
@@ -152,10 +160,10 @@ def test_recompute_ersetzt_veraltete_zeilen(db, competition, teams, user, user2)
     # Stale-Zeilen (falscher Sieger + falscher Spieltag 99) werden weggeraeumt:
     db.session.add(MatchdayWinner(competition_id=competition.id, matchday=1,
                                   user_id=user2.id, points=99, exact_count=9,
-                                  season="2025/26"))
+                                  season="2026/27"))
     db.session.add(MatchdayWinner(competition_id=competition.id, matchday=99,
                                   user_id=user.id, points=4, exact_count=1,
-                                  season="2025/26"))
+                                  season="2026/27"))
     db.session.commit()
     recompute_matchday_winners()
     rows = MatchdayWinner.query.all()
@@ -300,7 +308,7 @@ def test_trigger_md_winner_3_schwelle_inkl_geteilter_siege(
         db.session.add(MatchdayWinner(competition_id=competition.id, matchday=md,
                                       user_id=user.id, points=7 + i,
                                       exact_count=1, is_shared=(i > 1),
-                                      season="2025/26"))
+                                      season="2026/27"))
     db.session.commit()
     assert _user_qualifies(user, b3) is True    # 3 Siege (2 davon geteilt) zaehlen
     assert _user_qualifies(user, b5) is False   # Schwelle 5 nicht erreicht
@@ -384,3 +392,81 @@ def test_check_and_award_user_liste_begrenzt(db, competition, teams, user, user2
     assert UserBadge.query.filter_by(user_id=user2.id, badge_id=b.id).first() is None
     check_and_award_badges()                      # Volllauf holt user2 nach
     assert UserBadge.query.filter_by(user_id=user2.id, badge_id=b.id).first()
+
+
+# ------------------------------------- E) Saison-Scope der Karriere-Badges (78)
+def _tip_mit_kickoff(db, user, comp, teams, kickoff):
+    """Exakter Tipp (2:1 auf 2:1) zu einem frei wählbaren Anstoß."""
+    m = Match(
+        competition_id=comp.id, matchday=1,
+        home_team_id=teams[0].id, away_team_id=teams[1].id,
+        kickoff=kickoff, status="finished", home_score=2, away_score=1)
+    db.session.add(m)
+    db.session.commit()
+    return tip(db, user, m, 2, 1)
+
+
+def test_season_interval_parsen_und_fehlertoleranz():
+    """'2026/27' und '2025/2026' werden gelesen; Kaputtes/Leeres -> None
+    (Filter dann inaktiv — es zählt weiter alles, nie still falsch)."""
+    from badges import _season_interval
+    start, end = _season_interval("2026/27")
+    assert (start.year, start.month, start.day) == (2026, 7, 1)
+    assert (end.year, end.month, end.day) == (2027, 6, 30)
+    start2, end2 = _season_interval("2025/2026")
+    assert start2.year == 2025 and end2.year == 2026
+    assert _season_interval("") is None
+    assert _season_interval(None) is None
+    assert _season_interval("ka-pu/tt") is None
+
+
+def test_karriere_badges_zahlen_nur_laufende_saison(
+        db, competition, teams, user, seeded):
+    """(78): 10 exakte Tipps in der VORSaison (2025/26) zählen nicht für den
+    Scharfschützen, solange die Saison 2026/27 läuft — auch first_tip nicht
+    (alle Tipps sind alt). Ein laufender-Saison-Tipp genügt für first_tip."""
+    from badges import _user_qualifies
+    from scoring import set_setting
+    b = badge_by_code("sharp_shooter")
+    b_ft = badge_by_code("first_tip")
+    alt = datetime(2025, 8, 16, 13, 30, tzinfo=timezone.utc)   # Vorsaison
+    for i in range(10):
+        _tip_mit_kickoff(db, user, competition, teams, alt + timedelta(days=i))
+    assert _user_qualifies(user, b) is False      # 10 exakt — aber alte Saison
+    assert _user_qualifies(user, b_ft) is False   # Tipps ja — aber alle alt
+    neu = datetime(2026, 9, 12, 13, 30, tzinfo=timezone.utc)   # laufende Saison
+    _tip_mit_kickoff(db, user, competition, teams, neu)
+    assert _user_qualifies(user, b_ft) is True
+    assert _user_qualifies(user, b) is False      # nur 1 der 11 liegt in der Saison
+    # Archiv-Blick auf die alte Saison: dort zählen die 10 wieder:
+    set_setting("current_season", "2025/26")
+    assert _user_qualifies(user, b) is True
+
+
+def test_revalidate_widerruft_vorsaison_karriere_badges(
+        db, competition, teams, user, seeded):
+    """(78): Wurde ein Karriere-Badge auf Basis der Vorsaison verliehen, wird er
+    nach dem Saisonwechsel beim nächsten Wartungslauf 'badges' widerrufen."""
+    from badges import revalidate_badges
+    from scoring import set_setting
+    b = badge_by_code("sharp_shooter")
+    alt = datetime(2025, 8, 16, 13, 30, tzinfo=timezone.utc)
+    for i in range(10):
+        _tip_mit_kickoff(db, user, competition, teams, alt + timedelta(days=i))
+    set_setting("current_season", "2025/26")
+    revalidate_badges()
+    assert UserBadge.query.filter_by(user_id=user.id, badge_id=b.id).first()
+    set_setting("current_season", "2026/27")      # Saisonwechsel
+    revalidate_badges()
+    assert UserBadge.query.filter_by(user_id=user.id, badge_id=b.id).first() is None
+
+
+def test_seed_karriere_badges_nennen_die_saison():
+    """(78): die Seeding-Texte der Karriere-Badges sagen 'in der Saison' (neue
+    DBs; Bestand: Admin → Badges → Text manuell anpassen)."""
+    from badges import DEFAULT_BADGES
+    karriere_types = {"first_tip", "tips_count", "total_points", "exact_count",
+                      "joker_exact"}
+    for code, name, desc, icon, color, ttype, thresh in DEFAULT_BADGES:
+        if ttype in karriere_types:
+            assert "Saison" in desc, code
