@@ -1,6 +1,221 @@
 # Changelog – Wulmstörper Tipprunde
 
 
+## [3.1.44] - 2026-09-20
+
+### 🏅 Badge-Fixes (Admin-Fund): „Tagessieger“/„Spieltagssieger“ trotz 0 Siegen
+
+- **Meldung (Admin/Profil):** Badge „Tagessieger“ (Beschreibung „Alle Spiele eines Spieltags exakt“) und „Spieltagssieger“, obwohl das Profil 0 Spieltagssiege zeigt.
+- **Was die Badges eigentlich heißen:** „Tagessieger“ = `perfect_day` (ein Spieltag, an dem **alle** Spiele exakt getippt wurden) — **nicht** ein gewonnener Spieltag. Das echte Sieg-Badge heißt „Spieltagsieger“ (`matchday_winner`). Die Namen waren verwechselbar → Seed-Umbenennung auf **„Perfekter Tag“** (neue DBs; Produktion: Admin → Badges → Name ändern).
+- **Ursachen der Fehlzuteilung + Fixes:**
+  1. `perfect_day` wertete **partielle Spieltage** ab: wenn erst 2 von 9 Spielen abgerechnet waren und der Tipper darauf 2 exakte Treffer hatte, galt der Spieltag als „perfekt“. Jetzt zählt nur ein **vollständig abgelaufener** Spieltag, für den der Tipper jeden Match hat.
+  2. `matchday_winner`-Badges zählten MatchdayWinner-Zeilen aus **allen** Wettbewerben/Saisons — das Profil ist dagegen auf den aktiven Wettbewerb scoped. Jetzt identisch: **aktiver Wettbewerb + aktuelle Saison**.
+  3. **Badges wurden nie widerrufen** (nur vergeben) → falsch zuerworbene blieben hängen. Neue **Vollrevalidierung `revalidate_badges()`**: vergibt fehlende **und widerruft** nicht mehr verdiente Auto-Badges (manuelle Badges bleiben unangetastet). Auslösung: **Admin → Wartung → Aufgabe „badges“**.
+- 4 neue Tests (partieller/vollständiger Spieltag, Scope-Kontrolle, Widerruf + Manuell-Schutz, Seed-Name). Suite **478/478**, flake8-Gate 0.
+
+## [3.1.43] - 2026-09-20
+
+### 🎯 Bugfix (Spieler-Fund): „Exakte Treffer“ zählten Joker-Tipps (2+2=4 P) mit
+
+- **Meldung:** Bei der Tagessieg-Auswertung wurden als exakte Treffer auch Joker-Tipps mit zusammen 4 Punkten gezählt — obwohl es 2+2 sind. Die Rangliste war korrekt.
+- **Root Cause:** „Exakt“ wurde an mehreren Stellen per **Punktewert** (`points >= 4`) statt per **Endstand-Klassifikation** bestimmt. Ein Joker verdoppelt nur die Punkte — er macht aus einem Tendenz-Tipp keinen exakten Treffer.
+- **Fix (alle Stellen mit dem Muster):**
+  - `recompute_matchday_winners()`: Tagessieg-`exact_count` + Tiebreak zählen jetzt nur **Endstand exakt** (`home_tip == home_score` UND `away_tip == away_score` — die Definition aus `classify_prediction`, Punkte-Logik identisch).
+  - Badges: `exact_count` (z. B. „Scharfschütze“), `joker_exact` (Joker + Diff mit 3+3=6 P hätte vorher gereicht!) und `perfect_day` — jetzt per `classify_prediction` == „exact“.
+  - Bot-Analyse (`admin_bots_routes`) und AI-Op-Rangliste: gleiche Korrektur.
+- **Produktion:** Alte Tagessieg-Zeilen nach dem Deploy über **Admin → Wartung → Aufgabe „matchday_winners“** neu berechnen (eine Klick-Aktion); alternativ passiert es beim nächsten Ergebnis-Sync automatisch.
+- 5 neue Regressionstests (Spieler-Szenario, Tiebreak, alle drei Badge-Triggers). Suite **474/474**, flake8-Gate 0.
+
+## [3.1.42] - 2026-09-19
+
+### 🕓 Zeitanzeige einheitlich: UTC → lokale Zeit auf der ganzen Optimizer-Seite
+
+- **Problem (Nutzer-Fund):** Oben „Quotenstand 14:04“ (Chip, lokale Zeit), unten in der Quoten-Bewegung „zuletzt 12:04“ (UTC, unbezeichnet) — derselbe Abruf, zwei unterschiedliche Angaben.
+- **Fix:** Der Server liefert die Zeitstempel weiterhin ehrlich als UTC, aber zusätzlich als **UTC-ISO mit Z** (`data-ts-utc`, Helper `_iso_z()`). Neue JS-Funktion `localizeTimestamps()` rechnet beim Seitenaufruf **alle** markierten Zeitstempel in **lokale Zeit** um: Quoten-Bewegung („zuletzt … Uhr (lokale Zeit)“, pro Spiel „seit …“), Modellgüte-Tabelle (Spalte wird zu „Gespeichert (lokale Zeit)“). Chip und Statuszeile zeigen bereits lokal — jetzt passt alles zusammen (2 Stunden Differenz = CEST, weg).
+- Unit-Test für `_iso_z` (naive/aware/None; ohne Z-Suffix würde JS die Zeit fälschlich als lokal parsieren). Suite **469/469**, flake8-Gate 0.
+
+## [3.1.41] - 2026-09-19
+
+### 🕓 Quotenstand jetzt gut findbar: Datum + Uhrzeit + Chip in der Aktionszeile
+
+- **Problem (Nutzer):** Das Datum des letzten Quoten-Stands war schlecht findbar — nur als reine Uhrzeit („Quotenstand 14:32 Uhr“) in der sich überschreibenden Statuszeile.
+- **Fix:**
+  - Statuszeile zeigt jetzt **Datum + Uhrzeit**: „· Quotenstand 17.09., 14:32 Uhr (letzter Online-Abruf)“.
+  - Neuer **persistenter Chip in der Aktionszeile** (oben, immer sichtbar): „🕓 Quotenstand: 17.09., 14:32 Uhr“ — gefüllt beim Seitenaufruf (aus dem Spieltag-Store) und nach jedem „⬇ Quoten online laden“; ohne Abruf bleibt er unsichtbar. Tooltip erklärt die UTC-Bezugsgröße der Quoten-Bewegungs-Karte.
+- Guard-Test. Suite **468/468**, flake8-Gate 0.
+
+## [3.1.40] - 2026-09-19
+
+### 🧭 Tipp-Optimizer: Neuanordnung (Ergebnis zuerst, Quoten-Eingabe einklappbar) + Test-DB-Fix
+
+- **Neue Seiten-Logik (Nutzerwunsch):** Ergebnis → Aktion → Kontrolle → Hilfe:
+  1. Spieltag-Wahl + Aktionen + Status (wie bisher)
+  2. **📋 Optimierte Tipps** (Chips, Tabelle, Joker, „💾 Vorhersage speichern“) — jetzt **oben**
+  3. **✏️ Quoten eintragen** — die 9 Eingabe-Karten sind jetzt **einklappbar** (`<details>`): automatisch **geschlossen, wenn Quoten vorhanden** sind, **offen, wenn noch keine** (Erst-Rechenlauf-Regel, bleibt an, wenn der Nutzer selbst umschaltet); „⬇ Quoten online laden“ und „Alle Felder leeren“ klappen den Bereich auf. Live-Zähler im Summary („9/9 mit 1X2-Quoten“).
+  4. 📈 Modellgüte · 📊 Quoten-Bewegung · 🔬 Backtest (Kontrollzone)
+  5. ℹ️ So funktioniert’s + ⚙ Erweitert (Hilfszone, ans Ende)
+- **Test-Infrastruktur-Fix (Flaky-Test-Beseitigung):** `app.py` erzeugt auf Modulsebene `create_app()` mit Default-Settings → jeder app-Import in Testläufen seedete die **Repos-Datei-DB `tippspiel.db`** (zweite, zwischen LÄUFEN persistierende Datenbank-Welt; Ursache eines Flakes: 1× Fehler in 6 Läufen). `tests/conftest.py` leitet `DATABASE_URL` jetzt vor den Imports auf `:memory:` (wie TestConfig); Artefakt-Datei gelöscht, `*.db` in .gitignore.
+- Struktur-Guard-Test (Reihenfolge + Fold + JS-Regeln). Suite **467/467** (5× in Folge grün), flake8-Gate 0.
+
+## [3.1.39] - 2026-09-16
+
+### 📖 Brier jetzt konkret erklärt (Glossar-Beispiel + Tooltips an allen Brier-Anzeigen)
+
+- **Glossar-Eintrag Brier** umformuliert mit konkretem Beispiel: „Schreibt das Modell 70 % für einen Heimsieg, sollten in ~70 % der Fälle auch Heimsiege eintreffen“ + Erklärung der Referenz „Brier Zufall“ (Modell sollte deutlich darunter bleiben).
+- **Tooltips** an den bisher unkommentierten Brier-Stellen: Stat-Karten „Brier 1X2“ / „Brier Zufall“ (Modellgüte-Karte) und die Backtest-Vergleichszeile („Immer-Heim / Liga-Durchschnitt / Zufall“).
+- Guards im Test. Suite 466/466, flake8-Gate 0.
+
+## [3.1.38] - 2026-09-16
+
+### 🚨 Hotfix: „Alle Buttons tot“ — verwaiste Klammer in tip_optimizer.js
+
+- **Symptom (Produktion nach (67)):** Kein Button der Optimizer-Seite funktionierte mehr.
+- **Ursache:** Bei der `toast()`-Entfernung in (67) war eine schließende Klammer übrig geblieben (Syntaxfehler). Der ganze Script-Block wurde nicht mehr geparst → keine Event-Listener → tot. Bisherige Tests waren reine String-Guards und prüfen keine JS-Syntax.
+- **Fix:** Klammer entfernt; **neuer harter Test `test_js_dateien_haben_valide_syntax`** prüft beide Optimizer-Dateien mit `node --check` (wird übersprungen, wenn node fehlt). Damit ist diese Fehlerklasse „JS-Syntaxfehler geht unentdeckt live“ abgefangen.
+- Suite **466/466**, flake8-Gate 0, 04-Paket 80 Dateien, verify + SHA grün.
+
+## [3.1.37] - 2026-09-16
+
+### 📍 Tipp-Optimizer: Save-Meldung steht jetzt beim Button (kein Bottom-Toast)
+
+- **Nutzerwunsch:** Die Erfolgsmeldung von „💾 Vorhersage speichern“ kam als Toast ganz unten am Bildschirmrand — soll im Bereich des Buttons erscheinen.
+- Neue **Inline-Meldung direkt neben dem Button** (`#to-snap-msg`): Erfolg grün („Gespeichert (9 Spiele) · 14:32 UTC ✓“), Fehler rot (mit HTTP-Status/Grund), Warnung bei fehlenden Quoten orange. Kein Bottom-Toast mehr (Element, JS-Funktion, CSS entfernt), die Meldung belegt die obere Statuszeile nicht mehr.
+- Guard-Test (Template ohne `#to-toast`, JS ohne `toast(`, Inline-Meldung present). Suite **465/465**, flake8-Gate 0.
+
+## [3.1.36] - 2026-09-16
+
+### 🐛 Produktions-Fix: „Speichern nicht möglich (HTTP 400)“ = fehlendes CSRF-Token
+
+- **Root Cause (remote nachgewiesen):** Produktion läuft mit `WTF_CSRF_ENABLED = True` (TestConfig hat es aus — deshalb waren alle Tests grün). Flask-WTF blockt **jeden** POST ohne Token mit 400 „The CSRF token is missing“. Die beiden `fetch()`-JSON-Endpunkte (`/admin/tip-optimizer/snapshot`, `/odds-log`) sind die einzigen POSTs der ganzen App, die per JavaScript ohne Form-Token laufen → in Produktion immer 400.
+- **Fix:** Beide Endpunkte mit `@csrf.exempt` (mit dokumentierter Begründung im Code: nur Admin-Session; `Content-Type: application/json` erzwingt bei cross-site-Angriffen ein CORS-Preflight, das ohne CORS-Header abgelehnt wird — klassische CSRF-Simple-Requests treffen die Endpunkte nicht; Antwort ohne sensible Daten).
+- **Schutz:** Neuer Regressionstest schaltet CSRF im Test gezielt ein (wie Produktion) und belegt: Nicht-exempter POST → 400 (Schutz aktiv), beide JSON-Endpunkte → 200. Suite **464/464**, flake8-Gate 0.
+
+## [3.1.35] - 2026-09-16
+
+### 🩺 Tipp-Optimizer: „Speichern nicht möglich“ wird selbst-diagnostisch (Produktions-Fehlermeldung)
+
+- **Problem:** „💾 Vorhersage speichern“ meldete in der Produktion oben in rot nur „Speichern nicht möglich.“ ohne Grund — der JS-Fallback, wenn die Serverantwort kein JSON war (HTML-Fehlerseite, z. B. 500).
+- **Server:** Die POST-Endpunkte `/admin/tip-optimizer/snapshot` und `/odds-log` fangen interne Fehler jetzt ab und antworten **JSON mit Ursache** („Serverfehler: …“, 500) statt HTML — die Statuszeile zeigt den eigentlichen Fehler (z. B. fehlende Tabelle).
+- **JS:** Zeigt bei JSON-fremden Antworten jetzt den HTTP-Status („Speichern nicht möglich (HTTP 500).“); bei Historie-Fehlschlag wird die Ursache aus der Serverantwort mitgeliefert.
+- Regressionstest: simulierter DB-Fehler (fehlende Tabelle) → JSON-500 mit „no such table“. Suite **463/463**, flake8-Gate 0.
+
+## [3.1.34] - 2026-09-16
+
+### 📖 Tipp-Optimizer: Unklare Abkürzungen erklärt (Glossar + Tooltips)
+
+- **Glossar „Abkürzungen & Begriffe“** im einklappbaren „ℹ️ So funktioniert’s“-Block (zweite Einblendung, 2-spaltig am Desktop): 4/3/2-Regel, 1X2, EP, λ H/λ G, P(≥2 P)/Sicherheit, Brier, MAE, Ü 2,5/Ü 3,5, BTTS, ST, „knapp“, Dixon-Coles, Walk-Forward-Backtest, Odds-Anker — jeweils in einem Satz ohne Fachchinesisch.
+- **Tooltips an den Spaltenköpfen** (Desktop-Hover, mobil übers Glossar): Ergebnistabelle (λ H/λ G, 1/X/2, Optimaler Tipp, EP, Sicherheit), Modellgüte-Abrechnung (ST, EP erwartet/real, P(≥2 P), Brier) und Backtest-Tabelle (gleiche Begriffe).
+- Guard-Tests schützen Glossar + Tooltips. Suite 462/462, flake8-Gate 0.
+
+## [3.1.33] - 2026-09-16
+
+### 📱 Tipp-Optimizer: „Tippliste zum Übertragen“ entfernt (Nutzerwunsch)
+
+- Die Karte „Tippliste zum Übertragen“ (Textfeld + „📋 Tippliste kopieren“) ist weg — die Tipps stehen sowieso in der Ergebnistabelle. Damit verschwunden: Textfeld, Copy-Handler/Clipboard-Code, `tips`-Sammlung, CSS-Regel.
+- **Übersiedelt in die Ergebniskarte „Optimierte Tipps“** (bleiben erhalten): Joker-Vorschlag-Zeile, Modell-Erwartung-Zeile und der „💾 Vorhersage speichern (Modellgüte)“-Button (jetzt direkt unter den Ergebnissen, wo die Abrechnung zustandekommt).
+- Quelltext-Guards schützen Entfernung + neue Position (keine Regression). Suite 462/462, flake8-Gate 0.
+
+## [3.1.32] - 2026-09-16
+
+### 📊 Tipp-Optimizer: Quoten-Bewegung (J) + Scheduler-Tests + utils-Fix
+
+- **Quoten-Bewegung (V2-Kandidat J, 0 €, Admin-only):** „Quoten online laden“ merkt die befüllten Quoten je Spiel jetzt als Zeitstempel-Stand in der DB (neue Tabelle `odds_snapshots` per `db.create_all()` beim Start). Neue Karte „📊 Quoten-Bewegung“ zeigt je Spiel des angezeigten Spieltags den **ersten vs. letzten Stand** (1/X/2 mit ↓/↑-Pfeilen) + Anzahl der Stände — ab dem zweiten Abruf desselben Spieltags sichtbar, sonst ℹ️-Hinweis. Manuelle Eingaben bleiben in Ruhe; scheitert das Loggen, meldet die Statuszeile es (ℹ️, nie ⚠️). Endpunkt `POST /admin/tip-optimizer/odds-log` (Admin-Gate, Validierung wie Snapshot).
+- **Bugfix (latent, von den neuen Tests gefangen):** `utils.py` exportierte `send_kickoff_reminder` nicht mehr (funktion liegt in `mail_helpers.py`) → `scheduler.py` wäre beim Start mit ImportError gestorben (Reminder/Sync/Auto-Archiv wären stillstehend). Re-Export ergänzt.
+- **Scheduler-Tests (0 % → getestet):** Neues `tests/test_scheduler.py` (8 Tests) für die alle 10/15/60 min laufenden Jobs: Reminder-Deaktivierung über Setting, kaputte Settings dürfen den Lauf nicht sprengen, Sync-Job ruft `sync_results` an, Saison-Auto-Archiv (deaktiviert / Saison nicht beendet / bereits archiviert / nach 34. Spieltag → archivieren + `season_archived`-Flag + Telegram-Info an Admins).
+- Tests: +12 (Odds-Log-Endpunkt inkl. Validierung/Admin-Gate, Bewegungs-Anzeige mit Einzelständen + Fallback, JS-Anbindung, 8× Scheduler). Suite **462/462**, flake8-Gate 0.
+
+## [3.1.31] - 2026-09-16
+
+### 🐛 Tipp-Optimizer: Schalke-Spiel beim „Quoten online laden“ stumm übergangen — gefixt + sichtbar gemacht
+
+- **Bug (Nutzer meldete: „Warum fehlt das Schalke-Spiel?“):** Beim Online-Quotenladen blieb FC Schalke 04 – SV 07 Elversberg ohne Quoten (Zeile „—“, nicht berechnet). Ursache: `DE_NAMES` wies die API-Namen „SV Elversberg“/„Elversberg“ auf **„SV Elversberg“** statt auf den echten DB-Vereinsnamen **„SV 07 Elversberg“** — die Seiten-Zuordnung verlangt (bewusst, keine Name-Ratelei) mindestens Teilstring-Übereinstimmung, und das „07“ bricht die Teilstring-Kette. Fix: Alias zeigt auf den exakten DB-Namen (+ Eintrag „sv 07 elversberg“). Test: Parser-Test mit echtem Schalke/Elversberg-Event.
+- **Transparenz (Dauerregel 2, Versuch + Grund):** „Quoten online laden“ listet im Status jetzt alle Spiele, die **danach tatsächlich ohne 1X2** geblieben sind: „✓ 8/9 Spiele mit Quoten befüllt · Nicht zugeordnet (Name): FC Schalke 04 – SV 07 Elversberg …“ (Status wird gelb statt grün). Manuell schon gefüllte Karten bleiben in Ruhe. Quelltext-Guard abgesichert. Suite 450/450, flake8-Gate 0.
+
+## [3.1.30] - 2026-09-16
+
+### 📱 Tipp-Optimizer: „So funktioniert’s“-Block einklappbar
+
+- Der Infoblock unter den Aktionen ist jetzt ein `<details>`-Block (Standard: **eingeklappt**) mit der Zeile „ℹ️ So funktioniert’s“ — spart auf dem Smartphone Platz, anzeigbar per Tap. Gleiche Muster-Sprache wie der bestehende „⚙ Erweitert“-Block (Pfeil dreht sich beim Öffnen, nativer `<details>` ohne JS). Inhalt unverändert (Schnelleingabe, Engine-Logik, Ergebnis-Chips, Joker, Hinweis nur Spielleiter-Ansicht). Quelltext-Guard-Erweiterung schützt die Einbindung. Suite 449/449, flake8-Gate 0.
+
+## [3.1.29] - 2026-09-16
+
+### 📱 Tipp-Optimizer: Smartphone-tauglichere Anzeige (Mobile-First-Pflege)
+
+- **Button-Reihen** (Tippliste kopieren / Vorhersage speichern, Backtest-Button) bekommen eine gemeinsame Regel (`.btnrow`): auf schmalen Screens (≤ 640 px) werden sie **vollflächig übereinander** gestapelt — große, verlässliche Tap-Ziele statt enger Seite-an-Seite-Zeile.
+- **Modellgüte-Zusammenfassung** (Karte „📈 gespeicherte Vorhersagen“) ist keine dichte Zahlenzeile mehr, sondern ein **Stats-Raster** (`.to-statgrid`): EP erwartet/real, P(≥2 P) erwartet/real, Brier + Zufalls-Brier als eigene Kacheln — auf dem Handy 2-spaltig, am Desktop 3–6-spaltig (auto-fit).
+- **Weite Tabellen** (Modellgüte-Abrechnung 8 Spalten, Backtest je Spieltag 6 Spalten) behalten jetzt eine Mindestbreite (`to-tblwide`/`to-tblwide-narrow`) und werden im vorhandenen `to-tblwrap`-Container **sauber gewischt** (`-webkit-overflow-scrolling: touch`), statt auf 360 px gequetscht zu werden.
+- **Chips** (Backtest-Kennzahlen) und Ergebnis-Zeilen auf dem Smartphone kompakter.
+- Alles reine `static/`-CSS/JS + Template-Pflege; neue Quelltext-Guard-Tests schützen die Regeln. Suite 449/449, flake8-Gate 0.
+
+## [3.1.28] - 2026-09-16
+
+### 📈 Tipp-Optimizer: Modellgüte – Walk-Forward-Backtest + prospektives Tracking (Admin-only)
+
+- **Walk-Forward-Backtest (neue Karte „🔬 Modellgüte – Walk-Forward-Backtest“ auf der Admin-Optimizer-Seite):** `GET /admin/tip-optimizer/backtest` bewertet die Modell-Grundlage (Teamstärken + Dixon-Coles + Torsumme) auf der ganzen Saison aus der App-DB: jeder abgelaufene Spieltag wird aus allen *bisher* fertigen Spielen neu gefittet (mind. 8) und blind auf den Spieltag bewertet. Kennzahlen: EP/Spiel (4-3-2-0), 1X2-Trefferquote vs. Baselines (Immer-Heim, Liga-Frequenz, Zufall 33 %), Brier 1X2 (3-Wege) vs. denselben Baselines, P(≥2 P), exakt Top-1/Top-3, Torsumme-MAE – gesamt + pro Spieltag. Ohne Odds-Anker (historische Quoten gibt es von keiner Gratis-Quelle) → bewusst als **Untergrenze** der echten Tipp-Qualität gekennzeichnet. 0 €, reine DB-Auswertung, ~1–3 s.
+- **Prospektives Tracking (neue Karte „📈 Modellgüte – gespeicherte Vorhersagen“):** „💾 Vorhersage speichern (Modellgüte)“ legt den aktuellen Modell-Zustand aller Spiele mit vollständigen 1X2-Quoten als `OptimizerRun`/`OptimizerRunTip` in der DB ab (Tipp, EP, p1/px/p2, P(≥2 P)/P(≥3)/P(exakt), effektive λ, verwendete Quoten). Ist der gespeicherte Spieltag beendet, rechnet die Seite automatisch ab: erwartete EP vs. realisierte Punkte, P(≥2 P)-Erwartung vs. Trefferrate, Brier 1X2 mit Odds-Anker – gesamt (gewichteter Mittelwert) + Tabelle je Spieltag. Bewertet wird erst, wenn **alle** Matches des Spieltags `finished` sind.
+- **Modell-Code:** `tip_optimizer_model.py` um Python-Abbild der Engine ergänzt (`build_matrix`, `tip_points`, `ep_table` als O(N²)-Tabelle über Anti-Diagonale + Quadranten, gegen die Brutto-Summe exakt verifiziert; `backtest()`, `evaluate_run_tips()`). Neue Modelle in `models.py`: `optimizer_runs` + `optimizer_run_tips` (werden beim App-Start per `db.create_all()` angelegt → Plesk-Restart nach Deploy).
+- **UI:** Optimizer-Karten tragen `data-match-id`; JS sammelt bei jedem Recalc den Voll-Zustand pro Spiel (`lastFull`), POSTet den Snapshot (`/admin/tip-optimizer/snapshot`, Validierung: Match gehört zu Competition + Spieltag, Cap 20) und rendert den Backtest (Chips + 1X2/Brier-Zeilen + per-Spieltag-Tabelle) per Fetch. Alles Admin-only, keine Spieler-Sichtbarkeit.
+- **Tests:** 8 neue (EP-Tabelle == Brutto, Walk-Forward-Bewertung + Mindestanzahl-Meldung, Backtest-Endpunkt Admin-Gate, Snapshot-Validierung, Abrechnung abgelaufener Spieltag in der Seite, `evaluate_run_tips`-None bis Spieltagsende, JS-Anbindung-Guard). Suite: 448/448, flake8-Gate 0.
+- **Deploy (Netcup):** 15 Dateien (14 aus 3.1.27 + `models.py`), danach `__pycache__` löschen und Plesk-Restart (neue Tabellen werden erst beim Start angelegt).
+
+## [3.1.27] - 2026-09-15
+
+### 🎯 Tipp-Optimizer: Modell-Fit aus den echten Saisondaten + JS-Engine in der CI
+
+- **Saisondaten-Fit (das Modell ist jetzt datenbasiert, nicht mehr annahmebasiert):** Neues Modul `tip_optimizer_model.py` berechnet aus den fertigen Spielen der aktiven Liga in der App-DB (mindestens 8, sonst unverändert die Standalone-Defaults):
+  - Ligaschnitte (Heim/Auswärts-Tore) und **Teamstärken** (Angriff/Abwehr als Multiplikatoren, Shrinkage `n/(n+6)` Richtung neutral – Ausreißer-Ergebnisse verrücken das Modell nicht)
+  - **Dixon-Coles-Faktoren** (beobachtete 0:0/1:1/1:0+0:1-Frequenzen vs. unabhängiges Poisson, geklemmt auf 0,5–1,8)
+  - **Torsummen-Prior** (Liga-Mittel, geklemmt auf 2,0–4,5)
+  - **λ-Prior je Spiel** (`Liga-Heimschnitt × Angriff(Heim) × Abwehr(Gast)`, geklemmt auf 0,15–4,5)
+- Die Engine (`static/js/to_engine.js`, `fitLambdas(target, ex, rho, prior, goalPrior)`) nimmt Prior + Torsumme-Prior als weiche Zusatz-Bestrafung auf: **die Quoten bleiben das Hauptsignal**, der Saisondaten-Anker stützt (Gewicht 0,15 – bewusst niedrig, damit eine Markt-Bewegung z. B. nach Verletzungen das Modell führt; die Details zeigen „Saisondaten-Prior λ … → Fit …“ pro Spiel).
+- Transparent im UI: „Erweitert“-Feld zeigt die gefitteten Faktoren/Torsumme; Infotext nennt die Anzahl der ausgewerteten Spiele; ohne Daten (frische DB) bleibt exakt der alte Default-Verhalt (fitted=False, ℹ️-Hinweis).
+- **Engine-Modul + CI:** Die Dixon-Coles-Engine steht jetzt eigenständig in `static/js/to_engine.js` (UMD-Export, DOM-frei; 1:1-Code unverändert) und wird von einer neuen CI-Job „JS-Engine-Tests (Node)“ in `tests/js/tip_optimizer_engine_test.js` abgedeckt (9 Bereiche: 4/3/2/0-Regel, Matrix-Normalisierung, DC-Faktoren, prop-vs-power-Margen, λ-Fit-Wiedergewinnung, Torsumme-Prior-Effekt, Weichheit des Teamstärken-Priors, EP-Bruttoprüfung, extreme-λ-Robustheit). Die UI bezieht die Engine über `TOEngine`.
+- Tests: +5 (`fit` mit künstlicher Liga inkl. Stärken-/Prior-Assertions, Fallback ohne Spiele, Config-Insel mit Priors per JSON-Parse, Default-Hinweis ohne Daten, Engine-/UI-Anbindung als Quelltext-Guard). UI-Smoke mit Mini-DOM-Stub: Prior aktiv („Prior λ 2,60/0,50 → Fit 2,27/0,94“), Joker/Methoden-Vergleich/Ortszeit unverändert grün.
+
+### ✅ Verifikation
+
+- `python -m pytest -q`: **440/440 Tests bestanden**.
+- `node tests/js/tip_optimizer_engine_test.js`: grün (CI-Job ergänzt).
+- flake8-Gate (E9,F63,F7,F82): 0 Fehler. Coverage: **85 %** (`tip_optimizer_model.py` 97 %, `admin_tip_optimizer_routes.py` 83 %).
+
+
+## [3.1.26] - 2026-09-15
+
+### 🎯 Tipp-Optimizer: Hygiene-Runde + Joker-Optimierung (Admin)
+
+- **Joker-Optimierung:** Neue Joker-Zeile unter der Tippliste – die Engine schlägt vor, auf welchem Spiel sich der ×2-Joker am meisten lohnt (Spiel mit dem höchsten Erwartungswert; da der Joker die erzielten Punkte linear verdoppelt, ist genau das die optimale Wahl). Beispiel: „erwartet 1,31 P, mit Joker 2,62 P“.
+- **Median statt Mittelwert:** Der The-Odds-API-Konsens nimmt jetzt den Median über alle Buchmacher – eine Sonderquote eines kleinen Bookies (z. B. 4,00 statt ~1,90) verzieht den Konsens nicht mehr.
+- **Quoten-Stempel:** Nach dem Online-Abruf zeigt die Statuszeile „Quotenstand HH:MM (letzter Online-Abruf)“ – bleibt nach Neuladen erhalten (im Spieltag-Store), damit das Alter der Quoten vor einem (budget-kosten) zweiten Abruf sichtbar ist.
+- **Ortszeit:** Anstoss-Zeiten in den Spielkarten erscheinen jetzt in der Ortszeit des Browsers (vorher „HH:MM Uhr UTC“); die UTC-Zeit bleibt im Tooltip.
+- **Plausibilitäts-Warnung:** Deutlich unplausible Quoten (implizite Marge > 35 % oder Mini-Quoten < 1,05) markiert die Karte mit „⚠ Quoten prüfen“ – Eingabefehler-Fang, nicht blockierend.
+- **Margen-Methoden-Vergleich (aktuell):** In den Detail-Akkordeons steht jetzt, ob der optimale Tipp von der Margen-Methode abhängt (Power vs. proportional), plus Chip „Methode-empfindlich: N Spiele“. (Reines Vergleichs-Feature für den aktuellen Spieltag – keine Historie.)
+- **Jahreswechsel-Fix:** Der localStorage-Schlüssel trägt jetzt die Saison (`to_<Saison>_md_<N>` statt `to_md_<N>`) – in der neuen Saison werden keine Quoten mehr aus der Vorsaison mitgeladen.
+- Tests: +2 (`test_odds_median_ignoriert_ausreisser_buchmacher` direkt gegen den Parser, `test_js_hygiene_und_joker_logik_im_quelltext` als Quelltext-Guard), bestehende Endpunkt-Tests um Median-Semantik, `ts`-Feld und Saison-/`data-kick`-Ansprüche erweitert. UI-Smoke mit Mini-DOM-Stub in Node (Init + recalc + Joker-Rendering) grün.
+
+### ✅ Verifikation
+
+- `python -m pytest -q`: **435/435 Tests bestanden**.
+- flake8-Gate (E9,F63,F7,F82): 0 Fehler. Coverage: **85 %** (Modul `admin_tip_optimizer_routes.py`: 84 %).
+
+
+## [3.1.25] - 2026-09-15
+
+### 🎯 Tipp-Optimizer (Admin-only) – EP-optimierte Tipps je Spieltag
+
+- Neue Admin-Seite „Tipp-Optimizer“ (Admin → Spielleitung): Dixon-Coles-Poisson-Engine (1:1-Port des Standalone-Tools v1.4). Pro Spiel 1X2-Quoten eintragen (manuell per Schnelleingabe oder The-Odds-API-Konsens über alle Buchmacher), optional Ü2,5 / BTTS / Ü3,5 + λ-Adjuster je Team.
+- EP-Optimierung nach der 4/3/2-Regel: wählt pro Spiel den Tipp mit dem höchsten erwarteten Punktwert – nicht zwingend das wahrscheinlichste Einzel-Ergebnis (⚠ wenn Abweichung). Ergebnis-Chips hoch/mittel/niedrig = P(≥2 P) ≥70/≥40/<40 %, Tippliste zum Kopieren, Ergebnisse lokal pro Spieltag gespeichert (Browser).
+- The-Odds-API optional in den Einstellungen („The-Odds-API Key“): Budgetwächter 60 Abrufe/Monat (Free-Plan 500 Credits, 2/Abruf); jeder Abruf – auch Fehler wie 401/404/429 – wird im Admin-Datenquellen-Protokoll mit Grund geloggt. Ohne Key bleibt das Feld ℹ️-dezent inaktiv, Quoten laufen rein manuell.
+- Port-Fixes: `requests`-Antworten lesen `status_code` (Standalone-Tool nutzte `fetch().status`); Kickoff-Sortierung sicher für naive DB-Datetimes.
+- Tests: `tests/test_tip_optimizer.py` (10 Tests: Seiten-Rendering inkl. to-config-Insel, Admin-Gate 403, Spieltag-Wechsel, leerer Spieltag, Key-/Budget-Gates ohne HTTP-Versuch, Parsing mit Konsens-Quoten + Namens-Normalisierung, Fehlergrund im Datenquellen-Protokoll, Settings-Verhalten „leer = beibehalten“, Sync-Seite listet neue Quelle).
+- Wichtig: Optimizer-Daten erscheinen ausschließlich im Admin-Bereich (keine Spieler-Fläche, keine /mehr-Karte, kein Dashboard-Widget für Teilnehmer).
+
+### ✅ Verifikation
+
+- `python -m pytest -q`: **433/433 Tests bestanden**.
+- flake8-Gate (E9,F63,F7,F82): 0 Fehler. Coverage: **85 %** (neues Modul `admin_tip_optimizer_routes.py`: 83 %).
+- Engine-Smoke (Node, Beispiel-Spieltag mit echten Quoten): Σ 11,69/36 EP (Ø 1,30); `tipPoints`-Regel 4/3/2/0 exakt wie in der App.
+
+
 
 
 
@@ -1682,3 +1897,18 @@ faker==28.4.1
 ## 2026-09-15 (34) - WhatsApp-Zeile ohne Untertitel
 
 - Nutzerwunsch: der Klammerzusatz "Los-Tausch, Fragen, Feiern" fliegt - die Zeile ist nur noch Logo + "In die WhatsApp-Gruppe der Tipprunde". Die damit tote CSS-Regel `.wa-quiet small` wurde gleich mit entfernt (keine Leiche im Stylesheet), Test-Assert verriegelt das Wegbleiben. Rein kosmetisch, keine Logik veraendert. Suite 408/408.
+
+## 2026-09-15 (35) - WhatsApp-Runde (32)–(34) auf GitHub komplettiert + Regressionstests
+
+- **Befund (Übergabe 15.09., frischer Klon):** Der Push der WhatsApp-Runde war auf GitHub unvollständig – `routes_main.py` (Helper + Kontext-Übergabe) und `templates/dashboard.html` (die ruhige `.wa-quiet`-Zeile) hatten die `GITHUB_UPLOAD_FILES`-Liste nie erreicht, die 5 Regressionstests aus (32) ebenso nicht. Folge: GitHub lag bei 403 Tests, die Mehr-Seiten-Karte war toter Code (Template-Variable `whatsapp_group_url` wurde nirgends injiziert), die Startseite-Zeile existierte im Repo nicht. Der Server war nicht betroffen (FTP-Hotfix enthielt die vollständigen Dateien). **Dritter Nachzügler im selben Klon-Check:** `verify_04.py` (in Block 16 als neu dokumentiert, aber nie in der Git-Historie) – wurde jetzt nach der Doku-Spezifikation neu aufgebaut: frischer Klon + 04-Zip-Overlay + harter flake8-Gate + volle pytest-Suite, „vor jedem GitHub-Upload: `python verify_04.py`“.
+- **Fix (an den dokumentierten Live-Stand angelehnt):** `routes_main.py` bekommt `_whatsapp_group_url()` – Schema-Gate, das nur http/https-Werte an Templates übergibt (javascript:/data:-Werte in der DB rendern nichts) – und die Dashboard- sowie Mehr-Route geben den Wert weiter. `templates/dashboard.html` zeigt unterhalb der Zahlungserinnerung die Zeile in der Live-Form: Inline-SVG-Logo (#25D366, aria-hidden) + „In die WhatsApp-Gruppe der Tipprunde“ (ohne Untertitel), `target=_blank rel=noopener`.
+- **Tests:** neue Suite `tests/test_whatsapp_group.py` (+5: https:// wird bei kuerzem Link automatisch ergänzt, Leerzeichen ⇒ Flash + alter Eintrag wird geleert, Startseite show/hide inkl. Verriegelung der Untertitel-Finalform, Schema-Gate verwirft `javascript:` auf Startseite UND Mehr-Seite, Mehr-Karte show/hide). Suite **408/408** – damit stimmt GitHub wieder mit dem dokumentierten Stand der Übergabe überein.
+- **Prozess:** 4 Dateien (routes_main.py, dashboard.html, test_whatsapp_group.py, verify_04.py) + README/CHANGELOG in `GITHUB_UPLOAD_FILES` aufgenommen; README-Badges nachgezogen (285/285→408/408, Coverage 79→83 %). Kein Netcup-Deploy nötig (Feature läuft dort bereits); optional: `routes_main.py` + `templates/dashboard.html` neu hochladen, falls Bytesync zum Server gewünscht ist.
+
+## 2026-09-15 (36) - Coverage-Runde: cron_jobs.py & backup.py auf 100 %
+
+- **Ziel (der in der Übergabe als „Kür“ dokumentierte letzte Restpunkt):** `cron_jobs.py` (43 % bei Übergabe, 52 % im frischen Klon) und `backup.py` (82 %) – beide Fachmodule der Produktions-Absicherung hatten ihre kritischsten Pfade ungedeckt.
+- **Neu in `tests/test_cron_backup.py` (+14):** backup.py: relativer DB-Pfad wird gegen die App-Root (nicht CWD) gelöst, list_backups-Happy-Path (neueste zuerst, Fremd-Dateien ignoriert, stat-Fehler wird übersprungen), Rotations-OSError (nicht löschbare Datei bricht nicht ab). cron_jobs.py: Task-Körper `run_sync`/`run_reminders`/`run_bot_tips` (deaktiviert, aktiv ohne Fehler, aktiv mit Fehlerzähler)/`run_backup` (Erfolg + Fehler)/`run_status` (alle vier Zustände ok/warn/error/never, Detail- und Alter-Zweige) mit gepatchten Fachmodulen; Dispatch `reminder`/`bots`; alle Bootstrap-Zweige (vendor/-Einbindung, `.python-venvs`-Suche, Venv-site-packages-Rückkehr, Re-Exec-Fehlerpfad mit gepatchtem `os.execl` – kein echter Prozess-Tausch) und der echte Skript-Eintritt `python cron_jobs.py status` als Subprozess.
+- **Einziges `# pragma: no cover`:** dotenv-Import-Fehler im Modul-Header (in allen Setups installiert, import-time nicht auslösbar) – im Stil des vorhandenen Pragma in backup.py.
+- **Ergebnis:** Suite **423/423**, Coverage 83 %, `cron_jobs.py` **100 %**, `backup.py` **100 %**.
+- **Deploy:** `cron_jobs.py` trägt nur die Pragma-Kommentarzeile (keine Funktionsänderung) – FTP-Upload nicht nötig, die Datei wandert mit dem nächsten kompletten Deploy mit; Tests landen über das 04-Paket auf GitHub.

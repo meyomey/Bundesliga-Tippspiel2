@@ -40,6 +40,7 @@ import main_telegram_routes  # noqa: F401
 import main_cron_routes  # noqa: F401
 from routes_auth import auth_bp
 from routes_admin import admin_bp
+import admin_tip_optimizer_routes  # noqa: F401  (registriert /admin/tip-optimizer auf admin_bp)
 from routes_api import api_bp
 
 # Utility-Imports für Startup-Seeding

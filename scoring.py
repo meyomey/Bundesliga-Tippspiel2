@@ -321,7 +321,6 @@ def compute_pot_summary():
 def recompute_matchday_winners():
     """Berechnet die Spieltagsieger neu."""
     season = get_setting("current_season", "2025/26")
-    points_exact = get_setting("points_exact", 4)
 
     comp = get_active_competition()
     finished_q = db.session.query(Match.matchday).filter(Match.status == "finished")
@@ -356,12 +355,17 @@ def recompute_matchday_winners():
         if len(top_user_ids) > 1:
             exact_counts = {}
             for uid in top_user_ids:
+                # "Exakt" = Endstand exakt (wie classify_prediction). WICHTIG:
+                # nicht per Punkte zaehlen — ein Joker-Tipp mit 2+2=4 Punkten
+                # waere sonst fälschlich als exakter Treffer gewertet
+                # (Spieler-Fund, (73)).
                 exact_q = db.session.query(func.count(Prediction.id)) \
                     .join(Match, Prediction.match_id == Match.id) \
                     .filter(
                         Prediction.user_id == uid,
                         Match.matchday == md, Match.status == "finished",
-                        Prediction.points >= points_exact,
+                        Prediction.home_tip == Match.home_score,
+                        Prediction.away_tip == Match.away_score,
                     )
                 if comp:
                     exact_q = exact_q.filter(Match.competition_id == comp.id)
@@ -373,12 +377,15 @@ def recompute_matchday_winners():
         is_shared = len(top_user_ids) > 1
 
         for uid in top_user_ids:
+            # "Exakt" = Endstand exakt (nicht per Punkte — Joker 2+2=4 ist
+            # kein exakter Treffer, s. Tiebreak oben).
             exact_q = db.session.query(func.count(Prediction.id)) \
                 .join(Match, Prediction.match_id == Match.id) \
                 .filter(
                     Prediction.user_id == uid,
                     Match.matchday == md, Match.status == "finished",
-                    Prediction.points >= points_exact,
+                    Prediction.home_tip == Match.home_score,
+                    Prediction.away_tip == Match.away_score,
                 )
             if comp:
                 exact_q = exact_q.filter(Match.competition_id == comp.id)

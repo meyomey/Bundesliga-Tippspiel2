@@ -342,8 +342,9 @@ def run_repair_tasks(task: str) -> dict:
         return {"ok": bool(r.get("ok")), "message": r.get("message", ""),
                 "used_backup": r.get("used")}
     if task == "badges":
-        check_and_award_badges()
-        return {"ok": True, "message": "Badges neu geprueft"}
+        from badges import revalidate_badges
+        revalidate_badges()
+        return {"ok": True, "message": "Badges vollstaendig neu geprueft (inkl. Widerruf nicht mehr verdienter)"}
     if task == "specials":
         evaluate_special_predictions()
         return {"ok": True, "message": "Sondertipps neu ausgewertet"}

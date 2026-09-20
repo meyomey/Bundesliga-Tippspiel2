@@ -2,8 +2,8 @@
 
 [![Tests](https://github.com/meyomey/Bundesliga-Tippspiel2/actions/workflows/tests.yml/badge.svg)](https://github.com/meyomey/Bundesliga-Tippspiel2/actions/workflows/tests.yml)
 ![Python](https://img.shields.io/badge/Python-3.9%20|%203.10%20|%203.11%20|%203.12%20|%203.13-blue)
-![Tests](https://img.shields.io/badge/Tests-285%2F285-green)
-![Coverage](https://img.shields.io/badge/Coverage-79%25-yellowgreen)
+![Tests](https://img.shields.io/badge/Tests-433%2F433-green)
+![Coverage](https://img.shields.io/badge/Coverage-85%25-yellowgreen)
 
 Ein umfangreiches, produktionsnahes Bundesliga-Tippspiel mit Flask, Admin-Bereich, Live-Features, KI-Bots, PWA, Benachrichtigungen, Saisonarchiv und Netcup-/Shared-Hosting-Unterstützung.
 
@@ -249,9 +249,9 @@ pytest --cov=. --cov-report=html
 Aktueller Stand lokal:
 
 ```txt
-285/285 Tests bestanden
-Coverage: 79 %
-3 Warnings (LegacyAPIWarning für Query.get() in zwei Tests, harmlos)
+478/478 Tests bestanden
+Coverage: 84 %
+Warnings: 11 (LegacyAPIWarning u. a. für Query.get(), reportlab-Deprecation – bekannt und akzeptiert)
 ```
 
 Testbereiche:

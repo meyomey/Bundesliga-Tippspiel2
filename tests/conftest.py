@@ -1,4 +1,13 @@
 """Pytest Configuration and Fixtures."""
+import os
+
+# WICHTIG (vor allem app-Import!): app.py erzeugt auf Modulsebene
+# "app = create_app()" mit den DEFAULT-Settings — die zeigen auf die
+# Repos-Datei-DB (tippspiel.db). In Testläufen würde das eine zweite,
+# zwischen LÄUFEN persistierende Datenbank-Welt erzeugen (Flaky-Tests,
+# z. B. Runde 70). Standard-URI daher in-memory leiten (wie TestConfig).
+os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
+
 import pytest
 from datetime import datetime, timedelta, timezone
 

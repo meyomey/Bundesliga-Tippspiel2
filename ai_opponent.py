@@ -589,7 +589,11 @@ class AIManager:
             if user:
                 total_points = user.total_points()
                 predictions_count = user.predictions.count()
-                exact_count = sum(1 for p in user.predictions if p.points >= 4)
+                # "Exakt" = Endstand exakt (Klassifikation), nicht per Punkte
+                # — ein Joker-Tipp mit 2+2=4 Punkten ist kein exakter Treffer ((73))
+                from scoring import classify_prediction
+                exact_count = sum(1 for p in user.predictions
+                                  if classify_prediction(p, p.match) == "exact")
                 
                 rankings.append({
                     'name': opp.name,

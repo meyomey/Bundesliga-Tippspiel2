@@ -52,8 +52,8 @@ from sync import (
 
 # ── mail_helpers ──
 from mail_helpers import (
-    
     send_password_reset, send_email,
+    send_kickoff_reminder,
     apply_mail_settings, apply_vapid_settings,
 )
 

@@ -25,6 +25,7 @@ SOURCES = [
     ("minute", "API-Football · Live-Minute"),
     ("goals", "API-Football · Torschützen"),
     ("torjaeger", "OpenLigaDB · Torjäger-Liste (Torschützen)"),
+    ("the_odds_api", "The-Odds-API · Tipp-Optimizer-Quoten (nur bei Abruf)"),
 ]
 
 SETTING_KEY = "datasourc…ivity"

@@ -38,7 +38,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 try:
     from dotenv import load_dotenv
     load_dotenv()
-except ImportError:
+except ImportError:  # pragma: no cover - dotenv ist in allen Setups installiert
     pass
 
 

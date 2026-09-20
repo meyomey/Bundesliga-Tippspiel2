@@ -246,6 +246,9 @@ class SettingsForm(FlaskForm):
     apifootball_token = PasswordField(
         "API-Football Token (optional: Live-Minute, Torschützen, Torjäger)",
         validators=[Optional()])
+    the_odds_api_key = PasswordField(
+        "The-Odds-API Key (optional: Tipp-Optimizer Quoten)",
+        validators=[Optional()])
     squad_aliases = TextAreaField(
         "Torjäger-Aliasse (Nachname = Vereinsname oder Kürzel, eine pro Zeile)",
         validators=[Optional(), Length(0, 1000)],

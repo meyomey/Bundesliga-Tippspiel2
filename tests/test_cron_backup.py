@@ -6,7 +6,9 @@ Bewertung (ok/warn/error/never), Admin-Wartungscenter-Anzeige und die
 Task-Dispatch-Logik von cron_jobs.py.
 """
 import os
+import shutil
 import sqlite3
+import sys
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -439,3 +441,288 @@ def test_cron_http_unbekannte_task_400(client, app, db):
     _set_cron_secret(app)
     resp = client.get("/cron/run?task=quatsch&key=TESTKEY")
     assert resp.status_code == 400
+
+
+# ================================================================ Coverage-Runde
+# Luecken: backup.py (relativer DB-Pfad, list_backups-Happy-Path, Rotations-
+# OSError) und cron_jobs.py (run_*-Körper, Bootstrap-Zweige, Dispatch
+# reminder/bots, Skript-Eintrittspunkt).
+
+
+def test_db_file_path_berechnet_relative_pfade(app, monkeypatch):
+    """sqlite:///relativ.db wird gegen die App-Root geloest (nicht gegen CWD)."""
+    from backup import _db_file_path
+    monkeypatch.setitem(app.config, "SQLALCHEMY_DATABASE_URI", "sqlite:///relativ_test.db")
+    with app.app_context():
+        assert _db_file_path() == os.path.join(app.root_path, "relativ_test.db")
+
+
+def test_list_backups_listet_dateien_neueste_zuerst(app, monkeypatch, tmp_path):
+    bdir = tmp_path / "backups"
+    bdir.mkdir()
+    (bdir / "tippspiel_20260101_031500.db").write_bytes(b"x" * 100)
+    (bdir / "tippspiel_20260102_031500.db").write_bytes(b"x" * 250)
+    (bdir / "kein_backup.txt").write_text("darf nicht gelistet werden")
+    monkeypatch.setitem(app.config, "BACKUP_DIR", str(bdir))
+    with app.app_context():
+        items = list_backups()
+    assert [i["name"] for i in items] == ["tippspiel_20260102_031500.db",
+                                          "tippspiel_20260101_031500.db"]
+    assert items[0]["size"] == 250
+    assert items[0]["path"].endswith("tippspiel_20260102_031500.db")
+    assert items[0]["mtime"]
+
+
+def test_rotate_ignoriert_loeschfehler(app, monkeypatch, tmp_path):
+    """Nicht loeschbare Datei (Rechte o. a.) bricht die Rotation nicht ab."""
+    import backup as backup_mod
+    bdir = tmp_path / "backups"
+    bdir.mkdir()
+    for i in range(1, 4):
+        (bdir / f"tippspiel_2026010{i}_031500.db").write_bytes(b"x")
+
+    def _loesch_verweigert(*a, **k):
+        raise OSError("Zugriff verweigert")
+
+    monkeypatch.setattr(os, "remove", _loesch_verweigert)
+    assert backup_mod._rotate(str(bdir), 1) == []
+    # alle drei Dateien sind weiterhin vorhanden
+    assert len(list(bdir.glob("tippspiel_*.db"))) == 3
+
+
+def test_cron_jobs_dispatch_reminder_und_bots(monkeypatch):
+    import cron_jobs
+    called = []
+    monkeypatch.setattr(cron_jobs, "run_reminders", lambda: called.append("reminder") or True)
+    monkeypatch.setattr(cron_jobs, "run_bot_tips", lambda: called.append("bots") or True)
+    monkeypatch.setattr("cron_heartbeat.record_cron_run", lambda *a, **k: None)
+    monkeypatch.setattr("sys.argv", ["cron_jobs.py", "reminder"])
+    cron_jobs.main()
+    monkeypatch.setattr("sys.argv", ["cron_jobs.py", "bots"])
+    cron_jobs.main()
+    assert called == ["reminder", "bots"]
+
+
+def test_run_sync_gibt_syncergebnis_weiter(monkeypatch):
+    """run_sync laeuft den Sync im App-Kontext ab und gibt result['ok'] zurueck."""
+    import cron_jobs
+    import utils
+    monkeypatch.setattr(utils, "sync_results",
+                        lambda: {"ok": True, "msg": "3 Spiele gesynced"})
+    assert cron_jobs.run_sync() is True
+
+
+def test_run_reminders_fuehrt_zyklus_aus(monkeypatch):
+    import cron_jobs
+    import notification_center
+    monkeypatch.setattr(notification_center, "run_reminder_cycle",
+                        lambda channels=None, now=None: {"wave1": 1, "wave2": 0})
+    assert cron_jobs.run_reminders() is True
+
+
+def test_run_bot_tips_bei_deaktiviertem_autotipp(monkeypatch, capsys):
+    import cron_jobs
+    import scoring
+    monkeypatch.setattr(scoring, "get_setting", lambda key, default=None: "false")
+    assert cron_jobs.run_bot_tips() is True
+    assert "deaktiviert" in capsys.readouterr().out
+
+
+def test_run_bot_tips_aktiv_mit_und_ohne_fehler(monkeypatch, capsys):
+    from types import SimpleNamespace
+    import ai_opponent
+    import cron_jobs
+    import scoring
+    import stats
+    monkeypatch.setattr(scoring, "get_setting", lambda key, default=None: "true")
+    monkeypatch.setattr(stats, "get_current_matchday", lambda: 3)
+    summaries = [
+        {"ROOKIE": {"tipped": 2, "skipped": 1, "errors": 0}},
+        {"EXPERT": {"tipped": 1, "skipped": 0, "errors": 2}},
+    ]
+
+    def fake_tip_all_matches(matchday, overwrite):
+        return SimpleNamespace(summary_by_bot=summaries.pop(0))
+
+    monkeypatch.setattr(ai_opponent, "get_ai_manager",
+                        lambda: SimpleNamespace(tip_all_matches=fake_tip_all_matches))
+    assert cron_jobs.run_bot_tips() is True
+    out = capsys.readouterr().out
+    assert "Spieltag 3" in out and "2 Tipps" in out
+    assert "FEHLER" not in out
+    assert cron_jobs.run_bot_tips() is True
+    assert "2 FEHLER" in capsys.readouterr().out
+
+
+def test_run_backup_meldet_erfolg_und_fehler(monkeypatch, capsys):
+    import backup as backup_mod
+    import cron_jobs
+    calls = []
+
+    def fake_backup(keep=None):
+        calls.append(1)
+        if len(calls) == 1:
+            return {"ok": True, "name": "tippspiel_test.db", "size": 42,
+                    "error": None, "file": "x", "removed": ["alt.db"]}
+        return {"ok": False, "error": "Datenbankdatei fehlt",
+                "file": None, "size": 0, "removed": []}
+
+    monkeypatch.setattr(backup_mod, "create_database_backup", fake_backup)
+    assert cron_jobs.run_backup() is True
+    out = capsys.readouterr().out
+    assert "tippspiel_test.db (42 Bytes)" in out and "1 alte entfernt" in out
+    assert cron_jobs.run_backup() is False
+    assert "FEHLER - Datenbankdatei fehlt" in capsys.readouterr().out
+
+
+def test_run_status_zeigt_alle_zustaende_aus(monkeypatch, capsys):
+    import cron_heartbeat
+    import cron_jobs
+    rows = [
+        {"label": "Sync", "state": "ok", "age_minutes": 12, "detail": "180 Spiele"},
+        {"label": "Bots", "state": "warn", "age_minutes": None, "detail": ""},
+        {"label": "Backup", "state": "error", "age_minutes": 300, "detail": "OSError: kaputt"},
+        {"label": "Reminder", "state": "never", "age_minutes": None, "detail": None},
+    ]
+    monkeypatch.setattr(cron_heartbeat, "get_cron_status", lambda *a, **k: rows)
+    assert cron_jobs.run_status() is True
+    out = capsys.readouterr().out
+    assert "[OK  ]" in out and "12 min" in out and "180 Spiele" in out
+    assert "[WARN]" in out
+    assert "[FEHL]" in out and "OSError: kaputt" in out
+    assert "[NIE ]" in out
+
+
+def test_bootstrap_bindet_vendor_ordner_ein(monkeypatch):
+    """Ohne importierbares Flask bindet der Bootstrap vendor/ ins sys.path ein."""
+    import importlib.util
+    import cron_jobs
+    repo_root = os.path.dirname(os.path.abspath(cron_jobs.__file__))
+    vendor_dir = os.path.join(repo_root, "vendor")
+    created = not os.path.isdir(vendor_dir)
+    os.makedirs(vendor_dir, exist_ok=True)
+    try:
+        real_find_spec = importlib.util.find_spec
+        calls = {"n": 0}
+
+        def fake_find_spec(name, *a, **k):
+            if name == "flask":
+                calls["n"] += 1
+                # 1. Pruefe: kein Flask; nach Vendor-Einbindung: wieder da
+                return None if calls["n"] == 1 else real_find_spec("flask")
+            return real_find_spec(name, *a, **k)
+
+        monkeypatch.setattr(importlib.util, "find_spec", fake_find_spec)
+        cron_jobs._bootstrap_dependencies()
+        assert vendor_dir in sys.path
+    finally:
+        if vendor_dir in sys.path:
+            sys.path.remove(vendor_dir)
+        if created and os.path.isdir(vendor_dir):
+            shutil.rmtree(vendor_dir)
+
+
+def test_bootstrap_liest_plesk_venvs_und_reexec_fehlerpfad(monkeypatch):
+    """.python-venvs-Suche findet Kandidaten; fehlgeschlagener Re-Exec wird
+    verschluckt (OSError), die Funktion laeuft bis zum Ende durch."""
+    import importlib.util
+    import cron_jobs
+    app_dir = os.path.dirname(os.path.abspath(cron_jobs.__file__))
+    parent = os.path.dirname(app_dir)  # erste Ebene ueber dem App-Verzeichnis
+    venvs_dir = os.path.join(parent, ".python-venvs")
+    venvs_created = not os.path.isdir(venvs_dir)
+    fake_venv = os.path.join(venvs_dir, "wulmstorf_tipprunde")
+    site = os.path.join(fake_venv, "lib", "python3.13", "site-packages")
+    os.makedirs(site)
+    py_bin = os.path.join(fake_venv, "bin", "python")
+    os.makedirs(os.path.dirname(py_bin))
+    open(py_bin, "w").close()
+    execl_tried = []
+    try:
+        real_find_spec = importlib.util.find_spec
+
+        def fake_find_spec(name, *a, **k):
+            if name == "flask":
+                if not execl_tried and not getattr(fake_find_spec, "seen", False):
+                    fake_find_spec.seen = True
+                    raise Exception("simulierter find_spec-Fehler")
+                return None  # Flask bleibt "nicht da" -> kompletter Suchpfad
+            return real_find_spec(name, *a, **k)
+
+        monkeypatch.setattr(importlib.util, "find_spec", fake_find_spec)
+        monkeypatch.setattr(os, "execl",
+                            lambda *a, **k: execl_tried.append(a) or (_ for _ in ()).throw(OSError("simuliert")))
+        cron_jobs._bootstrap_dependencies()
+        assert site in sys.path            # Kandidat wurde gefunden und eingebunden
+        assert execl_tried                 # Re-Exec mit venv-Python wurde versucht
+    finally:
+        if site in sys.path:
+            sys.path.remove(site)
+        if venvs_created and os.path.isdir(venvs_dir):
+            shutil.rmtree(venvs_dir)
+
+
+def test_cron_jobs_laeuft_als_skript_status():
+    """Echter Eintrittspunkt: `python cron_jobs.py status` als Subprozess."""
+    import subprocess
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    r = subprocess.run([sys.executable, os.path.join(repo_root, "cron_jobs.py"), "status"],
+                       cwd=repo_root, capture_output=True, text=True, timeout=180)
+    assert r.returncode == 0
+    assert "letzter Lauf" in r.stdout
+
+
+def test_bootstrap_findet_lokale_venv_site_packages(monkeypatch):
+    """Macht der .python-venvs-Kandidat Flask importierbar, endet der Bootstrap
+    dort (ohne Re-Exec) - die dritte Suchstufe wird nicht angestoßen."""
+    import importlib.util
+    import cron_jobs
+    app_dir = os.path.dirname(os.path.abspath(cron_jobs.__file__))
+    parent = os.path.dirname(app_dir)
+    venvs_dir = os.path.join(parent, ".python-venvs")
+    venvs_created = not os.path.isdir(venvs_dir)
+    fake_venv = os.path.join(venvs_dir, "wulmstorf_tipprunde")
+    site = os.path.join(fake_venv, "lib", "python3.13", "site-packages")
+    os.makedirs(site)
+    execl_attempts = []
+    try:
+        real_find_spec = importlib.util.find_spec
+        calls = {"n": 0}
+
+        def fake_find_spec(name, *a, **k):
+            if name == "flask":
+                calls["n"] += 1
+                # erst nach Einbindung der site-packages ist Flask wieder da
+                return None if calls["n"] <= 2 else real_find_spec("flask")
+            return real_find_spec(name, *a, **k)
+
+        monkeypatch.setattr(importlib.util, "find_spec", fake_find_spec)
+        monkeypatch.setattr(os, "execl", lambda *a, **k: execl_attempts.append(1))
+        cron_jobs._bootstrap_dependencies()
+        assert site in sys.path
+        assert not execl_attempts
+    finally:
+        if site in sys.path:
+            sys.path.remove(site)
+        if venvs_created and os.path.isdir(venvs_dir):
+            shutil.rmtree(venvs_dir)
+
+
+def test_list_backups_ueberspringt_dateien_mit_stat_fehler(app, monkeypatch, tmp_path):
+    """Eine zwischen Glob und stat verschwundene Datei wird uebersprungen."""
+    bdir = tmp_path / "backups"
+    bdir.mkdir()
+    (bdir / "tippspiel_20260101_031500.db").write_bytes(b"x" * 10)
+    (bdir / "tippspiel_20260102_031500.db").write_bytes(b"x" * 10)
+    real_stat = os.stat
+
+    def _stat_mit_fehler(p, *a, **k):
+        if str(p).endswith("20260102_031500.db"):
+            raise OSError("Datei verschwunden")
+        return real_stat(p, *a, **k)
+
+    monkeypatch.setattr(os, "stat", _stat_mit_fehler)
+    monkeypatch.setitem(app.config, "BACKUP_DIR", str(bdir))
+    with app.app_context():
+        items = list_backups()
+    assert [i["name"] for i in items] == ["tippspiel_20260101_031500.db"]

@@ -21,7 +21,7 @@ DEFAULT_BADGES = [
     ("500_points",   "Halbtausend",    "500 Punkte erreicht",                    "🚀", "#3b82f6", "total_points",500),
     ("sharp_shooter","Scharfschütze",  "10 exakte Tipps",                        "🎯", "#ec4899", "exact_count",  10),
     ("joker_master", "Joker-Meister",  "Joker mit exaktem Tipp eingelöst",       "⚡", "#fbbf24", "joker_exact",   0),
-    ("perfect_day",  "Tagessieger",    "Alle Spiele eines Spieltags exakt",      "👑", "#fbbf24", "perfect_day",   0),
+    ("perfect_day",  "Perfekter Tag",  "Alle Spiele eines Spieltags exakt",      "👑", "#fbbf24", "perfect_day",   0),
     ("md_winner_1",  "Spieltagsieger", "Erster Spieltagsieg",                    "🏆", "#14b8a6", "matchday_winner", 1),
     ("md_winner_3",  "Triple-Sieger",  "3 Spieltage gewonnen",                   "🥇", "#f59e0b", "matchday_winner", 3),
     ("md_winner_5",  "Serien-Sieger",  "5 Spieltage gewonnen",                   "🔥", "#ef4444", "matchday_winner", 5),
@@ -102,18 +102,18 @@ def _user_qualifies(user, badge):
     if t == "total_points":
         return sum(p.points or 0 for p in user.predictions) >= threshold
 
-    if t == "exact_count":
-        points_exact = get_setting("points_exact", 4)
+    if t in ("exact_count", "joker_exact"):
+        # "Exakt" = Endstand exakt (Klassifikation), nicht per Punkte:
+        # ein Joker-Tipp mit 2+2=4 Punkten ist kein exakter Treffer
+        # (und ein Joker-Diff mit 3+3=6 waere sonst einer, (73)).
+        from scoring import classify_prediction
         finished_preds = [p for p in user.predictions if p.match.status == "finished"]
         n_exact = sum(1 for p in finished_preds
-                      if p.points and p.points >= points_exact)
-        return n_exact >= threshold
-
-    if t == "joker_exact":
-        points_exact = get_setting("points_exact", 4)
-        finished_preds = [p for p in user.predictions if p.match.status == "finished"]
+                      if classify_prediction(p, p.match) == "exact")
+        if t == "exact_count":
+            return n_exact >= threshold
         return any(
-            p.joker and p.points and p.points >= points_exact
+            p.joker and classify_prediction(p, p.match) == "exact"
             for p in finished_preds
         )
 
@@ -126,22 +126,59 @@ def _user_qualifies(user, badge):
         md_groups = {}
         for p in finished_preds:
             md_groups.setdefault(p.match.matchday, []).append(p)
-        points_exact = get_setting("points_exact", 4)
+        # "Perfekt" = jeder Tipp Endstand exakt (nicht per Punkte, (73)) —
+        # und nur auf VOLLSTAENDIG abgelaufenen Spieltagen: ein partieller
+        # Spieltag (nur 2 von 9 Spielen fertig) wuerde "alle exakt"
+        # trivial erfuellen ((74), in Produktion gefundene Fehlzuteilung).
+        from scoring import classify_prediction
         for md, preds in md_groups.items():
             total_q = Match.query.filter_by(matchday=md, status="finished")
+            all_q = Match.query.filter_by(matchday=md)
             if comp:
                 total_q = total_q.filter(Match.competition_id == comp.id)
+                all_q = all_q.filter(Match.competition_id == comp.id)
             total_md = total_q.count()
-            if total_md > 0 and len(preds) >= total_md:
-                if all(p.points and p.points >= points_exact for p in preds):
+            total_all = all_q.count()
+            if total_all > 0 and total_md == total_all and len(preds) >= total_all:
+                if all(classify_prediction(p, p.match) == "exact" for p in preds):
                     return True
         return False
 
     if t == "matchday_winner":
-        wins = MatchdayWinner.query.filter_by(user_id=user.id).count()
+        # Wie das Profil: aktiver Wettbewerb + aktuelle Saison. Die alte
+        # Logikaenzählte ALLE Wettbewerbe/Saisons — dadurch konnte das
+        # Badge erscheinen, obwohl das Profil 0 Spieltagssiege zeigte ((74)).
+        from competition_helpers import get_active_competition
+        comp = get_active_competition()
+        season = get_setting("current_season", "2025/26")
+        q = MatchdayWinner.query.filter_by(user_id=user.id, season=season)
+        if comp:
+            q = q.filter(MatchdayWinner.competition_id == comp.id)
+        wins = q.count()
         return wins >= threshold
 
     return False
+
+
+def revalidate_badges():
+    """Vollrevalidierung aller Auto-Badges: verleiht fehlende UND widerruft
+    nicht mehr verdiente (alle Trigger ausser 'manual'). Zur Korrektur
+    alter/falscher Vergaben — manuell via Admin → Wartung → 'badges'
+    ausloesen. Der normale Save-Pfad (check_and_award_badges) widerruft
+    bewusst nichts, um kein Hin-und-her-Verliehen zu erzeugen."""
+    badges = Badge.query.filter_by(active=True).all()
+    for badge in badges:
+        if badge.trigger_type == "manual":
+            continue
+        for user in User.query.all():
+            qualifies = _user_qualifies(user, badge)
+            has = UserBadge.query.filter_by(
+                user_id=user.id, badge_id=badge.id).first() is not None
+            if qualifies and not has:
+                award_badge(user, badge)
+            elif not qualifies and has:
+                revoke_badge(user, badge)
+    db.session.commit()
 
 
 def check_and_award_badges(users=None):

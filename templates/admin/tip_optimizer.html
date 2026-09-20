@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+{% block extra_css %}
+{% endblock %}
+{% block content %}
+<a href="{{ url_for('admin.dashboard') }}" class="back-link">← Admin</a>
+<h1>🎯 Tipp-Optimizer <small class="muted">Spieltag {{ md }}</small></h1>
+
+<div class="to-actions">
+  <form method="get" action="{{ url_for('admin.tip_optimizer') }}" class="to-md-form">
+    <label class="muted">Spieltag
+      <select name="md" onchange="this.form.submit()">
+        {% for m in matchdays %}
+        <option value="{{ m }}" {% if m == md %}selected{% endif %}>ST {{ m }}{% if m == current_md %} (aktuell){% endif %}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </form>
+  <button type="button" id="to-btn-online" class="btn-primary btn-sm">⬇ Quoten online laden</button>
+  <button type="button" id="to-btn-clear" class="btn-ghost btn-sm">Alle Felder leeren</button>
+  <span id="to-load-chip" class="muted" style="font-size:13px; align-self:center; display:none;"></span>
+</div>
+<div id="to-online-status" class="to-online-status muted">
+  {% if has_key %}ℹ️ The-Odds-API-Key aktiv – „Quoten online laden“ füllt 1X2 + Ü2,5 (Median-Konsens aller Buchmacher, robust gegen Ausreißer) in die Karten. Budget: {{ budget_used }}/{{ budget_cap }} Abrufe diesen Monat{% if credits_remaining is not none %} · Credits übrig: {{ credits_remaining }}{% endif %}.{% else %}ℹ️ Kein The-Odds-API-Key hinterlegt – „Quoten online laden“ bleibt inaktiv. Free-Key (500 Credits/Monat): the-odds-api.com → Einstellungen → APIs. Alternativ Quoten per Schnelleingabe-Feld eintragen.{% endif %}
+</div>
+
+{% if matches %}
+<div class="card" id="to-summary-card">
+  <h2>Optimierte Tipps</h2>
+  <div class="to-chips-row" id="to-chips"></div>
+  <div class="to-tblwrap" id="to-results"></div>
+  <div id="to-details"></div>
+  <div class="muted" id="to-total" style="margin-top:10px"></div>
+  <div class="muted" id="to-joker" style="margin-top:10px"></div>
+  <div class="btnrow" style="margin-top:10px">
+    <button type="button" id="to-btn-snapshot" class="btn-ghost btn-sm" title="Speichert die aktuellen Modell-Ausgaben (Tipp, EP, Wahrscheinlichkeiten, Quoten) je Spiel in der DB. Nach Spieltags-Ende rechnet die Modellgüte-Karte unten die Erwartungen gegen die Ergebnisse ab.">💾 Vorhersage speichern (Modellgüte)</button>
+    <span id="to-snap-msg" style="font-size:13px; align-self:center;"></span>
+  </div>
+</div>
+
+<details class="card to-input-fold" id="to-input-fold" open>
+  <summary>✏️ Quoten eintragen <span id="to-fold-state" class="muted"></span></summary>
+  <div class="to-cards" style="margin-top:10px">
+  {% for m in matches %}
+  <div class="card to-card" data-idx="{{ loop.index0 }}" data-match-id="{{ m.id }}" data-h="{{ m.home_team.name }}" data-a="{{ m.away_team.name }}"
+       data-kick="{{ m.kickoff.strftime('%Y-%m-%dT%H:%M:%SZ') if m.kickoff else '' }}">
+    <div class="to-card-head">
+      <span class="muted to-kick">{{ m.kickoff.strftime('%a, %d.%m. %H:%M') ~ ' Uhr UTC' if m.kickoff else 'ohne Uhrzeit' }}</span>
+      <b>{{ m.home_team.name }}</b> – {{ m.away_team.name }}
+    </div>
+    <div class="to-odds-grid">
+      <label>1 (Heim)<input class="to-inp to-o1" type="number" step="0.01" min="1.01" value=""></label>
+      <label>X (Remis)<input class="to-inp to-ox" type="number" step="0.01" min="1.01" value=""></label>
+      <label>2 (Gast)<input class="to-inp to-o2" type="number" step="0.01" min="1.01" value=""></label>
+      <label>Ü 2,5<input class="to-inp to-ou25" type="number" step="0.01" min="1.01" value=""></label>
+    </div>
+    <div class="to-paste-row">
+      <input class="to-inp to-paste" placeholder="Schnelleingabe: 2.30 3.80 2.80 [Ü2,5] [BTTS] [Ü3,5] · Enter = übernehmen" />
+      <button type="button" class="to-apply-paste btn-ghost btn-sm">↵</button>
+    </div>
+    <button type="button" class="to-toggle-extras" aria-expanded="false">⚙ Optionen (BTTS · Ü3,5 · Adjuster) ▸</button>
+    <div class="to-extras" hidden>
+      <div class="to-odds-grid">
+        <label>BTTS Ja<input class="to-inp to-btts" type="number" step="0.01" min="1.01" value=""></label>
+        <label>Ü 3,5<input class="to-inp to-ou35" type="number" step="0.01" min="1.01" value=""></label>
+      </div>
+      <div class="to-adj">
+        <label title="Justiert λ Heim nach dem Markt-Fit – z. B. für kurzfristige Ausfälle, die noch nicht in den Quoten sind">Adjuster Heim ±%
+          <input class="to-inp to-adjh" type="number" step="5" min="-40" max="40" value="0"></label>
+        <label title="Justiert λ Gast nach dem Markt-Fit">Adjuster Gast ±%
+          <input class="to-inp to-adja" type="number" step="5" min="-40" max="40" value="0"></label>
+      </div>
+    </div>
+    <div class="to-fair muted"></div>
+  </div>
+  {% endfor %}
+</div>
+</details>
+
+<div class="card">
+  <h2>📈 Modellgüte – gespeicherte Vorhersagen</h2>
+  {% if model_stats %}
+  <div class="to-statgrid">
+    <div class="to-stat"><span>EP erwartet / Spiel</span><b>{{ '%.2f' % model_stats.ep_exp }}</b></div>
+    <div class="to-stat"><span>Punkte real / Spiel</span><b>{{ '%.2f' % model_stats.ep_real }}</b></div>
+    <div class="to-stat"><span>P(≥2 P) erwartet</span><b>{{ '%.0f' % (model_stats.pge2_exp * 100) }} %</b></div>
+    <div class="to-stat"><span>P(≥2 P) real</span><b>{{ '%.0f' % (model_stats.pge2_rate * 100) }} %</b></div>
+    <div class="to-stat"><span title="Zuverlässigkeit der 1X2-Prozentzahlen: 0 = perfekt, ~0,67 = Zufallstipp. Das Modell ist gut, wenn sein Wert deutlich unter „Brier Zufall“ liegt.">Brier 1X2 (kleiner = besser)</span><b>{{ '%.3f' % model_stats.brier }}</b></div>
+    <div class="to-stat"><span title="Referenz: der Brier eines Zufallstippers. Das Modell ist besser, wenn sein Brier (Zeile oben) deutlich darunter liegt.">Brier Zufall</span><b>{{ '%.3f' % model_stats.brier_zufall }}</b></div>
+  </div>
+  <p class="muted" style="margin:0 0 8px">Abrechnung der gespeicherten Vorhersagen gegen die Endstände – seither {{ model_stats.since }}, {{ model_stats.runs }} Lauf/Läufe, {{ model_stats.n }} Spiel/Spiele.</p>
+  <div class="to-tblwrap">
+    <table class="to-tblwide">
+      <thead><tr><th title="Spieltag">ST</th><th title="Lokale Zeit (vom UTC-Zeitstempel umgerechnet)">Gespeichert (UTC)</th><th>Spiele</th><th title="Erwartungswert je Spiel (4/3/2-Regel)">EP erwartet</th><th title="Tatsächlich erzielte Punkte je Spiel">Punkte real</th><th title="Vom Modell erwartete Wahrscheinlichkeit von ≥ 2 Punkten">P(≥2 P) erwartet</th><th title="Realisierte Trefferquote: Anteil der Tipps mit ≥ 2 Punkten">P(≥2 P) real</th><th title="Qualität der 1X2-Prognose: 0 = perfekt, ~0,67 = Zufall, kleiner ist besser">Brier</th></tr></thead>
+      <tbody>
+      {% for r in model_stats.rows %}
+      <tr><td>ST {{ r.md }}</td><td><span data-ts-utc="{{ r.when_iso }}">{{ r.when }}</span></td><td>{{ r.n }}</td><td>{{ '%.2f' % r.ep_exp }}</td>
+          <td><b>{{ '%.2f' % r.ep_real }}</b></td><td>{{ '%.0f' % (r.pge2_exp * 100) }} %</td>
+          <td>{{ '%.0f' % (r.pge2_rate * 100) }} %</td><td>{{ '%.3f' % r.brier }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted" style="margin:0">Noch keine bewertbaren Vorhersagen. Nach dem Tipp-Abgleich „💾 Vorhersage speichern“ drücken – abgerechnet wird automatisch, wenn der gespeicherte Spieltag beendet ist. (Nur Admin-Sicht.)</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>📊 Quoten-Bewegung</h2>
+  {% if odds_move %}
+  <p class="muted" style="margin-top:0">Erster vs. letzter gespeicherter Stand je Spiel – jeder „⬇ Quoten online laden“-Abruf legt einen Zeitstempel-Stand an (0 €, eigene abgerufene Werte; manuelle Eingaben bleiben in Ruhe).
+  Insgesamt {{ odds_move.total }} Stände, zuletzt <span data-ts-utc="{{ odds_move.until_iso }}">{{ odds_move.until }}</span> Uhr (lokale Zeit). <span class="muted">↓ = Quote gesunken (Favorisierung gestiegen), ↑ = gestiegen.</span></p>
+  <div class="to-tblwrap">
+    <table class="to-tblwide-narrow">
+      <thead><tr><th>Spiel</th><th>1</th><th>X</th><th>2</th><th>Stände (seit)</th></tr></thead>
+      <tbody>
+      {% for r in odds_move.rows %}
+      <tr><td><b>{{ r.h }}</b> – {{ r.a }}</td>
+          <td>{{ r.c1[0] }} <span class="muted">{{ r.c1[1] }}</span></td>
+          <td>{{ r.cx[0] }} <span class="muted">{{ r.cx[1] }}</span></td>
+          <td>{{ r.c2[0] }} <span class="muted">{{ r.c2[1] }}</span></td>
+          <td>{{ r.n }} · <span data-ts-utc="{{ r.first_ts_iso }}">{{ r.first_ts }}</span></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted" style="margin:0">Noch keine Quoten-Historie. Jeder „⬇ Quoten online laden“-Abruf speichert die befüllten Werte mit Zeitstempel – ab dem zweiten Abruf desselben Spieltags erscheint die Bewegung hier.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>🔬 Modellgüte – Walk-Forward-Backtest</h2>
+  <p class="muted" style="margin-top:0">Fittet das Modell (Teamstärken + Dixon-Coles + Torsumme) je abgelaufenen Spieltag aus allen <b>bisherigen</b> Spielen und bewertet es blind auf den Spieltag.
+  Ohne Odds-Anker (historische Quoten gibt es von keiner Gratis-Quelle) – also die <b>Modell-Grundlage als Untergrenze</b> der echten Tipp-Qualität. Laufzeit ~1–3 s, reine DB-Auswertung (keine Kosten).</p>
+  <div class="btnrow">
+    <button type="button" id="to-btn-backtest" class="btn-primary btn-sm">Backtest ausführen</button>
+  </div>
+  <div id="to-backtest" class="to-backtest"></div>
+</div>
+{% else %}
+<div class="card"><p class="muted" style="margin:0">Keine Spiele für Spieltag {{ md }} in der Datenbank – erst Admin → API Sync starten (oder einen anderen Spieltag wählen).</p></div>
+{% endif %}
+
+<details class="card to-info">
+  <summary>ℹ️ So funktioniert’s</summary>
+  <div class="to-info-body">
+  <strong>Einfach nutzen:</strong> Pro Spiel die 1X2-Quoten eintragen (Schnelleingabe: <code>2.30 3.80 2.80 [Ü2,5] [BTTS] [Ü3,5]</code> + Enter).
+  Die Engine (Dixon-Coles-Poisson, empirische BL-Korrekturfaktoren) entfernt die Buchmachermarge, passt die Torverteilung an und wählt den Tipp mit dem
+  <strong>höchsten erwarteten Punktwert</strong> unter der 4/3/2-Regel – ⚠ markiert Tipps, die vom wahrscheinlichsten Einzel-Ergebnis abweichen (unter 4/3/2 trotzdem besser).
+  Ergebnis-Chips: <span class="to-badge b-hoch">hoch</span> P(≥2 P) ≥70 % · <span class="to-badge b-mittel">mittel</span> ≥40 % · <span class="to-badge b-niedrig">niedrig</span> darunter.
+  Joker-Vorschlag: die Engine markiert, auf welchem Spiel sich der ×2-Joker am meisten lohnt (höchster Erwartungswert).
+  <span class="muted">Nur Spielleiter-Ansicht – Tippvorschläge sind Modell-Erwartungswerte, keine garantierten Tipps.</span>
+  <details class="to-abbrev">
+    <summary>Abkürzungen &amp; Begriffe</summary>
+    <div class="to-abbrev-body">
+      <dl>
+        <div><dt>4/3/2-Regel</dt><dd>Punktewertung: exakter Endstand 4 Punkte, gleicher Torsaldo 3, richtiges 1X2 (1/X/2) 2, sonst 0.</dd></div>
+        <div><dt>1X2</dt><dd>1 = Heimsieg, X = Remis, 2 = Auswärtssieg.</dd></div>
+        <div><dt>EP</dt><dd>Expected Points – Erwartungswert des Tipps in Punkten (nach der 4/3/2-Regel, über alle möglichen Endstände gewichtet).</dd></div>
+        <div><dt>λ H / λ G</dt><dd>Vom Modell erwartete Tore (Heim/Auswärts) – λ ist der Mittelwert des Tor-Modells (Poisson).</dd></div>
+        <div><dt>P(≥2 P) / Sicherheit</dt><dd>Wahrscheinlichkeit, dass der Tipp mindestens 2 Punkte bringt: ≥70 % hoch, ≥40 % mittel, darunter niedrig.</dd></div>
+        <div><dt>Brier</dt><dd>Wie zuverlässig sind die Prozentzahlen, die das Modell angibt. Beispiel: Schreibt es 70 % für einen Heimsieg, sollten in ~70 % der Fälle auch der Heimsieg eintreffen. Brier misst, wie weit die Angaben daneben lagen: 0 = immer richtig, ≈0,67 = Niveau eines Zufallstippers; je kleiner, desto besser. „Brier Zufall“ ist die Referenz — das Modell sollte deutlich darunter bleiben.</dd></div>
+        <div><dt>MAE</dt><dd>Mittlerer (absoluter) Fehler – hier: vorhergesagte Torsumme minus tatsächliche Torsumme.</dd></div>
+        <div><dt>Ü 2,5 / Ü 3,5</dt><dd>„Über“: die Gesamt-Tore des Spiels liegen über 2,5 bzw. 3,5.</dd></div>
+        <div><dt>BTTS</dt><dd>„Beide Teams treffen“: beide Mannschaften erzielen mindestens ein Tor.</dd></div>
+        <div><dt>ST</dt><dd>Spieltag.</dd></div>
+        <div><dt>knapp</dt><dd>Die zweitbeste Tipp-Option liegt weniger als 0,03 EP dahinter – das Ergebnis kann kippen.</dd></div>
+        <div><dt>Dixon-Coles</dt><dd>Korrektur des reinen Tor-Modells (Poisson) um beobachtete Niedrigtor-Häufigkeiten (Faktoren 0:0, 1:1, 1:0/0:1).</dd></div>
+        <div><dt>Walk-Forward-Backtest</dt><dd>Jeder abgelaufene Spieltag wird nur mit den bis dahin vorhandenen Daten bewertet – keine hindsight.</dd></div>
+        <div><dt>Odds-Anker</dt><dd>Die Quoten sind das Hauptsignal des Modells; der Saisondaten-Anker passt sie nur weich nach (Gewicht 0,15).</dd></div>
+      </dl>
+    </div>
+  </details>
+  </div>
+</details>
+
+<details class="card to-advanced">
+  <summary>⚙ Erweitert: Margen-Methode &amp; Dixon-Coles-Faktoren</summary>
+  <div class="to-adv-grid">
+    <label>Margen-Methode
+      <select id="to-margin" class="to-inp">
+        <option value="power" selected>Power (empfohlen)</option>
+        <option value="prop">Proportional</option>
+      </select>
+    </label>
+    <label>Faktor 0:0 <input id="to-rho0" class="to-inp" type="number" step="0.05" value="{{ '%.2f' % rho[0] }}"></label>
+    <label>Faktor 1:1 <input id="to-rhoD" class="to-inp" type="number" step="0.05" value="{{ '%.2f' % rho[1] }}"></label>
+    <label>Faktor 1:0/0:1 <input id="to-rho1" class="to-inp" type="number" step="0.05" value="{{ '%.2f' % rho[2] }}"></label>
+  </div>
+  <p class="muted" style="margin:8px 0 0">
+    {% if model_fitted %}Faktoren und Torsummen-Prior ({{ '%.2f' % goal_prior }}) aus den {{ model_n }} fertigen Spielen der Saison in der App-Datenbank gefittet (empirische Niedrigtor-Verhältnisse, geklemmt auf 0,5–1,8). Jede Spielkarte wird zusätzlich mit einem λ-Prior aus den Teamstärken (Angriff/Abwehr mit Shrinkage Richtung neutral) ankernd berechnet – die Quoten bleiben das Hauptsignal.
+    {% else %}Noch keine Saisondaten-Anker (mindestens 8 fertige Spiele der Saison nötig) – es gelten die Standalone-Defaults: 0:0 mit Faktor 1,00, 1:1 etwas häufiger (1,09), 1:0/0:1 etwas seltener (0,97), Torsummen-Prior 3,20 (BL-Mittel 25/26).
+    {% endif %}
+    Power-Methode berücksichtigt den Favorite-Longshot-Bias (Standard laut Fachliteratur).
+  </p>
+</details>
+
+<script type="application/json" id="to-config">
+{{ {"md": md, "season": season, "has_key": has_key, "budget_used": budget_used, "budget_cap": budget_cap, "credits_remaining": credits_remaining, "rho": rho, "goal_prior": goal_prior, "priors": priors} | tojson }}
+</script>
+<script src="{{ url_for('static', filename='js/to_engine.js', v=asset_version) }}"></script>
+<script src="{{ url_for('static', filename='js/tip_optimizer.js', v=asset_version) }}" defer></script>
+{% endblock %}

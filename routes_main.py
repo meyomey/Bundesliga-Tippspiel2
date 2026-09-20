@@ -24,6 +24,19 @@ from competition_helpers import (
 main_bp = Blueprint("main", __name__)
 
 
+def _whatsapp_group_url():
+    """Liefert den hinterlegten WhatsApp-Gruppenlink zur Rueckgabe an Templates.
+
+    Schema-Gate: nur http/https-Werte duerfen gerendert werden – ein
+    javascript:/data:-Wert (z. B. manuell in die DB gesetzt) wird nie
+    ausgegeben, sondern als leer behandelt.
+    """
+    url = (get_setting("whatsapp_group_url", "") or "").strip()
+    if url.lower().startswith(("http://", "https://")):
+        return url
+    return None
+
+
 # ============================================================ PWA Routes -
 @main_bp.route("/")
 def index():
@@ -117,6 +130,7 @@ def dashboard():
         next_action=next_action,
         tip_status=tip_status,
         pot=pot,
+        whatsapp_group_url=_whatsapp_group_url(),
         get_user_prediction=lambda mid: Prediction.query.filter_by(user_id=current_user.id, match_id=mid).first(),
     )
 
@@ -220,7 +234,7 @@ def invite_users():
 @main_bp.route("/mehr")
 @login_required
 def more():
-    return render_template("more.html")
+    return render_template("more.html", whatsapp_group_url=_whatsapp_group_url())
 
 
 @main_bp.route("/hilfe")

@@ -451,3 +451,66 @@ class SchemaMigration(db.Model):
     success = db.Column(db.Boolean, default=True)
     message = db.Column(db.Text, nullable=True)
     applied_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+
+
+class OptimizerRun(db.Model):
+    """Gespeicherter Optimizer-Zustand (Tipp-Satz eines Spieltags) zum
+    prospektiven Modellguete-Tracking. Wird nur von der Admin-Seite
+    /admin/tip-optimizer geschrieben – fuer Teilnehmer unsichtbar.
+    """
+    __tablename__ = "optimizer_runs"
+    id = db.Column(db.Integer, primary_key=True)
+    competition_id = db.Column(db.Integer, db.ForeignKey("competitions.id"), nullable=False, index=True)
+    matchday = db.Column(db.Integer, nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+
+    tips = db.relationship("OptimizerRunTip", backref="run",
+                           lazy="dynamic", cascade="all, delete-orphan")
+
+
+class OptimizerRunTip(db.Model):
+    """Einzel-Tipp eines gespeicherten Optimizer-Zustands inkl. Modell-
+    Ausgangaengen (EP, 1X2-Wahrscheinlichkeiten, Sicherheit, lambda, Quoten).
+    """
+    __tablename__ = "optimizer_run_tips"
+    id = db.Column(db.Integer, primary_key=True)
+    run_id = db.Column(db.Integer, db.ForeignKey("optimizer_runs.id"), nullable=False, index=True)
+    match_id = db.Column(db.Integer, db.ForeignKey("matches.id"), nullable=False, index=True)
+    tip_h = db.Column(db.Integer, nullable=False)
+    tip_a = db.Column(db.Integer, nullable=False)
+    ep = db.Column(db.Float, nullable=True)
+    p1 = db.Column(db.Float, nullable=True)
+    px = db.Column(db.Float, nullable=True)
+    p2 = db.Column(db.Float, nullable=True)
+    pge2 = db.Column(db.Float, nullable=True)  # P(>= 2 Punkte) – "Sicherheit"
+    pge3 = db.Column(db.Float, nullable=True)
+    pex = db.Column(db.Float, nullable=True)
+    lh = db.Column(db.Float, nullable=True)
+    la = db.Column(db.Float, nullable=True)
+    o1 = db.Column(db.Float, nullable=True)  # verwendete 1X2-Quoten (Konsens)
+    ox = db.Column(db.Float, nullable=True)
+    o2 = db.Column(db.Float, nullable=True)
+
+    match = db.relationship("Match")
+
+
+class OddsSnapshot(db.Model):
+    """Ein gespeicherter Quoten-Stand eines Spiels (Zeitpunkt eines
+    „Quoten online laden“-Abrufs). Dient der Quoten-Bewegungs-Karte und
+    (V2) einem Backtest mit Odds-Anker. 0 € — nur eigene, abgerufene Werte."""
+    __tablename__ = "odds_snapshots"
+    id = db.Column(db.Integer, primary_key=True)
+    competition_id = db.Column(db.Integer, db.ForeignKey("competitions.id"), nullable=False, index=True)
+    match_id = db.Column(db.Integer, db.ForeignKey("matches.id"), nullable=False, index=True)
+    matchday = db.Column(db.Integer, nullable=False, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    o1 = db.Column(db.Float, nullable=True)
+    ox = db.Column(db.Float, nullable=True)
+    o2 = db.Column(db.Float, nullable=True)
+    ou25 = db.Column(db.Float, nullable=True)
+    btts = db.Column(db.Float, nullable=True)
+    ou35 = db.Column(db.Float, nullable=True)
+    source = db.Column(db.String(20), nullable=False, default="online")
+
+    match = db.relationship("Match")

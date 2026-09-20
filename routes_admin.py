@@ -624,6 +624,7 @@ def settings():
         form.whatsapp_group_url.data = get_setting("whatsapp_group_url", "")
         form.football_data_token.data = ""
         form.apifootball_token.data = ""
+        form.the_odds_api_key.data = ""
         form.squad_aliases.data = get_setting("topscorers_squad_aliases", "")
         form.public_base_url.data = get_setting("public_base_url", current_app.config.get("PUBLIC_BASE_URL", ""))
         form.mail_server.data = get_setting("mail_server", current_app.config.get("MAIL_SERVER", ""))
@@ -681,6 +682,9 @@ def settings():
         apifb_token = (form.apifootball_token.data or "").strip()
         if apifb_token:
             set_setting("apifootball_token", apifb_token)
+        tods_key = (form.the_odds_api_key.data or "").strip()
+        if tods_key:
+            set_setting("the_odds_api_key", tods_key)
         set_setting("topscorers_squad_aliases", (form.squad_aliases.data or "").strip())
         set_setting("public_base_url", (form.public_base_url.data or "").strip().rstrip("/"))
 
@@ -763,6 +767,7 @@ def settings():
                            mail_password_configured=bool(get_setting("mail_password", current_app.config.get("MAIL_PASSWORD", ""))),
                            vapid_private_configured=bool(get_setting("vapid_private", current_app.config.get("VAPID_PRIVATE_KEY", ""))),
                            apifootball_configured=bool(get_setting("apifootball_token", current_app.config.get("APIFOOTBALL_TOKEN", ""))),
+                           theodds_configured=bool(get_setting("the_odds_api_key", "")),
                            telegram_token_configured=bool(get_setting("telegram_bot_token", current_app.config.get("TELEGRAM_BOT_TOKEN", ""))),
                            telegram_secret_configured=bool(get_setting("telegram_webhook_secret", current_app.config.get("TELEGRAM_WEBHOOK_SECRET", ""))))
 

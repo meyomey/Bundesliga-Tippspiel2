@@ -86,15 +86,20 @@ def _admin_bots_view():
     from sqlalchemy import func, case
     from scoring import get_setting
     from scoring import _truthy_setting
-    points_exact = get_setting("points_exact", 4)
     auto_tip_active = _truthy_setting(get_setting("bot_auto_tip_active", False), default=False)
 
     stats_rows = db.session.query(
         Prediction.user_id,
         func.count(Prediction.id).label("tips"),
-        func.sum(case((Prediction.points >= points_exact, 1), else_=0)).label("exact"),
+        # "Exakt" = Endstand exakt (nicht per Punkte — Joker 2+2=4 ist kein
+        # exakter Treffer, (73))
+        func.sum(case((
+            (Match.status == "finished")
+            & (Prediction.home_tip == Match.home_score)
+            & (Prediction.away_tip == Match.away_score), 1), else_=0)).label("exact"),
         func.coalesce(func.sum(Prediction.points), 0).label("pts"),
-    ).filter(Prediction.user_id.in_(bot_ids)).group_by(Prediction.user_id).all()
+    ).join(Match, Prediction.match_id == Match.id) \
+     .filter(Prediction.user_id.in_(bot_ids)).group_by(Prediction.user_id).all()
     stats_map = {s.user_id: s for s in stats_rows}
 
     open_matches = active_match_query().filter_by(status="scheduled").count()

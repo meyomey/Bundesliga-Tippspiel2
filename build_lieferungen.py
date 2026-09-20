@@ -12,6 +12,7 @@ Erzeugt aus dem aktuellen Repo-Stand unter _lieferungen/:
 
 Aufruf: python build_lieferungen.py   (aus dem Repo-Root)
 """
+import re
 import subprocess
 import zipfile
 from datetime import date
@@ -116,8 +117,46 @@ GITHUB_UPLOAD_FILES = [
     "tests/test_stadiums_map.py",
     # 06.09.2026: Rangliste Mobile - Namensblock mit eigener Zeile
     "templates/leaderboard.html",
+    # 15.09.2026 (35): WhatsApp-Runde (50)-(52) auf GitHub komplettieren
+    # (routes_main.py + dashboard.html waren beim Push gefehlt) + Regressionstests
+    "routes_main.py",
+    "templates/dashboard.html",
+    "tests/test_whatsapp_group.py",
+    "README.md",
     "CHANGELOG.md",
     "build_lieferungen.py",   # diese Liste aktualisiert
+    # 15.09.2026 (35): verify_04.py war nie gepusht (Doku-Block 16) -> nachreichen
+    "verify_04.py",
+    # 15.09.2026 (36): Coverage-Runde - cron_jobs.py & backup.py auf 100 %
+    # (Dateien standen bereits oben; Eintraege hier entfallen, damit das
+    #  04-Zip keine Duplikat-Warnungen mehr zeigt)
+    # 15.09.2026 (55): Tipp-Optimizer (Admin-only) - Dixon-Coles-EP-Optimierung
+    # + The-Odds-API optional (Budgetwächter + Datenquellen-Protokoll).
+    # Geaenderte Bestanddateien (style.css, forms.py, routes_admin.py,
+    # settings.html, datasource_activity.py, dashboard.html, app.py) stehen
+    # bereits oben in ihren jeweiligen Rundentracken.
+    "admin_tip_optimizer_routes.py",
+    "static/js/tip_optimizer.js",
+    "templates/admin/tip_optimizer.html",
+    "tests/test_tip_optimizer.py",
+    # 15.09.2026 (57): Tipp-Optimizer - Modell-Fit aus den Saisondaten der DB
+    # + Engine in to_engine.js (getestet in der CI, Job "JS-Engine-Tests")
+    "tip_optimizer_model.py",
+    "static/js/to_engine.js",
+    "tests/js/tip_optimizer_engine_test.js",
+    ".github/workflows/tests.yml",
+    # 16.09.2026 (62): Quoten-Bewegung (J) + Scheduler-Tests + utils-Export-Fix
+    "utils.py",
+    "tests/test_scheduler.py",
+    # 19.09.2026 (70): Test-DB-Fix (DATABASE_URL=:memory: vor app-Import)
+    "tests/conftest.py",
+    # 20.09.2026 (73): Exakter-Treffer-Fix (Joker 2+2=4 zählt nicht als exakt)
+    "scoring.py",
+    "badges.py",
+    "tests/test_joker_exact_counting.py",
+    # 20.09.2026 (74): Badge-Scope-Fixes (perfect_day voll, md_winner saison-,
+    # Vollrevalidierung mit Widerruf, Seed-Name "Perfekter Tag")
+    "tests/test_badge_scoping_fixes.py",
 ]
 
 def tracked_files() -> list:
@@ -390,6 +429,18 @@ def main():
         runtime + [p2 for p2 in docs_tests if p2.startswith("tests/")],
         set(GITHUB_UPLOAD_FILES),
     )
+
+    # Alte Tages-Zips loeschen (Dauerregel: nur das aktuellste Set im
+    # Workspace — "doppelte Dateien" im Workspace waren wiederholt ein
+    # Aergernis; jetzt automatisch, 19.09.2026).
+    stale = []
+    for p in LIEF.glob("0[1-4]_*_*.zip"):
+        m = re.search(r"_(\d{4}-\d{2}-\d{2})\.zip$", p.name)
+        if m and m.group(1) < TODAY:
+            stale.append(p)
+    for p in stale:
+        p.unlink()
+        print(f"ℹ️  Altes Tages-Zip gelöscht: {p.name}")
 
     z1 = make_zip(f"01_Runtime_{TODAY}.zip", runtime, manifest_01(commit, commit_date))
     z2 = make_zip(f"02_Doku_Tests_{TODAY}.zip", docs_tests, manifest_02(commit, commit_date))

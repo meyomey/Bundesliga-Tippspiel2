@@ -54,6 +54,17 @@ jobs:
       - name: Testsuite
         run: python -m pytest -q
 
+  js:
+    name: JS-Engine-Tests (Node)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: "Tipp-Optimizer-Engine (static/js/to_engine.js)"
+        run: node tests/js/tip_optimizer_engine_test.js
+
   audit:
     name: Security Audit (pip-audit)
     runs-on: ubuntu-latest
