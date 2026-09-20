@@ -1,6 +1,19 @@
 # Changelog – Wulmstörper Tipprunde
 
 
+## [3.1.45] - 2026-09-20
+
+### 🧪 Badge-Vollabdeckung: 22 neue Tests über alle Badge-Logiken
+
+- **Anlass:** eigene Testrunde „alle Badge-Logiken" nach (73)/(74). Die 9 vorhandenen Badge-Tests deckten die neuen Fix-Stellen, aber längst nicht alle 13 Badge-Definitionen ab.
+- **Neu in `tests/test_badge_vollabdeckung.py` (+22):**
+  - *Basis:* `classify_prediction` alle 5 Fälle (exact/diff/tendency/wrong/pending bei live) und `calculate_points` 4/3/2/0 mit Joker×2 bei **joker-unabhängiger** Klassifikation.
+  - *`recompute_matchday_winners`:* eindeutiger Sieger mit korrektem `points`/`exact_count`/`season`/`competition_id`; Punktgleichstand → `is_shared` mit 2 Zeilen; nur 0 Punkte → kein Sieger; Spieltag ohne Tipps → kein Sieger; **veraltete Zeilen (inkl. falscher Spieltage) werden ersetzt**.
+  - *Trigger-Grenzfälle:* `first_tip`; `tips_count` (29→30); `total_points` (96→100); `exact_count` (9 exakt + diff zählt nicht → 10 mit Joker-Exakt); `joker_exact` (exakt ohne Joker → nein, Joker daneben → nein, Joker+exakt → ja); `perfect_day` (Joker-Exakt zählt, unvollständig getippt → nein, perfekt im **fremden Wettbewerb** → nein); `matchday_winner` (**Saison-Scope**: alte Saison zählt nicht; `md_winner_3`-Schwelle inkl. geteilter Siege; geteilter Sieg zählt voll).
+  - *Mechanik:* `award_badge` idempotent / `revoke_badge`; **manuelle Badges** werden nie automatisch vergeben und von `revalidate_badges()` nie angetastet; Revalidierung **verleiht fehlende UND widerruft nicht mehr verdiente** (Ergebniskorrektur-Szenario); `check_and_award_badges(users=[…])` prüft nur die gegebene Liste.
+- **Ergebnis:** Suite **500/500**, flake8-Hartgate 0, Coverage **85 %**. README-Testbadge nachgezogen (statisch stand noch 433/433 aus (55)). `verify_04.py` grün (Frisch-Klon + Overlay = 500/500), SHA-Baumcheck identisch.
+- **Folgeaktion Nutzer:** ① 04-Paket (86 Dateien, kumulativ (53)–(75)) per GitHub Desktop pushen. ② Netcup-Deploy der **21 Dateien aus (74)** (der neue Test ist rein testseitig, kein Bestandteil des Runtime-Deploys) → Plesk-Restart → Wartung **„matchday_winners"** + **„badges"** → Badge **„Tagessieger" in „Perfekter Tag" umbenennen** (Schritt-für-Schritt: Deploy-Checkliste 20.09.).
+
 ## [3.1.44] - 2026-09-20
 
 ### 🏅 Badge-Fixes (Admin-Fund): „Tagessieger“/„Spieltagssieger“ trotz 0 Siegen

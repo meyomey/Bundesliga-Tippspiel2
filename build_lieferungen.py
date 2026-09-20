@@ -157,6 +157,9 @@ GITHUB_UPLOAD_FILES = [
     # 20.09.2026 (74): Badge-Scope-Fixes (perfect_day voll, md_winner saison-,
     # Vollrevalidierung mit Widerruf, Seed-Name "Perfekter Tag")
     "tests/test_badge_scoping_fixes.py",
+    # 20.09.2026 (75): Badge-Vollabdeckung - 22 Tests ueber alle 13 Badge-
+    # Definitionen + Winner-Recompute + Vergabe-/Widerrufs-Mechanik
+    "tests/test_badge_vollabdeckung.py",
 ]
 
 def tracked_files() -> list:

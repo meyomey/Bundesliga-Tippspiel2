@@ -249,8 +249,8 @@ pytest --cov=. --cov-report=html
 Aktueller Stand lokal:
 
 ```txt
-478/478 Tests bestanden
-Coverage: 84 %
+500/500 Tests bestanden
+Coverage: 85 %
 Warnings: 11 (LegacyAPIWarning u. a. für Query.get(), reportlab-Deprecation – bekannt und akzeptiert)
 ```
 
