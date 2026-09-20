@@ -191,11 +191,12 @@ def run_bot_tips():
 def run_odds_reminder():
     """Prueft das 48-h-Fenster des nächsten Spieltags und erinnert Admins per
     Telegram an „Quoten online laden“, wenn noch keine Stände gespeichert sind
-    ((80) — die Odds-API listet nur zukuenftige Spiele, zu spaet ist zu spaet)."""
+    ((80)) — und meldet positiv, sobald Stände da sind ((81))."""
     from app import app
-    from scheduler import odds_reminder_job
+    from scheduler import odds_reminder_job, odds_arrival_job
     with app.app_context():
         odds_reminder_job()
+        odds_arrival_job()
         return True
 
 

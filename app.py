@@ -19,7 +19,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from flask import Flask, session
+from flask import Flask, session, request, jsonify, render_template
 from flask_login import current_user
 
 from config import Config
@@ -393,6 +393,47 @@ def create_app(config_object=Config):
             admin.is_admin = True
             db.session.commit()
             print(f"✅ Passwort für {email} gesetzt.")
+
+    # ---------------- (81) Betrieb & Grundhaertung ----------------
+
+    @app.after_request
+    def sicherheits_header(response):
+        """Einheitliche Sicherheits-Header auf jeder Antwort."""
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        return response
+
+    @app.route("/healthz")
+    def healthz():
+        """Betriebs-Check fuer Monitoring/Plesk: Status + DB-Verbindung
+        (oeffentlich, ohne personenbezogene Daten)."""
+        db_ok = True
+        try:
+            from sqlalchemy import text as _text
+            db.session.execute(_text("SELECT 1"))
+        except Exception:
+            db_ok = False
+        body = {"status": "ok" if db_ok else "degraded", "db": db_ok,
+                "time": datetime.now(timezone.utc).isoformat()}
+        return jsonify(body), (200 if db_ok else 503)
+
+    @app.errorhandler(404)
+    def seite_nicht_gefunden(_e):
+        """Deutsche 404-Seite; API-Pfade bekommen stattdessen JSON."""
+        if request.path.startswith("/api/"):
+            return jsonify(ok=False, error="not_found"), 404
+        return render_template("errors/404.html"), 404
+
+    @app.errorhandler(500)
+    def interner_fehler(_e):
+        """Deutsche 500-Seite; robust auch, wenn selbst das Rendering klemmt."""
+        if request.path.startswith("/api/"):
+            return jsonify(ok=False, error="server_error"), 500
+        try:
+            return render_template("errors/500.html"), 500
+        except Exception:
+            return "Interner Fehler - bitte spaeter erneut versuchen.", 500
 
     return app
 

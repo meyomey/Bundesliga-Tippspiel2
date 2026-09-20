@@ -239,3 +239,63 @@ def test_odds_cron_task_ruft_scheduler_job(app, monkeypatch):
     from cron_jobs import run_odds_reminder
     assert run_odds_reminder() is True
     assert calls == [1]
+
+
+# ============================================================
+# (81) „Quoten sind da“ — positive Gegmeldung zur Erinnerung
+# ============================================================
+
+def test_odds_arrival_sendet_einmal_je_spieltag(app, db, competition, teams, admin_user, monkeypatch):
+    """Stände vorhanden → genau eine positive Telegram-Info („Quoten sind
+    da“); der zweite Lauf schweigt (Dedupe je Spieltag)."""
+    monkeypatch.setattr(scheduler, "app", app)
+    monkeypatch.setitem(app.config, "COMPETITION", competition.code)
+    from models import OddsSnapshot
+    m = _naechsten_anstoss_anlegen(db, competition, teams, 72)
+    db.session.add(OddsSnapshot(competition_id=competition.id, match_id=m.id,
+                                matchday=5, o1=2.0, ox=3.4, o2=3.8))
+    admin_user.phone = "tg:TESTCHAT"
+    db.session.commit()
+    tgram = []
+    monkeypatch.setattr("telegram_bot.notify_user_telegram",
+                        lambda user, msg: tgram.append(msg))
+    scheduler.odds_arrival_job()
+    assert len(tgram) == 1
+    assert "Quoten sind da" in tgram[0] and "ST 5" in tgram[0]
+    scheduler.odds_arrival_job()
+    assert len(tgram) == 1                    # Dedupe: einmal je Spieltag
+
+
+def test_odds_arrival_stumm_ohne_staenden(app, db, competition, teams, admin_user, monkeypatch):
+    """Kein Snapshot für den nächsten Spieltag → keine Meldung (dafür
+    zuständig ist die 48-h-Erinnerung)."""
+    monkeypatch.setattr(scheduler, "app", app)
+    monkeypatch.setitem(app.config, "COMPETITION", competition.code)
+    _naechsten_anstoss_anlegen(db, competition, teams, 72)
+    admin_user.phone = "tg:TESTCHAT"
+    db.session.commit()
+    tgram = []
+    monkeypatch.setattr("telegram_bot.notify_user_telegram",
+                        lambda user, msg: tgram.append(msg))
+    scheduler.odds_arrival_job()
+    assert tgram == []
+
+
+def test_odds_arrival_deaktiviert_bleibt_still(app, db, competition, teams, admin_user, monkeypatch):
+    """odds_reminder_enabled=false schaltet beide Richtungen still (ein
+    gemeinsamer Schalter für Erinnerung und „sind da“)."""
+    monkeypatch.setattr(scheduler, "app", app)
+    monkeypatch.setitem(app.config, "COMPETITION", competition.code)
+    from scoring import set_setting
+    from models import OddsSnapshot
+    m = _naechsten_anstoss_anlegen(db, competition, teams, 72)
+    db.session.add(OddsSnapshot(competition_id=competition.id, match_id=m.id,
+                                matchday=5, o1=2.0, ox=3.4, o2=3.8))
+    set_setting("odds_reminder_enabled", False)
+    admin_user.phone = "tg:TESTCHAT"
+    db.session.commit()
+    tgram = []
+    monkeypatch.setattr("telegram_bot.notify_user_telegram",
+                        lambda user, msg: tgram.append(msg))
+    scheduler.odds_arrival_job()
+    assert tgram == []

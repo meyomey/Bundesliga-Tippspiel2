@@ -1,6 +1,30 @@
 # Changelog – Wulmstörper Tipprunde
 
 
+
+
+## [3.1.52] - 2026-09-20
+
+### 🧪 Robustheitstests + 💾 Backup-Restore-Drill (Nutzer-Auswahl „5 und 6")
+
+- **Kandidat 5 — Robustheitstests für die schwächsten Module** (+33 Tests, Coverage **86 → 87 %**): `telegram_bot.py` **44 → 89 %** (Token-Fehlerpfade, alle /tipp-Fehleingaben, Aktualisieren statt Duplizieren, Joker-Umzug im Spieltag, Rangliste/Spielplan/Meine-Tipps, Dispatch, Versand ohne Token/Netzwerkfehler/Erfolg, notify-Filter), `live_scoring.py` **53 → 87 %** (kaputtes Events-JSON, scheduled→live, Abschluss mit echter Punkteberechnung, Tipp-Verteilung/Top-Tipps, alle /live-Routen mit Rollenschutz), `admin_bots_routes.py` **32 → 77 %** (Rollenschutz, Toggle-Setting, unbekannte Bot-IDs, Reset-Loeschung, Bot-Anlage/Duplikat, tip-all ohne aktive Bots).
+- **Echter Bugfix dabei:** die beiden Live-Admin-Endpoints nutzten `request.get_json()` **ohne** `silent=True` — Form-POSTs (z. B. aus dem Admin-Manuell-Update) brachen mit **415 Unsupported Media Type**, statt die Formularwerte zu lesen. Jetzt `get_json(silent=True) or request.form` (JSON und Form gehen beides).
+- **Kandidat 6 — Backup-Restore-Drill als CI-Test** (`tests/test_backup_restore_drill.py`): ein Backup gilt erst dann als Backup, wenn ein Restore geuebt ist. Der Ernstfall laeuft jetzt automatisiert auf echter SQLite-**Datei** (wie Netcup): Seed → `create_database_backup()` → **kompletter Datenverlust** (alle Zeilen weg) → Backup-Datei zurueckkopieren (Praxis: FTP) → Verifikation (Spieler + Passwort-Check, Tipp mit 4 Punkten, Spielstand, `PRAGMA integrity_check` = ok) — plus **point-in-time-Drill**: zwei Backup-Zeitpunkte, gezielt der AELTERE wird restauriert. Wichtige Erkenntnis, jetzt dokumentiert: der Cron-**Heartbeat steht nicht im Backup** (er schlaegt erst nach der Kopie in die Live-DB) — direkt nach einem Restore zeigt das Wartungscenter therefore korrekt `never`, bis das naechste naechtliche Backup gelaufen ist.
+- **+35 Tests** (569 gesamt): 16 Telegram + 10 Live-Scoring + 7 Bots + 2 Restore-Drill. Suite **569/569**, flake8-Hartgate 0, Coverage **87 %**.
+- **Testfallen bezahlt (dokumentiert):** die session-scoped `app`-Fixture erzeugt in verschachtelten App-Contexts **getrennte Sessions** (Objekte nach Job-Context neu holen statt `expire`); der Login-View short-circuitet bei eingeloggt → Rollenwechsel in Tests nur ueber **ein** Client + `/auth/logout`; Backup-Dateinamen haben Sekunden-Stempel → zwischen zwei Backups ≥1 s Abstand.
+- **Deploy:** nur geaenderte Datei `live_scoring.py` + neue Testdateien (`tests/test_telegram_robust.py`, `tests/test_live_scoring_robust.py`, `tests/test_admin_bots_robust.py`, `tests/test_backup_restore_drill.py`, nur GitHub/CI) → FTP → `__pycache__` → Plesk-Restart. Selbstbeweis: Live-Admin-Update per Formular funktioniert wieder (vorher 415); Rest des Runden-Contents ist test-only.
+## [3.1.51] - 2026-09-20
+
+### 🛡️ Betrieb & Grundhärtung: /healthz, Sicherheits-Header, deutsche Fehlerseiten, „Quoten sind da"-Push (Nutzer-Auswahl „Paket 1+2+3+4")
+
+- **Anlass:** Nutzerfrage „kann man am Bestand noch etwas verbessern?" → Bestandsaufnahme (Limiter aktiv, Indizes ok, Deps gepinnt) → vier kleine Lücken geschlossen, alles Nutzer-freundlich ohne Feature-Risiko.
+- **Session-Cookies gehärtet (`config.py`):** `SESSION_COOKIE_HTTPONLY=True` und `SESSION_COOKIE_SAMESITE="Lax"` immer; `SESSION_COOKIE_SECURE` automatisch an, sobald `PUBLIC_BASE_URL` mit `https://` gesetzt ist (Prod), alternativ per `COOKIE_SECURE=1` erzwingbar — lokal/Tests (http) bleiben ohne Secure, sonst würde die Session fehlen.
+- **Sicherheits-Header (`app.py`, after_request):** `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: strict-origin-when-cross-origin` auf **jeder** Antwort.
+- **Neu `/healthz`:** öffentlicher Betriebs-Check ohne personenbezogene Daten — `200 {"status":"ok","db":true,"time":…}` bzw. **503 `db:false`** bei DB-Ausfall (ehrlich melden statt grün lügen). Für Plesk/uptime-Monitoring und als Schnellcheck nach dem Deploy.
+- **Deutsche Fehlerseiten:** 404 („Diese Seite existiert nicht (mehr)") und 500 („Hier ist etwas geklemmt") als Mobile-First-Standalone-Seiten statt Flasks Englisch-Defaults; **API-Pfade (`/api/…`) bekommen maschinenlesbares JSON** (`error: not_found`/`server_error`), der 500-Renderer ist selbst robust (Fallback-Text, falls das Rendering klemmt). **NEUE Dateien:** `templates/errors/404.html` + `templates/errors/500.html` — beim Deploy den Ordner `templates/errors/` auf dem Server anlegen!
+- **Neu „📥 Quoten sind da"-Push (`scheduler.py`):** positives Gegenstück zur 48-h-Erinnerung — sobald für den nächsten Spieltag Stände existieren, bekommt jeder Telegram-Admin **einmalig** eine Info (Anzahl Partien + Anstoß; Dedupe im Setting `odds_arrival_sent`). Gleicher Schalter `odds_reminder_enabled` für beide Richtungen; ohne Stände still, Telegram-Fehler still (Dauerregel 2). Der Plesk-Cron-Task `odds` erledigt jetzt beide Richtungen in einem Lauf.
+- **+11 Tests** (534 gesamt, Coverage **86 %**): healthz ok/503, Header, Cookie-Härtung (HttpOnly/SameSite immer, Secure bewusst nur https), 404/500 deutsch + API-JSON, Arrival sendet-einmal/ohne-Stände-still/deaktiviert-still. Testfalle bezahlt: die session-scoped `app`-Fixture ist nach dem ersten Request für neue Routen gesperrt (Flask 3) — 500er-Tests patchen daher bestehende Views (`view_functions["healthz"]`, `view_functions["api.api_matches"]`) statt Routen zu registrieren.
+- **Deploy:** `app.py`, `config.py`, `scheduler.py`, `cron_jobs.py` geändert + **NEU** `templates/errors/404.html`, `templates/errors/500.html` (Ordner anlegen!) + `tests/test_health_errors.py` (neu, nur GitHub) → FTP → `__pycache__` löschen → Plesk-Restart. Selbstbeweise: `/healthz` zeigt grün; unbekannte URL zeigt die deutsche 404; Antwort-Header via Browser-DevTools sichtbar; erste geladene Quoten lösen genau eine 📥-Nachricht aus.
 ## [3.1.50] - 2026-09-20
 
 ### 📲 Quoten-Erinnerung per Telegram (48-h-Fenster, Admin-only)
@@ -10,7 +34,7 @@
 - **Stille Ausnahmen (Dauerregel 2):** ohne `the_odds_api_key` (ℹ️, nie ⚠️) oder bei `odds_reminder_enabled = false` tut der Job nichts. Telegram-Fehler werden still geschluckt, ein Catch-all verhindert Scheduler-Ausfälle.
 - **Bedienung:** läuft automatisch im Dauer-Scheduler (Stunden-Intervall); für Plesk-Cron gibt es den neuen Task **`odds`** (`cron_jobs.py run_odds_reminder()`, Usage `[sync|reminder|bots|odds|backup|status|all]`), z. B. stündlich per wget — parallel zum Scheduler harmlos (Snapshot-Check + Dedupe).
 - **+5 Tests** (523 gesamt): Versand ins Fenster + Dedupe (zwei Läufe → eine Nachricht), Stumm bei vorhandenen Ständen, Stumm ohne Key/deaktiviert, Stumm außerhalb des Fensters, Cron-Task ruft Scheduler-Job. Suite **523/523**, flake8-Hartgate 0, Coverage **85 %**.
-- **Deploy:** Dateien nur geändert (keine neuen): `scheduler.py`, `cron_jobs.py`, `tests/test_scheduler.py` → FTP → `__pycache__` löschen → Plesk-Restart. Selbstbeweis: 48 h vor dem nächsten Spieltag erscheint die Telegram-Info einmalig bei den Admins; wer Stände lädt, bekommt sie nicht mehr. Spieler sehen von allem nichts.
+- **Deploy:** Dateien nur geändert (keine neuen): `scheduler.py`, `cron_jobs.py`, `tests/test_scheduler.py` → FTP → `__pycache__` löschen → Plesk-Restart. Selbstbeweis: 48 h vor dem nächsten Spieltag erscheint die Telegram-Info einmalig bei den Admins; wer Stände lädt, bekommt sie nicht mehr. Spieler sehen von allem nichts. **Build-Hinweis:** `scheduler.py` hängt seit je in der Dev-/Standalone-Klasse (`DEV_PY`) und fehlte deshalb im 04-GitHub-Paket — für die neuen CI-Tests ist er jetzt explizit in `GITHUB_UPLOAD_FILES` aufgenommen (`build_lieferungen.py`), 04-Paket damit **87 Dateien** (plus Upload-Anleitung).
 
 ## [3.1.49] - 2026-09-20
 

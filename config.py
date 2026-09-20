@@ -24,6 +24,14 @@ class Config:
 
     # Sessions
     PERMANENT_SESSION_LIFETIME = timedelta(days=30)
+    # (81) Cookie-Härtung: HttpOnly + SameSite=Lax immer; Secure sobald die
+    # oeffentliche URL HTTPS ist (Prod) oder via COOKIE_SECURE=1 erzwungen —
+    # lokal/Tests (http) bleiben ohne Secure, sonst wuerde die Session fehlen.
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = "Lax"
+    SESSION_COOKIE_SECURE = (os.environ.get("PUBLIC_BASE_URL", "").startswith("https")
+                             or os.environ.get("COOKIE_SECURE", "").lower()
+                             in ("1", "true", "yes"))
 
     # Uploads
     UPLOAD_FOLDER = os.path.join(basedir, "static", "uploads")

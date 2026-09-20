@@ -282,7 +282,7 @@ def admin_update_match(match_id: int):
     if not current_user.is_admin:
         return jsonify({'error': 'Unauthorized'}), 403
     
-    data = request.get_json() or request.form
+    data = request.get_json(silent=True) or request.form
     
     success = live_manager.update_match(
         match_id=match_id,
@@ -304,7 +304,7 @@ def admin_finish_match(match_id: int):
     if not current_user.is_admin:
         return jsonify({'error': 'Unauthorized'}), 403
     
-    data = request.get_json() or request.form
+    data = request.get_json(silent=True) or request.form
     
     success = live_manager.finish_match(
         match_id=match_id,

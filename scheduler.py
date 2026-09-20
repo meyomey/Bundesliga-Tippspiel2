@@ -109,6 +109,62 @@ def odds_reminder_job():
             print(f"[{datetime.now(timezone.utc)}] Odds-Reminder-Job Fehler: {e}")
 
 
+
+def odds_arrival_job():
+    """Positive Gegmeldung zu (80) — (81): existieren für den nächsten
+    Spieltag bereits Quoten-Stände, bekommt jeder Telegram-Admin einmalig
+    eine „Quoten sind da“-Info (Dedupe über Setting, gleiche Schalter wie
+    die 48-h-Erinnerung). Ohne Stände bewusst still."""
+    with app.app_context():
+        try:
+            from datetime import timezone as _tz
+            from scoring import get_setting, set_setting
+            from models import OddsSnapshot
+            from competition_helpers import get_active_competition
+
+            enabled = get_setting("odds_reminder_enabled", True)
+            if str(enabled).lower() in ("0", "false", "no", "nein", "off"):
+                return
+            comp = get_active_competition()
+            now = datetime.now(timezone.utc)
+            nxt_q = Match.query.filter(Match.status == "scheduled",
+                                       Match.kickoff.isnot(None))
+            nxt_q = filter_matches_for_active_competition(nxt_q)
+            nxt = nxt_q.order_by(Match.kickoff.asc()).first()
+            if nxt is None:
+                return
+            n_snaps = OddsSnapshot.query.filter_by(
+                competition_id=comp.id, matchday=nxt.matchday).count()
+            if n_snaps == 0:
+                return  # noch nichts geladen — die 48-h-Erinnerung übernimmt
+            sent = get_setting("odds_arrival_sent", None)
+            if isinstance(sent, dict) and sent.get("md") == nxt.matchday                     and sent.get("comp") == comp.id:
+                return
+            set_setting("odds_arrival_sent",
+                        {"md": nxt.matchday, "comp": comp.id,
+                         "at": now.isoformat()})
+            kickoff = nxt.kickoff
+            if kickoff.tzinfo is None:
+                kickoff = kickoff.replace(tzinfo=_tz.utc)
+            msg = (f"📥 Quoten sind da: ST {nxt.matchday} — {n_snaps} Partie(n) "
+                   f"mit Ständen (Anstoß {kickoff.strftime('%a, %d.%m. %H:%M')} "
+                   f"UTC). Optimizer kann gefüttert werden.")
+            admins = User.query.filter_by(is_admin=True).all()
+            n_sent = 0
+            for admin in admins:
+                if admin.phone and admin.phone.startswith("tg:"):
+                    try:
+                        from telegram_bot import notify_user_telegram
+                        notify_user_telegram(admin, msg)
+                        n_sent += 1
+                    except Exception:
+                        pass
+            print(f"[{now}] ODDS-ARRIVAL: ST {nxt.matchday}, {n_snaps} Stände, "
+                  f"{n_sent} Admin-Info(s) gesendet")
+        except Exception as e:
+            print(f"[{datetime.now(timezone.utc)}] Odds-Arrival-Job Fehler: {e}")
+
+
 def season_archive_job():
     """Prueft ob die aktuelle Saison beendet ist und archiviert sie automatisch."""
     with app.app_context():
@@ -167,7 +223,8 @@ if __name__ == "__main__":
     sched.add_job(reminder_job, "interval", minutes=10, id="reminders")
     sched.add_job(sync_job, "interval", minutes=15, id="sync")
     sched.add_job(odds_reminder_job, "interval", hours=1, id="odds_reminder")
+    sched.add_job(odds_arrival_job, "interval", hours=1, id="odds_arrival")
     sched.add_job(season_archive_job, "interval", hours=6, id="season_archive")
     print("⏰ Scheduler gestartet (Reminder: alle 10min, Sync: alle 15min, "
-          "Quoten-Erinnerung: alle 60min, Archive: alle 6h)")
+          "Quoten-Erinnerung + „sind da“: alle 60min, Archive: alle 6h)")
     sched.start()

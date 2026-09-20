@@ -68,6 +68,17 @@ GITHUB_UPLOAD_FILES = [
     # 20.09.2026 (80): Quoten-Erinnerung im Scheduler - Scheduler gehoert jetzt
     # aufs GitHub (Standalone-Skript mit testbarem Job, CI uebernimmt die Tests)
     "scheduler.py",
+    # 20.09.2026 (82): get_json(silent=True) in den Live-Admin-Endpoints
+    "live_scoring.py",
+    # 20.09.2026 (81): deutsche Fehlerseiten (neue Dateien auf dem Server!)
+    "templates/errors/404.html",
+    "templates/errors/500.html",
+    "tests/test_health_errors.py",
+    # 20.09.2026 (82): Robustheitstests + Restore-Drill
+    "tests/test_telegram_robust.py",
+    "tests/test_live_scoring_robust.py",
+    "tests/test_admin_bots_robust.py",
+    "tests/test_backup_restore_drill.py",
     # 06.09.2026 (8): Sync-Purge - Tipps-Umzug auf Ersatz-Spiele + Integritaetscheck
     "sync_shared.py",
     "sync_openligadb.py",
