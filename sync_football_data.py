@@ -24,6 +24,58 @@ from sync_shared import (
     _find_existing_match, _purge_stale_matches_for_comp, purge_summary_suffix,
 )
 
+# (83) Sanity-Gate: 45 + 15 + 45 Minuten = physische Mindestdauer eines
+# Spiels. Meldet die Quelle FINISHED frueher, ist das nachweislich falsch
+# (Produktionsfall 20.09.2026: laufendes Spiel erschien als "ENDE 0:0").
+FINISH_SANITY_MIN = 105
+
+
+def _olb_finish_eintraege(cache):
+    """OpenLigaDB-Saisonfeed (0 Euro, kein Key) einmal pro Sync-Lauf laden.
+
+    Liefert Liste (heim_kuerzel, gast_kuerzel, kickoff_utc, ist_fertig) oder
+    None, wenn OLB nicht erreichbar/lesbar ist (dann nie handeln)."""
+    if "eintraege" in cache:
+        return cache["eintraege"]
+    cache["eintraege"] = None
+    try:
+        from sync_openligadb import _OLB_TEAM_MAP
+        season = current_sync_season_code()
+        r = requests.get(
+            f"https://api.openligadb.de/getmatchdata/bl1/{season}", timeout=15)
+        if r.status_code == 200:
+            eintraege = []
+            for md in r.json():
+                t1 = _OLB_TEAM_MAP.get(md.get("team1", {}).get("teamName", ""))
+                t2 = _OLB_TEAM_MAP.get(md.get("team2", {}).get("teamName", ""))
+                ko = md.get("matchDateTimeUTC")
+                if not t1 or not t2 or not ko:
+                    continue
+                try:
+                    ko_dt = datetime.fromisoformat(str(ko).replace("Z", "+00:00"))
+                except Exception:
+                    continue
+                eintraege.append((t1, t2, ko_dt,
+                                  bool(md.get("matchIsFinished"))))
+            cache["eintraege"] = eintraege
+    except Exception:
+        pass
+    return cache["eintraege"]
+
+
+def _olb_sicher_nicht_fertig(cache, home_short, away_short, kickoff):
+    """True = OLB belegt zweifelsfrei, dass das Spiel LAEUFT (nicht fertig).
+
+    False = unklar (OLB nicht erreichbar oder Paarung nicht gefunden) -
+    in dem Fall wird niemals gegen den eigenen Status gehandelt."""
+    eintraege = _olb_finish_eintraege(cache)
+    if eintraege is None:
+        return False
+    for t1, t2, ko, fertig in eintraege:
+        if t1 == home_short and t2 == away_short                 and abs((ko - kickoff).total_seconds()) <= 900:
+            return not fertig
+    return False
+
 # ============================================================ football-data.org -
 def _fd_request(path, ttl_seconds=30):
     """Wrapper für football-data.org-Requests mit Token + Caching."""
@@ -117,6 +169,9 @@ def _process_football_data(data, comp_id, source="football-data.org"):
     new_teams = 0
     current_ext_ids = set()
     affected_match_ids = set()
+    vorzeitig = 0        # (83) FINISHED unterhalb der Mindestdauer
+    zurueckgenommen = 0  # (83) davon falsch-fertig -> wieder live
+    olb_cache = {}
 
     for md in matches_data:
         ext_id = f"fd:{md['id']}"
@@ -157,6 +212,33 @@ def _process_football_data(data, comp_id, source="football-data.org"):
             "SUSPENDED": "scheduled", "CANCELLED": "scheduled",
         }
         our_status = status_map.get(status, "scheduled")
+
+        # (83) Sanity-Gate: FINISHED ist unmoeglich, solange die Mindestdauer
+        # nicht um ist. Stattdessen gilt der harte Fakt "Anstoss vorbei" =
+        # live. Nie wird ein Score/Minute erfunden - nur der unplausible
+        # Status abgelehnt. Ein bereits faelschlich fertig geglaubtes 0:0
+        # wird mit OLB-Gegenprobe (OLB laeuft noch) per allow_status_reset
+        # zurueckgenommen (Monotonie macht falsches "finished" sonst unheilbar).
+        notfall_reset = False
+        if kickoff is not None:
+            jetzt = datetime.now(timezone.utc)
+            minuten_seit_anstoss = (jetzt - kickoff).total_seconds() / 60.0
+            if minuten_seit_anstoss < FINISH_SANITY_MIN:
+                if our_status == "finished":
+                    vorzeitig += 1
+                    our_status = "live" if kickoff <= jetzt else "scheduled"
+                # Bereits haengendes "finished" heilt die OLB-Gegenprobe
+                # unabhaengig vom Score (Produktionsfall 20.09.: der Boost
+                # hatte das falsche 0:0 schon auf 2:0 geheilt, nur der
+                # Status hing noch auf finished). OLB unklar -> nie handeln.
+                if (existing is not None and existing.status == "finished"
+                        and kickoff <= jetzt
+                        and home_team.short_name and away_team.short_name
+                        and _olb_sicher_nicht_fertig(
+                            olb_cache, home_team.short_name,
+                            away_team.short_name, kickoff)):
+                    notfall_reset = True
+                    zurueckgenommen += 1
 
         # Echte Spielminute aus dem Feed (KEINE Schaetzung ab Anstosszeit!).
         # football-data.org liefert bei Live-Spielen `minute`; fehlt sie oder
@@ -206,6 +288,7 @@ def _process_football_data(data, comp_id, source="football-data.org"):
                 status=our_status,
                 kickoff=kickoff,
                 is_live=(our_status == "live"),
+                allow_status_reset=notfall_reset,
             )
             if venue_feed and existing.venue != venue_feed:
                 existing.venue = venue_feed  # nie mit None loeschen (API-liefert nicht immer)
@@ -241,7 +324,10 @@ def _process_football_data(data, comp_id, source="football-data.org"):
         # zeigt nur an, was der Feed wirklich liefert - keine Stoppuhr ab Anpfiff.
         if our_status == "live" and existing is not None:
             live_count += 1
-            existing.live_phase = status or None
+            # (83) Phase-Feld nur mit echten Live-Statuswerten fuellen;
+            # ein abgewiesenes "FINISHED" darf nicht als Phase landen.
+            existing.live_phase = status if status in (
+                "IN_PLAY", "PAUSED", "EXTRA_TIME", "PENALTY_SHOOTOUT") else None
             if real_minute is not None:
                 existing.minute = real_minute
         elif existing is not None and (existing.live_phase is not None or existing.minute is not None):
@@ -269,6 +355,12 @@ def _process_football_data(data, comp_id, source="football-data.org"):
         set_setting("stadium_gap_teams", _json.dumps(venue_gap_names, ensure_ascii=False))
     except Exception:
         pass
+    finish_suffix = ""
+    if vorzeitig:
+        finish_suffix = f" · 🛡️ {vorzeitig} vorzeitige FINISHED abgewiesen"
+        if zurueckgenommen:
+            finish_suffix += f", {zurueckgenommen} zurückgenommen (live)"
+
     gap_suffix = ""
     if venue_gap_names:
         shown = ", ".join(venue_gap_names[:3]) + (" …" if len(venue_gap_names) > 3 else "")
@@ -276,10 +368,12 @@ def _process_football_data(data, comp_id, source="football-data.org"):
 
     return {
         "ok": True,
-        "msg": f"✅ {source}: {created} neu, {updated} aktualisiert, {live_count} live \u00b7 \U0001f4cd Stadion: {venue_feed_count} aus Feed, {venue_map_count} aus Festdaten{gap_suffix}{purge_summary_suffix()}",
+        "msg": f"✅ {source}: {created} neu, {updated} aktualisiert, {live_count} live \u00b7 \U0001f4cd Stadion: {venue_feed_count} aus Feed, {venue_map_count} aus Festdaten{finish_suffix}{gap_suffix}{purge_summary_suffix()}",
         "created": created,
         "updated": updated,
         "live": live_count,
+        "finish_vorzeitig": vorzeitig,
+        "finish_zurueckgenommen": zurueckgenommen,
         "venues": venue_feed_count,
         "venues_map": venue_map_count,
         "venues_missing": venue_gap_names,

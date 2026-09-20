@@ -68,6 +68,10 @@ GITHUB_UPLOAD_FILES = [
     # 20.09.2026 (80): Quoten-Erinnerung im Scheduler - Scheduler gehoert jetzt
     # aufs GitHub (Standalone-Skript mit testbarem Job, CI uebernimmt die Tests)
     "scheduler.py",
+    # 20.09.2026 (83): FINISHED-Sanity-Gate + OLB-Heilung — die beiden
+    # sync-Dateien stehen bereits oben/unten in der Liste (alte Runden),
+    # hier nur der neue Regressionstest.
+    "tests/test_sync_finish_guard.py",
     # 20.09.2026 (82): get_json(silent=True) in den Live-Admin-Endpoints
     "live_scoring.py",
     # 20.09.2026 (81): deutsche Fehlerseiten (neue Dateien auf dem Server!)
@@ -175,6 +179,10 @@ GITHUB_UPLOAD_FILES = [
     # Definitionen + Winner-Recompute + Vergabe-/Widerrufs-Mechanik
     "tests/test_badge_vollabdeckung.py",
 ]
+
+# (83) Duplikat-Schutz: Reihenfolge bewahren, Doppelnaennungen automatisch
+# entfernen - versehentliche Doppelnennungen erzeugten sonst Zip-Doppler.
+GITHUB_UPLOAD_FILES = list(dict.fromkeys(GITHUB_UPLOAD_FILES))
 
 def tracked_files() -> list:
     # tracked + untracked (aber nicht gitignorte) Dateien:

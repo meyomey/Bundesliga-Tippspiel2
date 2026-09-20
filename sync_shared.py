@@ -390,6 +390,7 @@ _OLB_TEAM_MAP = {
     "Fortuna Düsseldorf": "F95",
     "Karlsruher SC": "KSC",
     "SC Paderborn 07": "SCP",
+    "SV 07 Elversberg": "ELV", "SV Elversberg": "ELV", "Elversberg": "ELV",
     "Holstein Kiel": "KSV",
     "FC Ingolstadt": "FCI",
     "Arminia Bielefeld": "BIE",

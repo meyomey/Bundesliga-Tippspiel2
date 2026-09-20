@@ -42,7 +42,9 @@ def _fd_payload(match_id, home, away, *, status, minute=None, utc_date,
 def test_sync_uebernimmt_echte_minute_und_pausiert_sie(db, competition, teams):
     """IN_PLAY liefert echte Minute; PAUSED (Halbzeit) haelt die letzte Minute,
     setzt aber die Phase; FINISHED raumt die Live-Phase auf."""
-    ko = datetime.now(timezone.utc) - timedelta(minutes=40)
+    # (83): Anstoss jenseits der FINISH_SANITY_MIN (105 min), damit das
+    # FINISHED-Sanity-Gate den Abschlussschritt durchlaesst.
+    ko = datetime.now(timezone.utc) - timedelta(minutes=110)
 
     data = _fd_payload(900, teams[0], teams[1], status='IN_PLAY', minute=34,
                        utc_date=ko, home_score=1, away_score=0)

@@ -3,6 +3,20 @@
 
 
 
+
+## [3.1.53] - 2026-09-20
+
+### 🛡️ FINISHED-Sanity-Gate: laufende Spiele können nicht mehr fälschlich „ENDE" sein (Produktionsfall 20.09.)
+
+- **Befund (Nutzer-Meldung mit Screenshot):** Paderborn–Hoffenheim lief noch, die App zeigte „✓ ENDE 0:0". Ursache: football-data.org (Primärquelle des 15-Minuten-Syncs) meldete das laufende Spiel als `FINISHED` mit 0:0-Platzhalter — der Sync übernahm das blind, und die Status-Monotonie (Schutz vor Downgrades) machte ein falsches `finished` unheilbar: kein Pfad korrigierte es später. OpenLigaDB hatte derweil korrekt `matchIsFinished=false`.
+- **Fix 1 — Sanity-Gate (`sync_football_data.py`):** `FINISHED` wird nur übernommen, wenn die physische Mindestdauer (45+15+45 = **105 min**, `FINISH_SANITY_MIN`) um ist. Darunter: Status wird nicht übernommen — bei vorbei­gehendem Anstoß gilt der harte Fakt „live" (Anpfiff ist Fakt, keine Schätzung), nie wird ein Score/Minute erfunden. Zähler landen sichtbar in der Sync-Zeile („🛡️ n vorzeitige FINISHED abgewiesen").
+- **Fix 2 — Notfall-Rücknahme:** ein bereits fälschlich `finished` geglaubtes **0:0** wird im Sync mit OLB-Gegenprobe zurückgenommen (OLB erreichbar **und** `matchIsFinished=false` → `allow_status_reset` auf live). Bei unklarer OLB-Lage wird **nie** gehandelt (nie still falsch). Legitime 0:0-Endstände (z. B. Schalke–Elversberg) bleiben unangetastet: Floor vorbei bzw. OLB bestätigt fertig.
+- **Fix 3 — OLB-Endstand heilt (`sync_openligadb.py`):** der bestehende OLB-Nachzug korrigiert jetzt auch vorzeitige 0:0 der letzten 5 Tage mit dem echten Endstand (`finished→finished`-Score-Korrektur, mit Recalc + Badges). Damit heilt die App jede eventuelle Restwrongheit spätestens beim Abpfiff selbst.
+- **Robustheit:** `_olb_group_order_id` akzeptiert neben dem verschachtelten Gruppenfeld (`group.groupOrderID`) auch das flache Format (OLB wechselt je Endpunkt das Schema).
+- **+11 Tests** (580 gesamt, Coverage **88 %**): vorzeitiges FINISHED → live, vor Anstoß → bleibt geplant, nach Mindestdauer → wird übernommen, falsch-fertig 0:0 + OLB läuft → zurückgenommen, OLB unklar → nie handeln, OLB-Endstand korrigiert 0:0, legitimes 0:0 bleibt, OLB-Gruppenfeld flach/verschachtelt. Bestandstest `test_live_minutes` auf Floor-Anstoß angepasst (künstlich komprimierte Zeitachse). Suite **580/580**, flake8-Hartgate 0, Coverage **88 %**.
+- **Build-Hygiene:** die beiden sync-Dateien standen bereits seit früheren Runden in der GitHub-Upload-Liste und waren in (83) versehentlich doppelt ergänzt worden (identischer Zip-Inhalt, doppelte Einträge im 04-Paket). Behoben + **Duplikat-Schutz** in `build_lieferungen.py` (Liste wird automatisch entdoppelt, Reihenfolge bleibt) — 04-Paket jetzt **96 Dateien**, keine Doppler mehr.
+- **Nachschärfung (gleicher Tag, Produktionsverlauf):** der Live-Boost hatte das falsche 0:0 zwischenzeitlich selbst auf 2:0 geheilt — nur der Status hing noch auf `finished`. Die Rücknahme wirkt deshalb jetzt **unabhängig vom Score**: OLB erreichbar + Paarung/Anstoß eindeutig + `matchIsFinished=false` + Mindestdauer verletzt → zurück auf live (egal ob 0:0 oder 2:0), auch wenn die Quelle `IN_PLAY` meldet statt `FINISHED`. Zudem `_OLB_TEAM_MAP` um **SV 07 Elversberg → ELV** ergänzt (Paderborn war schon drin) — ohne den Eintrag bliebe die Gegenprobe für genau die Aufsteiger stumm.
+- **Deploy:** geändert: `sync_football_data.py`, `sync_openligadb.py`, `tests/test_live_minutes.py` (+ neu `tests/test_sync_finish_guard.py`, nur GitHub) → FTP → `__pycache__` → Plesk-Restart. **Selbstheilung:** beim ersten Sync nach dem Deploy springt ein noch laufendes falsch-„fertiges" Spiel zurück auf LIVE; hat es bereits geendet, überschreibt der echte Endstand das 0:0 automatisch. Kein manueller DB-Eingriff nötig.
 ## [3.1.52] - 2026-09-20
 
 ### 🧪 Robustheitstests + 💾 Backup-Restore-Drill (Nutzer-Auswahl „5 und 6")

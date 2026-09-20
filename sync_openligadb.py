@@ -26,8 +26,14 @@ def _olb_match_id(md):
 
 
 def _olb_group_order_id(md, default=1):
-    grp = _olb_get(md, "group", "Group", default={}) or {}
-    return _olb_get(grp, "groupOrderID", "GroupOrderID", default=default)
+    grp = _olb_get(md, "group", "Group", default=None)
+    if isinstance(grp, dict) and grp:
+        wert = _olb_get(grp, "groupOrderID", "GroupOrderID", default=None)
+        if wert is not None:
+            return wert
+    # (83) defensiv: manche OLB-Endpunkte liefern das Feld auch flach
+    flach = _olb_get(md, "groupOrderID", "GroupOrderID", default=None)
+    return flach if flach is not None else default
 
 
 def _olb_kickoff(md):
@@ -351,8 +357,19 @@ def _fill_missing_from_openligadb():
         Match.kickoff < datetime.now(timezone.utc) - timedelta(hours=3),
         Match.external_id.isnot(None),
     ).all()
+    # (83) faelschlich zu frueh beendet (z. B. football-data "FINISHED"
+    # waehrend des Spiels): fertige 0:0 der letzten 5 Tage gegen den echten
+    # OLB-Endstand pruefen und korrigieren (finished->finished ist erlaubt).
+    falsch_fertig = Match.query.filter(
+        Match.status == "finished",
+        Match.home_score == 0,
+        Match.away_score == 0,
+        Match.kickoff >= datetime.now(timezone.utc) - timedelta(days=5),
+        Match.external_id.isnot(None),
+    ).all()
+    falsch_ids = {m.id for m in falsch_fertig}
 
-    if not missing:
+    if not missing and not falsch_ids:
         return 0
 
     try:
@@ -365,6 +382,7 @@ def _fill_missing_from_openligadb():
         return 0
 
     filled = 0
+    korrigiert = 0
     events_applied = 0
     affected_match_ids = set()
     for md in data:
@@ -387,21 +405,36 @@ def _fill_missing_from_openligadb():
 
         if match and _apply_olb_events(md, match):
             events_applied += 1
+        # Ergebnis einmalig lesen (flat fuer beide Zweige: Nachzug + Korrektur)
+        results = _olb_results(md)
+        h_score = a_score = None
+        for res in results:
+            if _olb_result_type_id(res) == 2:
+                h_score, a_score = _olb_score(res)
+                break
+        if h_score is None and results:
+            h_score, a_score = _olb_score(results[-1])
+
         if match and match.status == "scheduled":
-            results = _olb_results(md)
-            h_score = a_score = None
-            for res in results:
-                if _olb_result_type_id(res) == 2:
-                    h_score, a_score = _olb_score(res)
-                    break
-            if h_score is None and results:
-                h_score, a_score = _olb_score(results[-1])
             if h_score is not None and a_score is not None:
                 apply_match_update(match, home_score=h_score, away_score=a_score, status="finished", is_live=False)
                 affected_match_ids.add(match.id)
                 filled += 1
+        elif (match and match.id in falsch_ids
+              and h_score is not None and a_score is not None
+              and (h_score, a_score) != (0, 0)
+              and (match.home_score, match.away_score) != (h_score, a_score)):
+            # (83) echter OLB-Endstand heilt das vorzeitige 0:0
+            apply_match_update(match, home_score=h_score, away_score=a_score,
+                               status="finished", is_live=False)
+            affected_match_ids.add(match.id)
+            korrigiert += 1
+            current_app.logger.info(
+                f"(83) Korrektur: {match.home_team.short_name}-"
+                f"{match.away_team.short_name} von vorzeitigem 0:0 "
+                f"auf {h_score}:{a_score} korrigiert")
 
-    if filled:
+    if filled or korrigiert:
         from scoring import recalculate_matches_points
         from badges import check_and_award_badges
         from models import User
@@ -411,7 +444,7 @@ def _fill_missing_from_openligadb():
             check_and_award_badges(users=users)
     elif events_applied:
         db.session.commit()
-    return filled
+    return filled + korrigiert
 
 
 # ---------------------------------------------------------- OLB Live-Boost -
@@ -582,7 +615,7 @@ def sync_results():
         try:
             filled = _fill_missing_from_openligadb()
             if filled:
-                res_fd["msg"] += f" · {filled} Ergebnis(se) via OpenLigaDB nachgezogen"
+                res_fd["msg"] += f" · {filled} Ergebnis(se) via OpenLigaDB nachgezogen/korrigiert"
         except Exception as e:
             current_app.logger.warning(f"OpenLigaDB-Nachzug fehlgeschlagen: {e}")
         current_app.logger.info(f"✅ Sync via football-data.org: {res_fd.get('msg')}")
