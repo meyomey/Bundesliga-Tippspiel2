@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/meyomey/Bundesliga-Tippspiel2/actions/workflows/tests.yml/badge.svg)](https://github.com/meyomey/Bundesliga-Tippspiel2/actions/workflows/tests.yml)
 ![Python](https://img.shields.io/badge/Python-3.9%20|%203.10%20|%203.11%20|%203.12%20|%203.13-blue)
-![Tests](https://img.shields.io/badge/Tests-433%2F433-green)
+![Tests](https://img.shields.io/badge/Tests-500%2F500-green)
 ![Coverage](https://img.shields.io/badge/Coverage-85%25-yellowgreen)
 
 Ein umfangreiches, produktionsnahes Bundesliga-Tippspiel mit Flask, Admin-Bereich, Live-Features, KI-Bots, PWA, Benachrichtigungen, Saisonarchiv und Netcup-/Shared-Hosting-Unterstützung.
