@@ -7410,3 +7410,79 @@ button#to-btn-online.to-loading::after { content: ""; display: inline-block; wid
   .to-row { font-size: 13px; }
   .to-bar { width: 46px; margin-right: 4px; }
 }
+
+/* ============================================================
+   (84) Dashboard: Spieltags-Trenner in "Kommende Spiele"
+   Trennzeile: ST-Kuerzel + "aktuell"-Chip + Linie + Spielzahl
+   ============================================================ */
+.md-sep {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0 4px;
+}
+.match-list .md-sep:first-child { margin-top: 0; }
+.md-sep-label {
+  font-size: 10px;
+  letter-spacing: 2px;
+  font-weight: 700;
+  color: var(--primary);
+  text-decoration: none;      /* (87) ist jetzt ein Link */
+}
+.md-sep-label:hover { color: var(--primary-text); }
+.md-sep-open {
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--warning);
+  background: rgba(245, 158, 11, .12);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.chip-urgent {
+  color: #fbbf24;
+  background: rgba(245, 158, 11, .14);
+  border-color: rgba(245, 158, 11, .35);
+}
+.md-sep-now {
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--primary-text);
+  background: var(--primary-soft);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.md-sep-line { flex: 1; height: 1px; background: var(--border); }
+
+/* (85) Heute/Morgen-Hervorhebung: Chip im ST-Trenner + Datums-Akzent */
+.md-sep-when { font-size: 10px; letter-spacing: 1px; font-weight: 700; }
+.md-sep-when.ist-heute {
+  color: var(--primary-text);
+  background: var(--primary-soft);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.md-sep-when.ist-morgen {
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+.match-date.ist-heute .dash-date-val {
+  color: var(--primary-text);
+  font-weight: 700;
+}
+.match-date.ist-morgen .dash-date-val { color: var(--primary-text); }
+/* (88) gleiche Sprache auf Spielplan + Schnelltipp */
+.match-time.ist-heute .match-date { color: var(--primary-text); font-weight: 700; }
+.match-time.ist-heute .match-hour { color: var(--primary-text); }
+.match-time.ist-morgen .match-date { color: var(--primary-text); }
+.qt-time.ist-heute .qt-day,
+.qt-time.ist-heute .qt-date-val { color: var(--primary-text); font-weight: 700; }
+.qt-time.ist-morgen .qt-day { color: var(--primary-text); }
+/* (88) Tippschluss-Chip auf der Offene-Tipps-Seite */
+.status-chip.tippschluss {
+  color: #fbbf24;
+  background: rgba(245, 158, 11, .14);
+  border-color: rgba(245, 158, 11, .35);
+}
+

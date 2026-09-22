@@ -136,6 +136,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/dash_days.js', v=asset_version) }}"></script>
 <script>
 // Live-Polling fuer die Spieleuebersicht, wenn aktuell Spiele laufen oder bald starten
 (function() {

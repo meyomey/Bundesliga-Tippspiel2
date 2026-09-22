@@ -131,6 +131,9 @@ def dashboard():
         tip_status=tip_status,
         pot=pot,
         whatsapp_group_url=_whatsapp_group_url(),
+        # (87) naive UTC-Jetztzeit fuer Tippschluss-Chips (DB liefert naive UTC;
+        # bewusst naive Konstruktion, damit die Template-Differenz klappt)
+        now_utc=datetime.now(timezone.utc).replace(tzinfo=None),
         get_user_prediction=lambda mid: Prediction.query.filter_by(user_id=current_user.id, match_id=mid).first(),
     )
 

@@ -72,6 +72,15 @@ GITHUB_UPLOAD_FILES = [
     # sync-Dateien stehen bereits oben/unten in der Liste (alte Runden),
     # hier nur der neue Regressionstest.
     "tests/test_sync_finish_guard.py",
+    # 20.09.2026 (84): Dashboard-Spieltags-Trenner
+    "tests/test_dashboard_spieltage.py",
+    # 22.09.2026 (88): heute/morgen auf Spielplan+Schnelltipp, Tippschluss-Chip
+    "templates/schedule.html",
+    "templates/quick_tip.html",
+    "templates/my_open_tips.html",
+    # 20./22.09.2026 (85): Heute/Morgen-Hervorhebung (Node-getestet)
+    "static/js/dash_days.js",
+    "tests/js/dash_days_test.js",
     # 20.09.2026 (82): get_json(silent=True) in den Live-Admin-Endpoints
     "live_scoring.py",
     # 20.09.2026 (81): deutsche Fehlerseiten (neue Dateien auf dem Server!)

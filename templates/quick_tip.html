@@ -247,5 +247,6 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/dash_days.js', v=asset_version) }}"></script>
 <script src="{{ url_for('static', filename='js/quick_tip.js', v=asset_version) }}"></script>
 {% endblock %}

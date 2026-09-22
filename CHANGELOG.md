@@ -4,6 +4,56 @@
 
 
 
+
+
+
+
+
+## [3.1.58] - 2026-09-22
+
+### 🎨 App-weite Konsistenz: „heute/morgen" + Tippschluss-Chip überall (Nutzer-Auswahl „beide")
+
+- **„heute/morgen" jetzt auch auf Spielplan + Schnelltipp:** dieselbe Teal-Sprache wie das Dashboard — Spielplan-Datenzeilen und Schnelltipp-Tagesköpfe leuchten an den betreffenden Tagen. Basis bleibt bewusst die **Betrachter-Uhr** (identisch zur Anstoßzeit-Anzeige, Kalendertagvergleich, keine Schätzung).
+- **Architektur-Vereinfachung gleich mitgeliefert:** `dash_days.js` initialisiert sich jetzt **selbst** (Browser-Zweig ruft `anwenden()` auf allen `[data-utc]`-Elementen, inklusive MD-Trenner-Chips) — das Dashboard braucht keinen Inline-Wiring-Block mehr, Spielplan/Schnelltipp nur den Include. Eine Verdrahtung statt dreier Kopien.
+- **Tippschluss-Chip auf „Offene Tipps":** die fokussierte Liste (`/meine-offenen-tipps`) zeigt pro Karte statt des neutralen „Noch tippen" den Bernstein-Warn-Chip **„Tippschluss"**, wenn Anstoß in **< 24 h** — exakt dieselbe Semantik wie im Dashboard (87). Bewertung über neue `now_utc`-Übergabe (naive UTC passend zur DB).
+- **+4 pytest-Tests** (594 gesamt): Include auf beiden Seiten, Selbst-Init-Guard (keine doppelte Verdrahtung im Dashboard-Template), Tippschluss-Chip kurzfristig ja / entspannt nein (Zählung 1), Spielplan-Regression mit Zeitstruktur. Suite **594/594**, Hartgate 0, Coverage **88 %**, Node-Test grün.
+- **Deploy:** `main_tips_routes.py` (now_utc), `templates/dashboard.html` (vereinfacht), `templates/schedule.html`, `templates/quick_tip.html`, `templates/my_open_tips.html`, `static/css/style.css`, `static/js/dash_days.js` → FTP → `__pycache__` → Plesk-Restart. Selbstbeweis: am Spieltag leuchten die Datenzeilen auf Spielplan + Schnelltipp teal; kurzfristige offene Karte zeigt „Tippschluss".
+## [3.1.57] - 2026-09-22
+
+### ✨ Dashboard: vier kleine Details (Nutzer-Auswahl „alle 4")
+
+- **ST-Kürzel klickbar:** „ST X" in der Trennzeile ist jetzt ein Link zum Schnelltipp des Spieltags (`/tippen/X`) — die Trennzeile navigiert statt nur zu dekorieren.
+- **Tippschluss-Chip:** ungetippte Spiele mit Anstoß in **weniger als 24 h** zeigen statt des neutralen „Tippen"-Chips einen dezenten Warn-Chip **„Tippschluss"** (Bernstein im bestehenden Token-Stil). Bewertung in der Vorlage über die neue `now_utc`-Übergabe (bewusst naive UTC, passend zur DB).
+- **„noch X offen" im aktuellen Trenner:** nur der aktuelle Spieltag zeigt die **aktionsfähige** Zahl seiner offenen Tipps („1 Tipp offen" / „2 Tipps offen", Bernstein-Chip) — nach dem letzten Tipp verschwindet sie. Anders als die entfernte Spielzahl (86) ist das eine Zahl, auf die man reagieren kann; Quelle ist der existierende `tip_status.open`-Zähler.
+- **A11y:** die Trennlinie ist `aria-hidden` — Screenreader lesen „ST 5 aktuell 1 Tipp offen" ohne „Strich"-Rauschen.
+- **+4 Tests** (590 gesamt): Klick-Link `/tippen/5`, Tippschluss-Chip nur kurzfristig (5 h ja / 72 h nein), Offen-Zahl nur solange ungetippt, aria-hidden-Zeile. Testfalle bezahlt: `open_md_matches` ist **kein** Template-Parameter — die Zahl kommt über den bestehenden `tip_status.open`. Suite **590/590**, Hartgate 0, Coverage **88 %**, Node-Test grün.
+- **Deploy:** `routes_main.py` (now_utc), `templates/dashboard.html`, `static/css/style.css` → FTP → `__pycache__` → Plesk-Restart. Selbstbeweis: kurzfristige ungetippte Partie zeigt „Tippschluss", aktueller ST-Trenner zählt offene Tipps mit.
+## [3.1.56] - 2026-09-22
+
+### ✂️ Dashboard: Spielzahl aus den ST-Trennern entfernt (Nutzer-Hinweis)
+
+- **Nutzer-Hinweis:** „9 Spiele braucht man in der Trennzeile nicht, es sind ja immer 9." Richtig — in der Bundesliga hat jeder Spieltag exakt 9 Partien; die Zahl war redundant und im Teilauszug der Liste (wenn Spiele des Tages schon laufen/finisiert sind) sogar missverständlich. **Entfernt** (Template + CSS), der Trenner zeigt jetzt nur: **ST X** · „aktuell"-Chip · „heute"/„morgen"-Chip · Linie.
+- **+0 Tests, 2 angepasst:** die Zählungs-Assertions drehen auf Abwesenheit (`md-sep-count` nicht mehr gerendert). Suite **586/586**, Hartgate 0, Coverage **88 %**, Node-Test grün.
+- **Deploy:** nur `templates/dashboard.html` + `static/css/style.css` → FTP → `__pycache__` → Plesk-Restart (gleiche 3-Datei-Liste wie (85), falls sowieso zeitnah deployt wird). Selbstbeweis: Trennzeilen ohne Zahl.
+## [3.1.55] - 2026-09-22
+
+### 📅 Dashboard: „heute"/„morgen"-Hervorhebung (Nutzerwunsch, Fortsetzung (84))
+
+- **Neu:** in den Spieltags-Trennern erscheint ein **„heute"**-Chip (Teal, gefüllt) bzw. **„morgen"**-Chip (dezent umrandet), sobald die erste Partie der Gruppe auf den entsprechenden Tag fällt; dazu bekommt jedes Match-Datum derselben Tage einen **Teal-Akzent**. Tage ohne Bezug bleiben ohne Chip (kein Ziermüll).
+- **Korrekte Uhrzeit-Basis:** die Bewertung passiert **viewer-lokal** — exakt dieselbe Uhr wie die bestehende `data-utc`-Konvertierung der Anstoßzeiten (Abendspiele kurz nach Mitternacht werden also konsistent „morgen" marks, wie der Spieler es sieht). Keine Schätzung, nur ein Kalendertagvergleich (Dauerregel 1). Ohne JavaScript bleibt der Chip leer (graceful).
+- **Architektur:** die Logik liegt bewusst im **reinen, DOM-freien Modul `static/js/dash_days.js`** (UMD: Browser `window.DashDays` + Node `module.exports`) und ist damit **in der CI testbar**: neuer Node-Test `tests/js/dash_days_test.js` als zweiter Schritt im CI-Job „JS-Engine-Tests" (Kalendertag-Grenzen, Mitternacht kurz davor/danach, Monatsgrenze 30.09→01.10, Müll-Eingaben → null, nie werfen). Verdrahtung: kleiner Initialisierungsblock im Dashboard-`scripts`-Block (`.match-date` → Klassen `ist-heute`/`ist-morgen`, `.md-sep-when` → Chip-Text + Klasse); CSS-Erweiterungen im bestehenden Token-Stil.
+- **+2 pytest-Tests** (586 gesamt) + 11 Node-Assertions: Trenner-Hook mit `data-utc` + Modul-Include gerendert, Quelltext-Kette (Modul/Verdrahtung/CSS/CI). Suite **586/586**, Hartgate 0, Coverage **88 %**, Node-Test grün.
+- **Deploy:** `templates/dashboard.html`, `static/css/style.css`, **NEU** `static/js/dash_days.js` (Server-Datei!) → FTP → `__pycache__` → Plesk-Restart. Selbstbeweis: am Spieltag zeigt der ST-Trenner den „heute"-Chip, Spiel-Daten leuchten teal. **Achtung:** der Build heißt wie der (84)-Build `*_2026-09-22.zip` — frisch ziehen, nicht den alten Ordner nehmen!
+## [3.1.54] - 2026-09-22
+
+### 📋 Dashboard: Spieltags-Trenner in „Kommende Spiele" (Nutzerwunsch)
+
+- **Bisher:** die Liste war eine lange, flache Kickoff-Reihe — kein erkennbarer Wechsel zwischen den Spieltagen.
+- **Jetzt:** vor dem ersten Spiel jedes Spieltags steht eine **Trennzeile** mit dem Kürzel **„ST X"**, einer **Trennlinie** und der Spielzahl („2 Spiele" / korrektes „1 Spiel"). Der aktuell offene Spieltag trägt zusätzlich das Chip **„aktuell"** (Teal, wie die bestehende Overline-Sprache).
+- **Umsetzung:** reines Template+CSS (kein Route-/Datenänderung) — Jinja-Namespace-Gruppierung in `templates/dashboard.html`, neue Klassen `.md-sep`/`.md-sep-label`/`.md-sep-now`/`.md-sep-line`/`.md-sep-count` in `static/css/style.css` (Mobile-First, bestehende Design-Tokens). Die Trennzeile ist das neue Selbstbeweis-Element dieser Lieferung (Dauerregel 4).
+- **+4 Tests** (584 gesamt): Trennzeilen mit ST 5/ST 6 in richtiger Reihenfolge inkl. „2 Spiele"/„1 Spiel<"-Zählung, „aktuell"-Chip am ersten Trenner, keine Trenner bei leerer Zukunft, Quelltext-Guard. Testfalle (dokumentiert): create_app seedet eine Demo-Saison — Tests pinnen daher `app.config["COMPETITION"]` auf die Test-Competition (Muster aus Runde 79), sonst vermischen sich Seed- und Test-Spiele.
+- **Deploy:** nur `templates/dashboard.html` + `static/css/style.css` (beide bereits in der 16er-Liste enthalten) → FTP → `__pycache__` löschen → Plesk-Restart. Selbstbeweis: Dashboard zeigt ab dem nächsten Start die ST-Trennzeilen.
+- Suite **584/584**, flake8-Hartgate 0, Coverage **88 %**.
 ## [3.1.53] - 2026-09-20
 
 ### 🛡️ FINISHED-Sanity-Gate: laufende Spiele können nicht mehr fälschlich „ENDE" sein (Produktionsfall 20.09.)

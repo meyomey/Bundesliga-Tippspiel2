@@ -59,6 +59,8 @@ def _my_open_tips(matchday=None):
         matchday=matchday, matchdays=matchdays, matches=matches,
         open_missing=open_missing, already_tipped=already_tipped,
         locked_or_done=locked_or_done, pred_map=pred_map,
+        # (88) naive UTC fuer die Tippschluss-Bewertung (passend zur DB)
+        now_utc=datetime.now(timezone.utc).replace(tzinfo=None),
     )
 
 @main_bp.route("/spielplan", endpoint="schedule")

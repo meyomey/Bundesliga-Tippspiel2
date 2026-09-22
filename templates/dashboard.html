@@ -98,7 +98,28 @@
 
     {% if upcoming %}
       <div class="match-list">
+      {# (84) Spieltags-Trenner: neue Gruppe = Trennzeile mit ST-Kuerzel #}
+      {% set md_ns = namespace(prev=none) %}
       {% for m in upcoming %}
+        {% if m.matchday != md_ns.prev %}
+          {% set md_ns.prev = m.matchday %}
+          {# (86) Keine Spielzahl: in der BL1 hat jeder Spieltag 9 Spiele —
+             redundant (und im Teilauszug der Liste missverstaendlich). #}
+          <div class="md-sep">
+            {# (87) ST-Kuerzel klickbar -> Schnelltipp jenes Spieltags #}
+            <a class="md-sep-label" href="{{ url_for('main.tip_entry', matchday=m.matchday) }}">ST {{ m.matchday }}</a>
+            {% if m.matchday == current_matchday %}
+              <span class="md-sep-now">aktuell</span>
+              {# (87) aktionsfaehige Zahl: nur offene Tipps des aktuellen ST #}
+              {% if tip_status.open %}
+                <span class="md-sep-open">{{ tip_status.open }} Tipp{{ '' if tip_status.open == 1 else 's' }} offen</span>
+              {% endif %}
+            {% endif %}
+            {# (85) Heute/Morgen-Chip: JS fuellt viewer-lokal #}
+            <span class="md-sep-when" data-utc="{{ m.kickoff.strftime('%Y-%m-%dT%H:%M:%SZ') }}"></span>
+            <span class="md-sep-line" aria-hidden="true"></span>
+          </div>
+        {% endif %}
         {% set p = get_user_prediction(m.id) %}
         <a href="{{ url_for('main.match_detail', match_id=m.id) }}" class="match-row">
             <!-- 🌍 UTC-Zeit für globale Konvertierung -->
@@ -131,7 +152,14 @@
             </div>
           </div>
           <div class="match-action">
-            {% if p %}<span class="chip-success">Getippt</span>{% else %}<span class="chip">Tippen</span>{% endif %}
+            {% if p %}
+              <span class="chip-success">Getippt</span>
+            {% elif m.is_open() and (m.kickoff - now_utc).total_seconds() < 86400 %}
+              {# (87) Dringlichkeit: ungetippt & Anstoss in < 24 h #}
+              <span class="chip chip-urgent" title="Anstoss in weniger als 24 Stunden">Tippschluss</span>
+            {% else %}
+              <span class="chip">Tippen</span>
+            {% endif %}
           </div>
         </a>
       {% endfor %}
@@ -206,4 +234,9 @@
   </aside>
 </div>
 
+{% endblock %}
+
+{% block scripts %}
+{# (88) Selbst-Init im Modul - hier reicht der Include #}
+<script src="{{ url_for('static', filename='js/dash_days.js', v=asset_version) }}"></script>
 {% endblock %}

@@ -48,7 +48,12 @@
       </div>
     </div>
     <span class="ot-action">
-      <span class="status-chip status-open">Noch tippen</span>
+      {% if (m.kickoff - now_utc).total_seconds() < 86400 %}
+        {# (88) Dringlichkeit wie im Dashboard: ungetippt & < 24 h #}
+        <span class="status-chip status-open tippschluss" title="Anstoss in weniger als 24 Stunden">Tippschluss</span>
+      {% else %}
+        <span class="status-chip status-open">Noch tippen</span>
+      {% endif %}
       <span class="btn-primary btn-sm">Tippen</span>
     </span>
   </a>

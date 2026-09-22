@@ -64,6 +64,8 @@ jobs:
           node-version: "20"
       - name: "Tipp-Optimizer-Engine (static/js/to_engine.js)"
         run: node tests/js/tip_optimizer_engine_test.js
+      - name: "Dashboard-Tagesmarkierung (static/js/dash_days.js)"
+        run: node tests/js/dash_days_test.js
 
   audit:
     name: Security Audit (pip-audit)
