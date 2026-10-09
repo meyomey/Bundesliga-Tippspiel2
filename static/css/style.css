@@ -33,6 +33,8 @@
 }
 
 [data-theme="light"] {
+  /* (93) color-scheme: native Formulare/Scrollbars hell angleichen */
+  color-scheme: light;
   --bg: #f8fafc; --surface: #ffffff; --surface-2: #f1f5f9;
   --border: #e2e8f0; --text: #0f172a; --text-muted: #475569;
   --shadow: 0 10px 30px rgba(15,23,42,.08);
@@ -7486,3 +7488,11 @@ button#to-btn-online.to-loading::after { content: ""; display: inline-block; wid
   border-color: rgba(245, 158, 11, .35);
 }
 
+/* (89) Impressum & Datenschutzerklärung */
+.legal-page h1 { margin: 6px 0 18px; }
+.legal-page h2 { font-size: 16px; margin: 22px 0 8px; color: var(--primary-text); }
+.legal-page h3 { font-size: 14px; margin: 16px 0 6px; }
+.legal-page p { line-height: 1.6; color: var(--text); }
+.legal-page a { color: var(--primary-text); }
+.footer .meta a { color: var(--text-muted); text-decoration: none; }
+.footer .meta a:hover { color: var(--primary-text); }

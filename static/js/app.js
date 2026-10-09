@@ -3,15 +3,17 @@
 // =====================================================
 
 // ==== Theme Toggle ====
+// (93) Konsolidiert: die Engine liegt in static/js/theme.js (Node-getestet,
+// No-Flash im base.html-Head). Der historische Global-Handler delegiert nur
+// noch, damit die bestehenden onclick-Aufrufe (Mobile-Menue + Desktop)
+// unveraendert weiterfunktionieren. Kein zweiter Key, kein zweiter Button.
 function toggleTheme() {
+  if (window.WTTheme) { window.WTTheme.umschalten(); return; }
   const html = document.documentElement;
-  const current = html.getAttribute('data-theme') || 'dark';
-  const next = current === 'dark' ? 'light' : 'dark';
+  const next = (html.getAttribute('data-theme') || 'dark') === 'dark' ? 'light' : 'dark';
   html.setAttribute('data-theme', next);
   localStorage.setItem('theme', next);
 }
-const savedTheme = localStorage.getItem('theme');
-if (savedTheme) document.documentElement.setAttribute('data-theme', savedTheme);
 
 // ==== Mobile Hamburger Menu ====
 document.addEventListener('DOMContentLoaded', () => {

@@ -1,8 +1,8 @@
 'use strict';
 
-const CACHE_NAME = 'tippspiel-v3';
+const CACHE_NAME = 'tippspiel-v4';  /* (90) Bump: Precache wechselt auf style.min.css */
 const OFFLINE_URL = '/offline';
-const PRECACHE_URLS = ['/offline', '/static/css/style.css', '/static/js/app.js', '/manifest.json'];
+const PRECACHE_URLS = ['/offline', '/static/css/style.min.css', '/static/js/app.js', '/manifest.json'];
 
 self.addEventListener('install', event => {
   event.waitUntil(

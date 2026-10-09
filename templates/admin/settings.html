@@ -111,6 +111,17 @@ Verwendungszweck: Tippspiel + Spielername') }}
     <summary>👥 Registrierung</summary>
     <div class="section-body">
       <div class="settings-subcard">
+        <label>{{ form.contact_email.label }} {{ form.contact_email(class_='input', placeholder='chef@wulmstorf.example') }}
+          <small class="muted">{{ form.contact_email.description }}</small>
+        </label>
+
+        <h3 style="margin-top:14px;">⚖️ Rechtliche Stammdaten</h3>
+        <small class="muted" style="display:block;margin-bottom:6px;">Erscheinen auf /impressum und /datenschutz — gespeichert in der Datenbank, überlebt damit jeden Deploy und liegt in den täglichen Backups.</small>
+        <label>{{ form.recht_anbieter.label }} {{ form.recht_anbieter(class_='input', placeholder='Vorname Nachname') }}</label>
+        <label>{{ form.recht_adresse.label }} {{ form.recht_adresse(class_='input', rows=2, placeholder='Straße Hausnummer, PLZ Ort') }}</label>
+        <label>{{ form.recht_email.label }} {{ form.recht_email(class_='input', placeholder='kontakt@deine-domain.tld') }}</label>
+        <label>{{ form.recht_verantw.label }} {{ form.recht_verantw(class_='input', placeholder='Vorname Nachname') }}</label>
+
         <label>{{ form.registration_mode.label }}
           {{ form.registration_mode(class_='input') }}
           <small class="muted">{{ form.registration_mode.description }}</small>

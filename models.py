@@ -73,6 +73,10 @@ class User(UserMixin, db.Model):
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     push_subscription = db.Column(db.Text, nullable=True)
 
+    # (91) Kalender-Abo: geheimer Token fuer den persoenlichen ICS-Feed
+    # (Kalender-Apps koennen keine Session-Logins; Regeneration im Profil)
+    calendar_token = db.Column(db.String(48), unique=True, index=True, nullable=True)
+
     # Benachrichtigungszentrale
     notify_enabled = db.Column(db.Boolean, default=True)
     notify_email = db.Column(db.Boolean, default=True)

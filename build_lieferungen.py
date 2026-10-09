@@ -25,7 +25,7 @@ TODAY = date.today().isoformat()
 # ---------------------------------------------------------------- Auswahl --
 DEV_PY = {"generate_pwa_icons.py", "scheduler.py"}          # Dev-/Standalone-Skripte
 BROKEN_AVATARS = set()  # veraltet: kaputte Avatar-Stubs wurden aus dem Repo entfernt
-NOT_RUNTIME = DEV_PY | {"build_lieferungen.py", "verify_04.py"}              # nur in 02, nicht auf den Server
+NOT_RUNTIME = DEV_PY | {"build_lieferungen.py", "verify_04.py", "css_minify.py"}  # nur in 02, nicht auf den Server
 
 # Dateien, die auf GitHub fehlen bzw. seit dem letzten Stand geaendert sind
 # (fuer 04_GitHub_Upload). Nach jedem Push wieder leeren - 04 entfaellt dann
@@ -33,6 +33,48 @@ NOT_RUNTIME = DEV_PY | {"build_lieferungen.py", "verify_04.py"}              # n
 # Nach dem Push (01.09. abends, Commits 207b85c + f528bc3: Doppel-Heartbeat)
 # geleert; diese Datei selbst wandert mit dem naechsten Aenderungsblock mit.
 GITHUB_UPLOAD_FILES = [
+    # 27.09.2026 (90): CSS-Minify + Dashboard-N+1 + Test-Runde 3 + Timeout
+    "static/css/style.min.css",
+    "css_minify.py",
+    "tests/test_style_minify.py",
+    "tests/test_dashboard_predmap.py",
+    "tests/test_admin_badges_admin.py",
+    "tests/test_push_routes_abdeckung.py",
+    "tests/test_cache_manager.py",
+    # 27.09.2026 (91): ICS-Kalender-Abo
+    "schema_migrations.py",
+    "main_profile_routes.py",
+    "templates/profile.html",
+    "tests/test_kalender_ics.py",
+    # (90): geaenderte Bestandsdateien (Gate + verify-Klon verlangen sie)
+    "cache.py",
+    "static/js/sw.js",
+    "requirements.txt",
+    "pytest.ini",
+    ".github/workflows/tests.yml",
+    # 27.09.2026 (92): Hell/Dunkel-Umschalter
+    "static/js/theme.js",
+    "tests/js/theme_test.js",
+    "tests/test_theme_toggle.py",
+    # 08.10.2026 (93): Theme-Konsolidierung — app.js delegiert an theme.js
+    "static/js/app.js",
+    # 08.10.2026 (96): Rechtliche Stammdaten in DB (deploy-sicher)
+    "tests/test_recht_einstellungen.py",
+    # 08.10.2026 (95): Registrierung — Dopplung + Kontakt-E-Mail
+    "forms.py",
+    "routes_admin.py",
+    "routes_auth.py",
+    "templates/auth/register.html",
+    "templates/admin/settings.html",
+    "tests/test_registration_kontakt.py",
+    # 08.10.2026 (94): Ranglisten-Tempo (Memory-Cache + N2-Aufloesung)
+    "cache.py",
+    "config.py",
+    "scoring.py",
+    "stats_personal.py",
+    "stats.py",
+    "main_stats_routes.py",
+    "tests/test_rangliste_tempo.py",
     # 02.09.2026: Adminbereich - Backups zusammengefuehrt + Gruppen-Hierarchie
     "routes_admin.py",
     "admin_maintenance_routes.py",
@@ -78,6 +120,10 @@ GITHUB_UPLOAD_FILES = [
     "templates/schedule.html",
     "templates/quick_tip.html",
     "templates/my_open_tips.html",
+    # 22.09.2026 (89): Impressum + Datenschutzerklärung (NEUE Dateien!)
+    "templates/impressum.html",
+    "templates/datenschutz.html",
+    "tests/test_legal_pages.py",
     # 20./22.09.2026 (85): Heute/Morgen-Hervorhebung (Node-getestet)
     "static/js/dash_days.js",
     "tests/js/dash_days_test.js",
@@ -438,9 +484,93 @@ def github_freshness_gate(runtime_paths, github_paths):
     return stale
 
 
+
+def github_description_schreiben():
+    """Dauerregel 8 (08.10.2026): kopierfertige GitHub-Push-Beschreibung.
+
+    Nimmt alle CHANGELOG-Sektionen von HEUTE (mehrere Runden pro Push sind
+    ueblich) und schreibt _lieferungen/GITHUB_DESCRIPTION.txt — Titelansatz
+    + kompakte Bullets. Die Datei liegt NEBEN den Zips (fuer den Commit-
+    Dialog auf GitHub), nicht darin.
+    """
+    try:
+        cl = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    except Exception as e:
+        print(f"\u26a0\ufe0f  GitHub-Description uebersprungen: {e}")
+        return None
+    texte = []
+    for m in re.finditer(
+            r"^## \[([^\]]+)\] - (\d{4}-\d{2}-\d{2})\n(.*?)(?=^## \[|\Z)",
+            cl, re.M | re.S):
+        version, datum, body = m.group(1), m.group(2), m.group(3)
+        if datum != TODAY:
+            continue
+        head = ""
+        bullets = []
+        for z in body.splitlines():
+            z = z.strip()
+            if z.startswith("###"):
+                head = z.lstrip("#").strip()
+            elif z.startswith("- **"):
+                teile = z[2:].split("**", 2)
+                if len(teile) >= 3:
+                    bullets.append(teile[1].rstrip(":") + ": "
+                                   + teile[2].lstrip(":").strip())
+                else:
+                    bullets.append(z[2:])
+            elif z.startswith("- "):
+                bullets.append(z[2:])
+        texte.append((version, head, bullets))
+    if not texte:
+        print("\u2139\ufe0f  GitHub-Description: keine CHANGELOG-Sektion von heute")
+        return None
+    texte.reverse()  # aelteste zuerst: Push-Story liest sich chronologisch
+    versionen = [v for v, _, _ in texte]
+    def _kurz(h):
+        h = h.split(" \u2014 ")[0] if " \u2014 " in h else h
+        # Rundnummern-Artefakte ("((90)", "(91)") fuer den Titel entfernen
+        h = re.sub(r"\s*\({1,2}\d+\)?", "", h).strip()
+        return h
+    themen = " / ".join(_kurz(h) for _, h, _ in texte if h)
+    if len(versionen) > 1:
+        titel = f"{versionen[0]}\u2013{versionen[-1]}: {themen}"
+    else:
+        titel = f"{versionen[0]}: {themen}"
+    zeilen = [
+        f"GitHub-Push-Beschreibung (automatisch aus CHANGELOG.md, Stand {TODAY})",
+        "=" * 74,
+        "",
+        "TITEL (Kurzbeschreibung im Commit-Dialog):",
+        titel,
+        "",
+        "BESCHREIBUNG (erweitertes Feld):",
+    ]
+    for version, head, bullets in texte:
+        zeilen.append(f"\u2022 {version} \u2014 {head}")
+        for b in bullets:
+            b = b.strip()
+            if len(b) > 160:
+                b = b[:157].rstrip() + "..."
+            zeilen.append(f"  - {b}")
+        zeilen.append("")
+    ziel = LIEF / "GITHUB_DESCRIPTION.txt"
+    ziel.write_text("\n".join(zeilen).rstrip() + "\n", encoding="utf-8")
+    print(f"\U0001F4DD  GitHub-Description: {ziel.name}  ({len(texte)} Sektion(en) von heute)")
+    return ziel
+
+
 def main():
     tracked = tracked_files()
     commit, commit_date = commit_info()
+
+    # (90) CSS-Minify: style.min.css bei jedem Build frisch erzeugen, damit
+    # Deploy (01/03) und GitHub (04) nie einen veralteten Min-Stand ziehen.
+    try:
+        from css_minify import minify_css_file
+        _css_a, _css_b = minify_css_file()
+        print(f"\u2139\ufe0f  CSS-Minify: style.min.css frisch erzeugt ({_css_a} -> {_css_b} Bytes)")
+    except Exception as _e:
+        print(f"\u26a0\ufe0f  CSS-Minify uebersprungen: {_e}")
 
     runtime = collect(
         [p for p in tracked
@@ -454,7 +584,7 @@ def main():
         [p for p in tracked
          if p.endswith((".md", ".bat")) or p.startswith(("tests/", "docs/", ".github/"))
          or p in ("pytest.ini", "Dockerfile", "docker-compose.yml", ".gitignore")
-         or p in DEV_PY or p in ("build_lieferungen.py", "verify_04.py")],
+         or p in DEV_PY or p in ("build_lieferungen.py", "verify_04.py", "css_minify.py")],
     )
 
     # Gate prueft Code UND Tests: geaenderte Testdateien muessen mit ins
@@ -492,6 +622,7 @@ def main():
     else:
         print("04 GitHub  : entfaellt (keine offenen GitHub-Aenderungen)")
     print(f"Commit     : {commit} ({commit_date})")
+    github_description_schreiben()
     unassigned = set(tracked) - set(runtime) - set(docs_tests) - BROKEN_AVATARS - set(GITHUB_UPLOAD_FILES)
     if unassigned:
         print(f"WARNUNG - in keinem Paket: {sorted(unassigned)}")

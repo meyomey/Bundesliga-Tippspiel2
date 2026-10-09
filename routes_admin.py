@@ -647,6 +647,11 @@ def settings():
         form.reminders_second_wave_enabled.data = _t(get_setting("reminders_second_wave_enabled", True), True)
         form.reminders_second_lead_hours.data = get_setting("reminders_second_lead_hours", 24)
         form.registration_mode.data = get_setting("registration_mode", "invite")
+        form.contact_email.data = get_setting("contact_email", "")
+        form.recht_anbieter.data = get_setting("recht_anbieter", "")
+        form.recht_adresse.data = get_setting("recht_adresse", "")
+        form.recht_email.data = get_setting("recht_email", "")
+        form.recht_verantw.data = get_setting("recht_verantw", "")
 
     if form.validate_on_submit():
         old_exact = get_setting("points_exact", 4)
@@ -726,6 +731,12 @@ def settings():
         except (TypeError, ValueError):
             set_setting("reminders_second_lead_hours", 24)
         set_setting("registration_mode", form.registration_mode.data or "invite")
+        set_setting("contact_email", (form.contact_email.data or "").strip())
+        # (96) Rechtliche Stammdaten: DB statt FTP-Edit (deploy-sicher + Backup)
+        set_setting("recht_anbieter", (form.recht_anbieter.data or "").strip())
+        set_setting("recht_adresse", (form.recht_adresse.data or "").strip())
+        set_setting("recht_email", (form.recht_email.data or "").strip())
+        set_setting("recht_verantw", (form.recht_verantw.data or "").strip())
 
         apply_mail_settings()
         from mail_helpers import apply_vapid_settings

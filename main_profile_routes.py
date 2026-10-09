@@ -59,6 +59,20 @@ def _profile():
         flash("✅ Telegram-Verknüpfung aufgehoben.", "info")
         return redirect(url_for("main.profile"))
 
+    # (91) Kalender-Abo: Token lazy anlegen (falls Migration/Backfill veraltet)
+    if not current_user.calendar_token:
+        import secrets as _secrets
+        current_user.calendar_token = _secrets.token_hex(16)
+        db.session.commit()
+
+    # (91) Kalender-Link neu generieren — alter Link wird ungueltig
+    if request.method == "POST" and request.form.get("calendar_regenerate") == "1":
+        import secrets as _secrets
+        current_user.calendar_token = _secrets.token_hex(16)
+        db.session.commit()
+        flash("📅 Kalender-Link neu generiert — trage den neuen Link einmal in deiner Kalender-App ein.", "success")
+        return redirect(url_for("main.profile"))
+
     if form.validate_on_submit():
         new_username = (form.username.data or "").strip()
         if new_username and new_username != current_user.username:

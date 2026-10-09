@@ -120,7 +120,8 @@
             <span class="md-sep-line" aria-hidden="true"></span>
           </div>
         {% endif %}
-        {% set p = get_user_prediction(m.id) %}
+        {# (90) pred_map: Route laedt alle Tipps in EINER Query (N+1-fix) #}
+        {% set p = pred_map.get(m.id) %}
         <a href="{{ url_for('main.match_detail', match_id=m.id) }}" class="match-row">
             <!-- 🌍 UTC-Zeit für globale Konvertierung -->
             <div class="match-date" data-utc="{{ m.kickoff.strftime('%Y-%m-%dT%H:%M:%SZ') }}">

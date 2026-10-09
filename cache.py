@@ -11,7 +11,10 @@ Strukturen per pickle serialisiert. Das ist nur fuer einen vertrauenswuerdigen,
 nicht oeffentlich erreichbaren Redis gedacht. Langfristig sollten diese Werte in
 kleine DTO-Dicts umgebaut werden.
 """
+import fnmatch
 import pickle
+import threading
+import time
 from functools import wraps
 from typing import Any, Optional, Callable, Iterable
 
@@ -32,15 +35,19 @@ class CacheManager:
     def __init__(self):
         self._redis: Optional[Any] = None
         self._enabled = False
+        self._backend = "none"  # "redis" | "memory" | "none"
         self._default_ttl = 300  # 5 Minuten
+        # (94) Memory-Fallback: thread-sicheres In-Process-Cache-Backend
+        self._mem: dict = {}
+        self._lock = threading.Lock()
 
     def init_app(self, app):
         """Initialisiert Redis aus App-Config."""
         self._default_ttl = int(app.config.get("CACHE_DEFAULT_TTL", 300))
         if redis is None:
-            app.logger.warning("⚠️ Das Python-Modul 'redis' ist nicht installiert. Cache ist deaktiviert.")
+            app.logger.warning("⚠️ Das Python-Modul 'redis' ist nicht installiert.")
             self._redis = None
-            self._enabled = False
+            self._memory_fallback_aktivieren(app)
             return
 
         redis_url = app.config.get("REDIS_URL")
@@ -57,20 +64,58 @@ class CacheManager:
                 self._enabled = True
                 app.logger.info("✅ Redis Cache verbunden")
             except Exception as e:
-                app.logger.warning(f"⚠️ Redis nicht verfuegbar: {e}. Cache deaktiviert.")
+                app.logger.warning(f"⚠️ Redis nicht verfuegbar: {e}.")
                 self._redis = None
-                self._enabled = False
+                self._memory_fallback_aktivieren(app)
         else:
-            app.logger.info("ℹ️ Kein REDIS_URL konfiguriert. Cache deaktiviert.")
+            self._memory_fallback_aktivieren(app)
+
+    def _memory_fallback_aktivieren(self, app):
+        """(94) Ohne Redis einen In-Process-Memory-Cache nutzen.
+
+        Auf Netcup/Plesk ist Redis typischerweise nicht verfuegbar — vorher
+        war der Cache damit KOMPLETT aus und z. B. die Rangliste rechnete bei
+        jedem Aufruf alles neu (gemessen: 2000+ Queries/Aufruf). Der Fallback
+        ist pro Worker-Prozess lokal: nach Schreib-Operationen kann ein
+        ANDERER Prozess bis zum TTL-Ablauf (120-300 s) noch alte Werte sehen
+        — derselbe Kompromiss wie beim Redis-Design, nur prozess-lokal.
+        """
+        if not app.config.get("CACHE_MEMORY_FALLBACK", True):
+            app.logger.info("ℹ️ Kein Redis, Memory-Fallback deaktiviert. Cache ist aus.")
+            self._enabled = False
+            self._backend = "none"
+            return
+        self._backend = "memory"
+        self._enabled = True
+        self._mem = {}
+        app.logger.info("ℹ️ Kein Redis — In-Process-Memory-Cache aktiv (Fallback).")
 
     @property
     def enabled(self) -> bool:
-        return bool(self._enabled and self._redis)
+        return bool(self._enabled and (self._redis is not None or self._backend == "memory"))
+
+    # ------------------------------------------------ Memory-Backend ---
+    def _mem_get(self, key: str):
+        with self._lock:
+            eintrag = self._mem.get(key)
+            if eintrag is None:
+                return None
+            if eintrag["bis"] <= time.monotonic():
+                del self._mem[key]
+                return None
+            return eintrag["wert"]
+
+    def _mem_set(self, key: str, value: Any, ttl: int) -> bool:
+        with self._lock:
+            self._mem[key] = {"bis": time.monotonic() + max(1, int(ttl)), "wert": value}
+        return True
 
     def get(self, key: str) -> Optional[Any]:
         """Holt Wert aus Cache."""
         if not self.enabled:
             return None
+        if self._backend == "memory":
+            return self._mem_get(key)
         try:
             data = self._redis.get(key)
             if data is not None:
@@ -86,6 +131,8 @@ class CacheManager:
         """Speichert Wert im Cache."""
         if not self.enabled:
             return False
+        if self._backend == "memory":
+            return self._mem_set(key, value, int(ttl or self._default_ttl))
         try:
             ttl = int(ttl or self._default_ttl)
             serialized = pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
@@ -102,6 +149,9 @@ class CacheManager:
         """Loescht einen Key."""
         if not self.enabled:
             return False
+        if self._backend == "memory":
+            with self._lock:
+                return self._mem.pop(key, None) is not None
         try:
             return bool(self._redis.delete(key))
         except Exception:
@@ -111,6 +161,13 @@ class CacheManager:
         """Loescht mehrere Keys in Batches."""
         if not self.enabled:
             return 0
+        if self._backend == "memory":
+            geloescht = 0
+            with self._lock:
+                for key in keys:
+                    if self._mem.pop(key, None) is not None:
+                        geloescht += 1
+            return geloescht
         deleted = 0
         batch = []
         for key in keys:
@@ -135,6 +192,10 @@ class CacheManager:
         """
         if not self.enabled:
             return iter(())
+        if self._backend == "memory":
+            with self._lock:
+                snapshot = list(self._mem.keys())
+            return iter(k for k in snapshot if fnmatch.fnmatch(k, pattern))
 
         def _gen():
             try:
@@ -159,6 +220,10 @@ class CacheManager:
         """Leert den gesamten Cache."""
         if not self.enabled:
             return False
+        if self._backend == "memory":
+            with self._lock:
+                self._mem.clear()
+            return True
         try:
             self._redis.flushdb()
             return True
@@ -169,6 +234,12 @@ class CacheManager:
         """Liefert Cache-Statistiken."""
         if not self.enabled:
             return {"enabled": False}
+        if self._backend == "memory":
+            with self._lock:
+                jetzt = time.monotonic()
+                lebendige = sum(1 for e in self._mem.values() if e["bis"] > jetzt)
+            return {"enabled": True, "backend": "memory", "keys": lebendige,
+                    "hit_rate": 0.0, "hits": 0, "misses": 0}
         try:
             info = self._redis.info()
             hits = int(info.get("keyspace_hits", 0) or 0)
@@ -200,21 +271,25 @@ def _stringify_arg(value):
 def cached(ttl: int = 300, key_prefix: str = None, key_builder: Callable = None):
     """Decorator fuer Funktions-Caching."""
     def decorator(f: Callable) -> Callable:
+        # (90) Key-Bau in eine Funktion gezogen: wrapper.cache_key liefert
+        # jetzt denselben Key wie der Wrapper selbst — vorher rechnete
+        # invalidate() auf einen bloeden Namens-Key und loeschte ins Leere.
+        def _cache_key(*args, **kwargs):
+            if key_builder:
+                return key_builder(*args, **kwargs)
+            prefix = key_prefix or f.__name__
+            arg_str = ":".join(_stringify_arg(a) for a in args if not callable(a))
+            kwarg_str = ":".join(f"{k}={_stringify_arg(v)}" for k, v in sorted(kwargs.items()))
+            parts = [CACHE_VERSION, prefix]
+            if arg_str:
+                parts.append(arg_str)
+            if kwarg_str:
+                parts.append(kwarg_str)
+            return ":".join(parts)
+
         @wraps(f)
         def wrapper(*args, **kwargs):
-            if key_builder:
-                cache_key = key_builder(*args, **kwargs)
-            else:
-                func_name = f.__name__
-                prefix = key_prefix or func_name
-                arg_str = ":".join(_stringify_arg(a) for a in args if not callable(a))
-                kwarg_str = ":".join(f"{k}={_stringify_arg(v)}" for k, v in sorted(kwargs.items()))
-                parts = [CACHE_VERSION, prefix]
-                if arg_str:
-                    parts.append(arg_str)
-                if kwarg_str:
-                    parts.append(kwarg_str)
-                cache_key = ":".join(parts)
+            cache_key = _cache_key(*args, **kwargs)
 
             cached_value = cache.get(cache_key)
             if cached_value is not None:
@@ -226,7 +301,7 @@ def cached(ttl: int = 300, key_prefix: str = None, key_builder: Callable = None)
             current_app.logger.debug(f"💾 Cache SET: {cache_key}")
             return result
 
-        wrapper.cache_key = lambda *a, **kw: key_builder(*a, **kw) if key_builder else f"{CACHE_VERSION}:{f.__name__}"
+        wrapper.cache_key = _cache_key
         wrapper.invalidate = lambda *a, **kw: cache.delete(wrapper.cache_key(*a, **kw))
         wrapper.invalidate_pattern = lambda pattern: cache.delete_pattern(pattern)
         return wrapper

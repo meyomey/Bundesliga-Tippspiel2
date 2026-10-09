@@ -518,6 +518,49 @@ def get_live_user_stats(user, matchday=None):
     }
 
 
+def _leaderboard_serial(rows):
+    """(94) Cache-sicheres Serialisat der Ranglisten-Zeilen.
+
+    User-Objekte bleiben draussen: Nach dem Cache-Hit waeren sie detached,
+    und ein lazy-Zugriff wie `user.favorite_team` im Template wuerde einen
+    DetachedInstanceError (500) werfen. Gecacht wird nur user_id + reine
+    Werte; beim Hit laedt EINE Query die User inkl. favorite_team wieder.
+    """
+    return {
+        "v": 1,
+        "order": [r["user"].id for r in rows],
+        "rows": [{k: v for k, v in r.items() if k != "user"} for r in rows],
+    }
+
+
+def _leaderboard_rows_aus_serial(serial):
+    """(94) Gegenstueck zu _leaderboard_serial: baut die Zeilen mit frischen,
+    an die aktuelle Session angehaengten User-Objekten nach (1 Query)."""
+    from models import User
+
+    ids = serial.get("order") or []
+    basis_zeilen = serial.get("rows") or []
+    if not ids or len(ids) != len(basis_zeilen):
+        return None
+    users = (
+        User.query.options(db.joinedload(User.favorite_team))
+        .filter(User.id.in_(ids))
+        .all()
+    )
+    if len(users) != len(set(ids)):
+        return None  # User inzwischen geloescht -> sicherheitshalber neu rechnen
+    user_map = {u.id: u for u in users}
+    rows = []
+    for basis, uid in zip(basis_zeilen, ids):
+        user = user_map.get(uid)
+        if user is None:
+            return None
+        zeile = dict(basis)
+        zeile["user"] = user
+        rows.append(zeile)
+    return rows
+
+
 def get_leaderboard(matchday=None):
     """Erweiterte Tabelle mit allen Tipp-Kategorien (mit Cache!).
     
@@ -533,7 +576,12 @@ def get_leaderboard(matchday=None):
     cache_key = cache_key_leaderboard(matchday=matchday, season=season_key, competition=comp_key)
     cached_result = cache.get(cache_key)
     if cached_result is not None:
-        return cached_result
+        # (94) Cache-Hit: User-Objekte frisch aus der Session dazuladen —
+        # rohe ORM-Zeilen im Cache waeren detached und wuerden bei lazy
+        # Template-Zugriffen (favorite_team!) 500er werfen.
+        rows = _leaderboard_rows_aus_serial(cached_result)
+        if rows is not None:
+            return rows
 
     # 🔥 PERFORMANCE: Bot-Filterung mit einer einzigen Query statt N Queries
     # Deaktivierte Bots werden komplett aus der Rangliste rausgenommen.
@@ -611,7 +659,8 @@ def get_leaderboard(matchday=None):
     for i, r in enumerate(rows, 1):
         r["rank"] = i
 
-    cache.set(cache_key, rows, ttl=120)
+    # (94) Nur das Serialisat cachen (reine Daten + user_id-Reihenfolge)
+    cache.set(cache_key, _leaderboard_serial(rows), ttl=120)
     return rows
 
 

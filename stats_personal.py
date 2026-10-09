@@ -9,16 +9,60 @@ from sqlalchemy import func
 from extensions import db
 from models import User, Match, Prediction
 from scoring import get_leaderboard
-from competition_helpers import get_active_competition
+from competition_helpers import get_active_competition, filter_matches_for_active_competition
 
 # ============================================================ Trend-Tracking -
-def get_user_trend(user_id, last_n_matchdays=8):
+def rank_map_through(max_matchday):
+    """(94) Rang ALLER User bis inklusive Spieltag `max_matchday` — EINE
+    Aggregat-Query statt vormals N Punktsummen-Queries pro User.
+
+    Rueckgabe: {user_id: rank}. User ohne gewertete Tipps zaehlen mit 0
+    Punkten mit (wie vorher); Tie-Break user_id aufsteigend (= alte
+    User.query.all()-Reihenfolge).
+    """
+    comp = get_active_competition()
+    q = (
+        db.session.query(
+            Prediction.user_id,
+            func.coalesce(func.sum(Prediction.points), 0).label("pts"),
+        )
+        .join(Match, Prediction.match_id == Match.id)
+        .filter(Match.matchday <= max_matchday, Match.status == "finished")
+    )
+    if comp:
+        q = q.filter(Match.competition_id == comp.id)
+    punkte = {uid: int(pts or 0) for uid, pts in q.group_by(Prediction.user_id).all()}
+    for (uid,) in db.session.query(User.id):
+        punkte.setdefault(uid, 0)
+    rangfolge = sorted(punkte.items(), key=lambda kv: (-kv[1], kv[0]))
+    return {uid: rank for rank, (uid, _) in enumerate(rangfolge, 1)}
+
+
+def vor_spieltag_rangkarte():
+    """(94) Rangkarte des ZULETZT abgeschlossenen Vor-Spieltags + dessen Nr.
+
+    Fuer die Ranglisten-Seite: einmal pro Aufruf berechnen und an alle
+    get_user_trend-Aufrufe verteilen (statt N Einzel-Replays). Liefert
+    ({user_id: rank}, matchday) oder (None, None) bei < 2 fertigen Spieltagen.
+    """
+    q = db.session.query(Match.matchday).filter(Match.status == "finished")
+    q = filter_matches_for_active_competition(q)
+    mds = sorted({row[0] for row in q.all()})
+    if len(mds) < 2:
+        return None, None
+    return rank_map_through(mds[-2]), mds[-2]
+
+
+def get_user_trend(user_id, last_n_matchdays=8, rows=None,
+                   prev_rank_map=None, prev_map_md=None):
     """Punkte-Verlauf ueber die letzten N Spieltage + Rang-Entwicklung."""
     comp = get_active_competition()
     q = Prediction.query.filter_by(user_id=user_id).join(Match)
     if comp:
         q = q.filter(Match.competition_id == comp.id)
-    preds = q.all()
+    # (94) joinedload: ohne ihn liefert p.match pro Tipp 1 Query — bei 108
+    # Tipps je Spieler waren das 1500+ Match-Queries pro Ranglisten-Aufruf!
+    preds = q.options(db.joinedload(Prediction.match)).all()
     finished_preds = [p for p in preds if p.match.status == "finished"]
 
     md_points = {}
@@ -30,16 +74,24 @@ def get_user_trend(user_id, last_n_matchdays=8):
     recent_mds = sorted_mds[-last_n_matchdays:] if len(sorted_mds) > last_n_matchdays else sorted_mds
     sparkline = [md_points.get(md, 0) for md in recent_mds]
 
-    # Rang aktuell
-    current_rank = None
-    for r in get_leaderboard():
-        if r["user"].id == user_id:
-            current_rank = r["rank"]
-            break
+    # Rang aktuell — (94) fertige Zeilen nutzen, wenn die Route sie hat
+    # (vorher: erneute get_leaderboard()-Vollberechnung PRO Zeile!)
+    if rows is not None:
+        current_rank = next(
+            (r.get("rank") for r in rows if r["user"].id == user_id), None)
+    else:
+        current_rank = None
+        for r in get_leaderboard():
+            if r["user"].id == user_id:
+                current_rank = r["rank"]
+                break
 
     previous_rank = None
     if len(recent_mds) >= 2:
-        previous_rank = _compute_rank_through(user_id, recent_mds[-2])
+        if prev_rank_map is not None and prev_map_md == recent_mds[-2]:
+            previous_rank = prev_rank_map.get(user_id)
+        else:
+            previous_rank = _compute_rank_through(user_id, recent_mds[-2])
 
     delta = None
     if current_rank and previous_rank:
@@ -55,25 +107,13 @@ def get_user_trend(user_id, last_n_matchdays=8):
 
 
 def _compute_rank_through(user_id, max_matchday):
-    """Berechnet den Rang eines Users bis zu einem bestimmten Spieltag."""
-    all_users = User.query.all()
-    user_points = {}
-    for u in all_users:
-        comp = get_active_competition()
-        pts_q = db.session.query(func.coalesce(func.sum(Prediction.points), 0)) \
-            .join(Match, Prediction.match_id == Match.id) \
-            .filter(Prediction.user_id == u.id, Match.matchday <= max_matchday,
-                    Match.status == "finished")
-        if comp:
-            pts_q = pts_q.filter(Match.competition_id == comp.id)
-        pts = pts_q.scalar() or 0
-        user_points[u.id] = pts
+    """Rang eines Users bis zu einem Spieltag.
 
-    sorted_users = sorted(user_points.items(), key=lambda x: -x[1])
-    for rank, (uid, _) in enumerate(sorted_users, 1):
-        if uid == user_id:
-            return rank
-    return None
+    (94) Duenner Wrapper um rank_map_through — die alte Schleife führte PRO
+    User eine eigene SUM-Query aus (N Queries pro Aufruf); jetzt eine
+    Aggregat-Query fuer alle User gleichzeitig.
+    """
+    return rank_map_through(max_matchday).get(user_id)
 
 
 # ============================================================ Tipp-Stil-Insights -

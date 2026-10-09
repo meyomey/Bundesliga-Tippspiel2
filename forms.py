@@ -326,6 +326,31 @@ class SettingsForm(FlaskForm):
         validators=[DataRequired()],
         description="Steuert, ob neue Benutzer sich frei, nur per Einladung oder gar nicht registrieren koennen.",
     )
+    contact_email = StringField(
+        "Kontakt-E-Mail (Registrierung)",
+        validators=[Optional(), Email(), Length(0, 120)],
+        description="Erscheint auf der Registrierungsseite als Anfrage-Link, wenn ein Einladungscode noetig ist. Leer = Verweis aufs Impressum.",
+    )
+    recht_anbieter = StringField(
+        "Anbieter (Impressum/Datenschutz)",
+        validators=[Optional(), Length(0, 120)],
+        description="Name des Betreibers, z. B. Vorname Nachname. Steht auf /impressum und /datenschutz.",
+    )
+    recht_adresse = TextAreaField(
+        "Adresse (ladungsfähig)",
+        validators=[Optional(), Length(0, 300)],
+        description="Straße Hausnummer, PLZ Ort.",
+    )
+    recht_email = StringField(
+        "E-Mail (rechtliche Seiten)",
+        validators=[Optional(), Email(), Length(0, 120)],
+        description="Kontaktadresse für Impressum und Datenschutzerklärung.",
+    )
+    recht_verantw = StringField(
+        "Verantwortlich i. S. d. § 18 Abs. 2 MStV",
+        validators=[Optional(), Length(0, 120)],
+        description="Meist dieselbe Person wie der Anbieter.",
+    )
 
     submit = SubmitField("Einstellungen speichern")
 

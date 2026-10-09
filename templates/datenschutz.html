@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Datenschutzerklärung{% endblock %}
+{% block content %}
+{# ══════════════════════════════════════════════════════════════════
+   DATENSCHUTZERKLAERUNG — BITTE ANPASSEN (einmalig, per FTP):
+   Den Wert unten ersetzen (Identisch mit dem Impressum genügt).
+   ══════════════════════════════════════════════════════════════════ #}
+{# (96) Stammdaten aus Admin -> Einstellungen (DB, deploy-sicher). #}
+{% set ANBIETER = recht_anbieter or "❗ ANPASSEN: Name des Betreibers" %}
+{% set EMAIL    = recht_email or "❗ ANPASSEN: kontakt@deine-domain.tld" %}
+
+<div class="card flat legal-page">
+  <span class="overline">Rechtliches</span>
+  <h1>Datenschutzerklärung</h1>
+
+  <h2>1. Verantwortlicher</h2>
+  <p>{{ ANBIETER }}<br>
+     Kontakt: <a href="mailto:{{ EMAIL }}">{{ EMAIL }}</a></p>
+
+  <h2>2. Welche Daten wir verarbeiten — und warum</h2>
+  <h3>2.1 Spielerkonto</h3>
+  <p>Zur Teilnahme an der Tipprunde verarbeiten wir <strong>Benutzername,
+  E-Mail-Adresse</strong> sowie optional <strong>Namen und Profilbild
+  (Avatar)</strong> — den Namen kannst Du selbst auf „nur Username“ stellen.
+  Rechtsgrundlage ist die Durchführung des (Spiel-)Vertrags,
+  Art. 6 Abs. 1 lit. b DSGVO. Der Account wird von einem Admin angelegt
+  (Einladungssystem); es gibt keine offene Registrierung.</p>
+
+  <h3>2.2 Tippspiel-Daten</h3>
+  <p>Deine Tipps, Punkte, Badges und Sonderwetten sind der Spielinhalt und
+  für den Spielbetrieb erforderlich (Art. 6 Abs. 1 lit. b DSGVO). Die
+  Tippübersicht zeigt ab Anpfiff für alle Teilnehmer sichtbar, wer was
+  getippt hat — das ist Spielregel und dir bei der Anmeldung bekannt.</p>
+
+  <h3>2.3 Benachrichtigungen (E-Mail, Telegram, WhatsApp, Push)</h3>
+  <p>Erinnerungen und Hinweise senden wir nur auf die Kanäle, die Du im
+  Profil selbst aktivierst: <strong>E-Mail</strong> (Adresse siehe oben),
+  <strong>Telegram</strong> (wir speichern die Chat-Kennung, die durch Deine
+  aktive Verknüpfung mit /start entsteht), <strong>WhatsApp</strong> (Kennung,
+  die Du selbst einträgst) sowie <strong>Web-Push</strong> (Abo wird nur mit
+  Deiner Zustimmung im Browser angelegt). Rechtsgrundlage ist in diesen
+  Fällen Deine Einwilligung bzw. Handlung, Art. 6 Abs. 1 lit. a DSGVO —
+  du kannst jeden Kanal im Profil jederzeit wieder abschalten.</p>
+
+  <h3>2.4 Zahlungshinweise</h3>
+  <p>Für den freiwilligen Spieleinsatz merkt die App nur den
+  <strong>Zahlstatus</strong> (bezahlt ja/nein, Datum, kurze Notiz) — keine
+  Kontodaten. Zahlungen über paypal.me laufen direkt über PayPal; insoweit
+  gelten deren Datenschutzhinweise. Rechtsgrundlage: Art. 6 Abs. 1 lit. b/f
+  DSGVO.</p>
+
+  <h3>2.5 Hosting und Server-Logs</h3>
+  <p>Gehostet bei der netcup GmbH (Karlsruhe). Beim Aufruf der Seite fallen
+  technische Zugriffsdaten an (IP-Adresse, Zeitpunkt, abgerufene Seite) und
+  werden zur Sicherung des Betriebs gespeichert (Art. 6 Abs. 1 lit. f DSGVO).
+  Ein Auslieferungsvertrag (AVV) mit netcup liegt vor.</p>
+
+  <h3>2.6 Cookies</h3>
+  <p>Es gibt <strong>genau einen Cookie</strong>: den technisch notwendigen
+  Session-Cookie für den Login (HttpOnly, SameSite=Lax). Wir setzen <strong>
+  keine</strong> Tracking- oder Werbe-Cookies — daher gibt es auch keinen
+  Cookie-Banner.</p>
+
+  <h3>2.7 Externe Inhalte im Browser</h3>
+  <p>Vereinslogos werden teilweise von <strong>Wikimedia Commons</strong>
+  geladen; dabei sieht Wikimedia Deine IP-Adresse. Spielstände und Tabellen
+  holt die App serverseitig von OpenLigaDB und football-data.org — dabei
+  fließen keine Nutzerdaten. Der Telegram-Versand erfolgt serverseitig über
+  die Telegram-Bot-API an den von Dir verknüpften Chat.</p>
+
+  <h2>3. Speicherdauer</h2>
+  <p>Kontodaten und Tipps werden gespeichert, solange Du teilnimmst; nach
+  Austritt/Auskunftsanforderung löschen wir sie. Tägliche Server-Backups
+  rotieren nach ca. 14 Tagen. Server-Logs räumt der Hoster in kurzen
+  Abständen auf.</p>
+
+  <h2>4. Deine Rechte</h2>
+  <p>Du hast das Recht auf <strong>Auskunft</strong> (Art. 15),
+  <strong>Berichtigung</strong> (Art. 16), <strong>Löschung</strong>
+  (Art. 17), <strong>Einschränkung</strong> (Art. 18), 
+  <strong>Datenübertragbarkeit</strong> (Art. 20) und <strong>Widerspruch</strong>
+  (Art. 21 DSGVO) — einfach eine E-Mail an die Adresse oben. Zudem kannst Du
+  Dich bei der zuständigen Aufsichtsbehörde beschweren (für Berlin: die
+  Berliner Beauftragte für Datenschutz und Informationsfreiheit).</p>
+
+  <h2>5. Sonstiges</h2>
+  <p>Automatisierte Entscheidungsfindung oder Profilbildung findet nicht
+  statt — außer, dass die App eben Deine Tipps zählt. 🙂</p>
+
+  <p class="muted">Diese Erklärung ist ein Mustertext für eine private
+  Tipprunde und stellt keine Rechtsberatung dar.</p>
+</div>
+{% endblock %}

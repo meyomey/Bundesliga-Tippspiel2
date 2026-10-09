@@ -20,6 +20,8 @@ class Config:
 
     # Redis Cache (optional)
     REDIS_URL = os.environ.get("REDIS_URL")  # z.B. "redis://localhost:6379/0"
+    # (94) Ohne Redis einen In-Process-Memory-Cache nutzen (per Env abschaltbar)
+    CACHE_MEMORY_FALLBACK = os.environ.get("CACHE_MEMORY_FALLBACK", "1") == "1"
     APIFOOTBALL_TOKEN = os.environ.get("APIFOOTBALL_TOKEN", "")
 
     # Sessions
@@ -82,4 +84,5 @@ class TestConfig(Config):
     WTF_CSRF_ENABLED = False
     MAIL_SUPPRESS_SEND = True
     REDIS_URL = None  # Cache deaktiviert in Tests
+    CACHE_MEMORY_FALLBACK = False  # (94) Tests deterministisch ohne Cache
     RATELIMIT_ENABLED = False

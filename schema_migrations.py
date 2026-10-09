@@ -19,7 +19,7 @@ EXPECTED_SCHEMA = {
     "users": [
         "id", "username", "email", "password_hash", "notify_enabled", "notify_email",
         "notify_push", "notify_telegram", "notify_whatsapp", "notify_hours_before",
-        "notify_only_favorite", "default_tip_view",
+        "notify_only_favorite", "default_tip_view", "calendar_token",
     ],
     "competitions": ["id", "code", "name", "season", "is_active"],
     "matches": ["id", "competition_id", "matchday", "home_team_id", "away_team_id", "kickoff", "status"],
@@ -142,6 +142,25 @@ def _migration_invitation_codes_schema():
             changed += 1
     return f"invitation_codes sichergestellt; {changed} Spalte(n) ergaenzt"
 
+def _migration_user_calendar_token():
+    """(91) users.calendar_token: geheimer Token fuer den persoenlichen
+    ICS-Kalender-Feed. Bestehende User erhalten einen Zufalls-Token."""
+    import secrets as _secrets
+
+    added = _add_column_if_missing("users", "calendar_token", "VARCHAR(48)")
+    with db.engine.begin() as conn:
+        rows = conn.execute(
+            text('SELECT id FROM "users" WHERE "calendar_token" IS NULL')
+        ).fetchall()
+        for (uid,) in rows:
+            conn.execute(
+                text('UPDATE "users" SET "calendar_token" = :t WHERE "id" = :i'),
+                {"t": _secrets.token_hex(16), "i": uid},
+            )
+    anteil = "Spalte ergaenzt; " if added else ""
+    return f"{anteil}{len(rows)} Kalender-Token nachgefuellt"
+
+
 def _migration_repair_orphan_logs_only():
     """Bewusst kein Delete: nur zaehlen und melden."""
     orphan_predictions = db.session.query(Prediction).outerjoin(Match, Prediction.match_id == Match.id).filter(Match.id.is_(None)).count()
@@ -157,6 +176,7 @@ MIGRATIONS = [
     ("2026_08_11_001_invitation_codes_schema", "Einladungscode-Tabelle sicherstellen", _migration_invitation_codes_schema),
     ("2026_08_12_001_user_default_tip_view", "Standard-Tippansicht je User sicherstellen", _migration_user_default_tip_view),
     ("2026_09_12_001_match_venue", "Stadion-Spalte fuer Spielinfos", _migration_match_venue),
+    ("2026_09_27_001_user_calendar_token", "Kalender-Token fuer ICS-Feed", _migration_user_calendar_token),
 ]
 
 

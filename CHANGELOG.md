@@ -9,6 +9,82 @@
 
 
 
+
+
+
+
+
+
+## [3.1.66] - 2026-10-08
+
+### ⚖️ Rechtliche Stammdaten in die Datenbank ((96) — Deploy-Falle aus (89) geschlossen)
+
+- **Anlass:** die per FTP eingetragenen Impressums-/Datenschutz-Angaben wurden beim Deploy vom Platzhalterstand des Repos überschrieben — Server-Edits sind nicht deploy-sicher. Live-Check bestätigte wieder 4+2 „❗ ANPASSEN“-Marker.
+- **Lösung:** die Stammdaten (Anbieter, Adresse, E-Mail, MStV-Verantwortlicher) sind jetzt **Einstellungen in der Datenbank**, gepflegt unter **Admin → Einstellungen → „⚖️ Rechtliche Stammdaten“**. Sie überleben jeden Deploy und sind automatisch Teil der täglichen DB-Backups. Die Templates rendern die Werte direkt; ohne Eintragung greift wie bisher der ANPASSEN-Fallback (Tests schließen ihn bewusst nicht aus).
+- **Einmalig noch ausfüllen** (im Admin, 1 Minute) — danach nie wieder per FTP, und das Thema „Daten weg“ ist endgültig erledigt.
+- **+4 Tests** (Platzhalter-Fallback, beide Seiten mit Werten, Admin-Rundtrip, Teilbefüllung). Suite **664/664**, Hartgate 0.
+## [3.1.65] - 2026-10-08
+
+### ✉️ Registrierung: Dopplung behoben + Kontakt für Einladungs-Anfragen ((95) — Nutzerbefund mit Screenshot)
+
+- **Dopplung behoben:** bei „Nur mit Einladungscode“ erschienen ZWEI Anmelden-Zeilen („Du hast schon ein Konto?“ + „Schon Konto?“) — die Oberzeile ist entfernt, es bleibt eine einzige (Dauerregel 3).
+- **Kontakt-Weg ergänzt:** der Einladungs-Hinweis hat jetzt „Noch keinen Einladungscode?“ — mit **mailto-Link**, sobald im Admin die neue Einstellung **„Kontakt-E-Mail (Registrierung)“** (Admin → Einstellungen, direkt über dem Registrierungs-Modus) gefüllt ist; ohne Einstellung fällt er auf den **Impressum-Verweis** zurück (dort steht die Betreiber-Mail aus (89)).
+- **+4 Tests** (Dopplung gezählt, Fallback, mailto nach Admin-Setzung inkl. Settings-Rundtrip). Suite **660/660**, Hartgate 0.
+## [3.1.64] - 2026-10-08
+
+### 🚀 Rangliste ~23× schneller ((94) — Nutzerfeedback: „dauert zu lange")
+
+- **Diagnose (gemessen, 14 Spieler × 1512 Tipps):** `GET /tabelle` kostete **~950 ms und 2064 Queries pro Aufruf**. Drei Ursachen: ① der eingebaute 120-s-Cache der Rangliste war ohne Redis **komplett tot** (Netcup hat kein Redis) — jede Ansicht rechnete alles neu; ② jeder Trend pro Tabellenzeile rief **erneut** `get_leaderboard()` + eine N-Query-Rang-Replay-Schleife auf (N²-Verhalten); ③ die Trend-Abfrage lud Tipps ohne Eager-Loading → **1512 Einzel-Queries** nur für `p.match`.
+- **Fix 1 — Memory-Cache-Fallback:** ohne Redis nutzt der CacheManager jetzt einen thread-sicheren In-Process-Cache (TTL/Invalidierung wie gehabt, per `CACHE_MEMORY_FALLBACK=0` abschaltbar). Damit greifen zum ersten Mal ALLE Cache-Designs der App auf Netcup (Rangliste 120 s, Statistiken 300 s).
+- **Fix 2 — N²-Auflösung:** neue Bulk-Funktion `rank_map_through()` (eine Aggregat-Query für alle Ränge, inkl. 0-Punkte-Spieler, Tie-Break wie bisher); `get_user_trend()` nimmt jetzt fertige Leaderboard-Zeilen + die Bulk-Rangkarte (Parameter optional — alle bisherigen Aufrufer unverändert); die Route berechnet die Rangkarte **einmal** statt pro Zeile.
+- **Fix 3 — Eager-Loading:** `get_user_trend` lädt Match-Daten mit `joinedload` (läuft auch für Profil-/Stats-Seiten schneller).
+- **Fix 4 — Cache-Sicherheitsfix (latenter Bug):** rohe ORM-Zeilen im Cache wären detached — das Template greift aber lazy auf `user.favorite_team` zu (**500er-Gefahr beim ersten echten Cache-Einsatz!**). Jetzt wird nur ein Serialisat (reine Werte + user_id-Reihenfolge) gecacht; beim Hit laden EINE Query die User inkl. `favorite_team` zurück.
+- **Ergebnis (gleicher Messlauf):** **~42 ms / 49 Queries** mit Fallback (Cache aus: 65 ms / 53) — **≈23× schneller, ≈42× weniger Queries**. Spieltagsansicht unverändert flott (19 Queries).
+- **+8 Tests** (Fallback an/aus, TTL/Delete/Pattern/Clear, Cache-Hit mit sitzungsfrischen Usern, Rang-Parität vs. Alt-Algorithmus, Trend-Parität, Route-Rauch). Suite **656/656**, Hartgate 0. Hinweis Betrieb: nach Deploy ist der Cache aktiv — Werte können bis zum TTL-Ablauf (120–300 s) alt sein; Invalidierung bei Tipp-/Ergebnis-/Admin-Änderungen greift wie im Redis-Design vorgesehen.
+## [3.1.63] - 2026-10-08
+
+### 🧹 Theme-Konsolidierung ((93) — Nutzer-Hinweis: „hatten wir nicht schon ein helles Theme?")
+
+- **Befund — Nutzer hatte recht:** Ein vollständiges Hell-Theme existierte bereits (Palette + Formular-/Flash-Feintuning im CSS, `toggleTheme()` in `app.js`, Key `localStorage['theme']`, 2 Buttons: Mobile-Menü + Desktop-User-Area). Das Audit von (92) hatte nur das `<html data-theme="dark">` geprüft und den Altbestand übersehen — (92) baute fälschlich ein Parallel-System (dritter Button, fremder Key `wt-theme`, eigene Palette, die die erprobte überschrieben hätte).
+- **Konsolidierung:** EIN Key (`theme` — bleibt, gespeicherte Spieler-Einstellungen bleiben gültig), EINE Engine (`theme.js`, Node-getestet; der historische `toggleTheme()` delegiert an `window.WTTheme.umschalten()`), die **beiden originalen** Buttons (keine Dopplung mehr), die **originale** Palette (der (92)-Ersatzblock ist entfernt).
+- **Behalten — die echten Neuerungen:** No-Flash-Skript im Head (liest `theme` vor dem ersten Paint — schneller als die alte app.js-Apply-Stelle), `color-scheme: light` (native Formulare/Scrollbars), CI-Node-Test für die Theme-Logik.
+- Suite **648/648**, Hartgate 0, Node 3/3. Deploy-Datei zusätzlich zu (92): `static/js/app.js`.
+## [3.1.62] - 2026-10-08
+
+### 🌗 Hell/Dunkel-Umschalter ((92) — Audit-Tipp 3)
+
+- **Neu:** Theme-Button (☀️/🌙) in der Navbar — auf jeder Seite, auch ohne Login. Die helle Palette ist ein kompakter Token-Override-Block (`[data-theme="light"]`): die App ist durchgehend Variablen-basiert, deshalb genügt eine Palette statt tausender Selektoren.
+- **No-Flash:** `base.html` liest das gespeicherte Theme (`localStorage['wt-theme']`) vor dem ersten Paint — kein Aufblitzen beim Seitenauftritt.
+- **`static/js/theme.js`** (NEU): API `{ initialTheme, anwenden, umschalten }` im dash_days-Muster (Node-Export + Browser-Selbst-Init). Persistenz via localStorage, Fallback dunkel im Privatmodus.
+- **+4 Tests** (Template-Guards, CSS-Palette, Node-API, CI-Verdrahtung) + **Node-Test `tests/js/theme_test.js`** (6 Assertions, in CI js-Job eingebunden). Suite **648/648**, Coverage **88 %**.
+
+## [3.1.61] - 2026-10-08
+
+### 📅 ICS-Kalender-Abo ((91) — Audit-Tipp 2)
+
+- **Neu:** persönlicher Kalender-Feed `GET /kalender/<token>.ics` (öffentlich, aber token-geschützt — Kalender-Apps können keine Session-Logins). Enthält Paarungen, Anstoßzeiten (UTC, RFC-5545 mit CRLF) und Endergebnisse + Stadion — **keine Tipps**. Teamnamen werden RFC-gerecht escaped.
+- **Profil** bekommt die Card „📅 Kalender-Abo“: Link kopieren (Clipboard-Button) und **neu generieren** (alter Link wird ungültig — Revocation ohne Admin-Eingriff). Fehlende Token werden beim Profilbesuch lazy angelegt.
+- **Migration** `2026_09_27_001_user_calendar_token`: Spalte `users.calendar_token` (VARCHAR 48, unique) + Backfill für alle Bestandsspieler (32-Zeichen-Zufallstoken). Läuft beim Plesk-Restart automatisch.
+- **+7 Tests** (Feed öffentlich/404/Ergebnis+Ort/Escape/Profil-Card/Regenerate/Migration-Backfill). Suite **648/648**, Coverage **88 %**.
+
+## [3.1.60] - 2026-10-08
+
+### ⚡ Performance-Paket + Test-Runde 3 ((90) — alle Audit-Code-Funde)
+
+- **CSS-Minify:** `style.min.css` (NEU, committetes Build-Artefakt) — **242 KB → 186 KB** unkomprimiert, mit Server-gzip deutlich weniger über die Leitung. `base.html` lädt nur noch die Min-Version, `sw.js` precacht sie (Cache-Bump `tippspiel-v3` → **v4**). Neu: `css_minify.py` (Build-Helfer, Dev-only) — der Build erzeugt die Min-Version **immer frisch**, und der Frische-Guard-Test regeneriert+vergleicht bei jedem Testlauf (veraltetes Artefakt = roter Test).
+- **Dashboard-N+1 behoben:** die kommende-Spiele-Liste lud bisher pro Zeile 1 Query (`get_user_prediction`-Lambda). Jetzt lädt `pred_map` **alle** Tipps in einer Query; zusätzlich `get_leaderboard()` nur noch 1× statt 2×.
+- **pytest-timeout** (`timeout = 120` in pytest.ini): hängende Tests brechen ab — Gegenmittel gegen den beobachteten Sandbox-Flutter.
+- **Test-Runde 3:** Coverage der dünnsten Module deutlich gehoben — `admin_badges_routes` **28 % → 97 %**, `push_routes` **35 % → 92 %**, `cache.py` **62 % → 81 %**. Dabei echter Mini-Bug gefunden und behoben: `cached()`-Decorator-`invalidate()` berechnete einen falschen Key (Namens-Key statt Argument-Key) und löschte ins Leere — jetzt rechnen Wrapper und `wrapper.cache_key` denselben Key.
+- **+34 Tests** (Minify 5, Dashboard-pred_map 3, Badges-Admin 6, Push 11, Cache 12, Theme 4 kommen mit 3.1.62). Suite **648/648**, Hartgate 0, Coverage **88 %**, Node-Tests grün.
+## [3.1.59] - 2026-09-22
+
+### ⚖️ Impressum + Datenschutzerklärung (Nutzerfrage — Befund: fehlte beides)
+
+- **Befund:** weder Impressum noch Datenschutzerklärung vorhanden — obwohl die App personenbezogene Daten verarbeitet (Kontodaten, Tipps, Telegram-/WhatsApp-Kennungen, Zahlstatus + Notiz, Push-Abos, Session-Cookie, Server-Logs bei netcup) und Team-Logos von Wikimedia im Browser lädt (IP-Übertragung). **Datenschutzerklärung = Pflicht (Art. 13 DSGVO)**; Impressum (§ 5 DDG) bei einer privaten Runde formal nicht zwingend, wegen Einsatz/Topf + paypal.me-Links aber als Sicherheitsreserve mitgeliefert.
+- **Neu:** zwei **öffentliche** Seiten (ohne Login, Footer-Link auf jeder Seite): `/impressum` (§-5-DDG-Block, Kontakt, Verantwortlicher i. S. d. § 18 Abs. 2 MStV, netcup-Hosting, Hinweis „private Tipprunde“) und `/datenschutz` (Verantwortlicher, Datenarten mit Rechtsgrundlagen — b/a/f —, Empfänger inkl. Wikimedia/Telegram/Push/PayPal, Cookies: nur der technisch notwendige Session-Cookie → **kein Cookie-Banner nötig**, Speicherdauer/Backup-Rotation, Rechte + Berliner Aufsichtsbehörde, keine Profilbildung).
+- **⚠️ Offener Punkt für den Betreiber:** die Betreiberangaben sind bewusst **Platzhalter mit „❗ ANPASSEN“** (Name, Adresse, E-Mail) — einmalig per FTP in `templates/impressum.html` (4 Werte) und `templates/datenschutz.html` (2 Werte) eintragen. Die Tests schließen die Platzhalter bewusst NICHT aus (Erinnerung im System).
+- **+5 Tests** (599 gesamt): beide Seiten anonym 200 mit Kernabsätzen, Footer-Verlinkung auch ohne Login, Spielbetrieb unberührt, Quelltext-Guards (neue Dateien in Build-Liste). Suite **599/599**, Hartgate 0, Coverage **88 %**, Node-Test grün.
+- **Deploy:** NEU `templates/impressum.html` + `templates/datenschutz.html` (+ geändert `routes_main.py`, `templates/base.html`, `static/css/style.css`) → FTP → `__pycache__` → Plesk-Restart → **danach sofort die 6 ANPASSEN-Werte eintragen** (kein Neustart nötig, Template-Änderung greift beim nächsten Aufruf). Selbstbeweis: Footer zeigt auf jeder Seite Impressum · Datenschutz; beide Seiten öffnen ohne Login.
 ## [3.1.58] - 2026-09-22
 
 ### 🎨 App-weite Konsistenz: „heute/morgen" + Tippschluss-Chip überall (Nutzer-Auswahl „beide")

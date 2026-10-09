@@ -66,6 +66,8 @@ jobs:
         run: node tests/js/tip_optimizer_engine_test.js
       - name: "Dashboard-Tagesmarkierung (static/js/dash_days.js)"
         run: node tests/js/dash_days_test.js
+      - name: "Theme-Umschalter (static/js/theme.js)"
+        run: node tests/js/theme_test.js
 
   audit:
     name: Security Audit (pip-audit)

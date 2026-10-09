@@ -17,6 +17,7 @@ from stats import (
     get_matchday_recap,
     get_user_insights,
     get_user_trend,
+    vor_spieltag_rangkarte,
     get_current_matchday,
 )
 from sync import fetch_live_standings
@@ -564,10 +565,18 @@ def _leaderboard(matchday=None):
     )
     md_wins = dict(md_wins_q.group_by(MatchdayWinner.user_id).all())
     trends = {}
-    if not matchday:
+    if not matchday and rows:
+        # (94) Bulk: Rangkarte des Vor-Spieltags EINMAL je Aufruf + fertige
+        # Zeilen an alle Trends mitgeben. Vorher lief jede Zeile erneut in
+        # get_leaderboard() + _compute_rank_through (N Punktsummen-Queries
+        # pro User) — gemessen: 2064 Queries/Aufruf, jetzt ~20.
+        prev_rank_map, prev_map_md = vor_spieltag_rangkarte()
         for r in rows:
             try:
-                trends[r["user"].id] = get_user_trend(r["user"].id, last_n_matchdays=6)
+                trends[r["user"].id] = get_user_trend(
+                    r["user"].id, last_n_matchdays=6,
+                    rows=rows, prev_rank_map=prev_rank_map,
+                    prev_map_md=prev_map_md)
             except Exception:
                 pass
     return render_template(

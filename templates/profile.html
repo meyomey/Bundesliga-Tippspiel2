@@ -37,6 +37,29 @@
     </form>
 
 
+    <!-- ====== (91) Kalender-Abo ====== -->
+    <details class="settings-section profile-details" id="kalender">
+      <summary class="settings-summary">
+        <span>📅 Kalender-Abo</span>
+        <small class="profile-summary-state">Anstöße im Handy-Kalender</small>
+      </summary>
+      <div class="settings-body">
+        <p class="muted">Alle Anstoßzeiten als Kalender-Abo: Link in Deine Kalender-App eintragen („Kalender abonnieren“ / URL hinzufügen) — neue Spiele erscheinen automatisch. Enthält nur Paarungen &amp; Zeiten, <strong>keine Tipps</strong>.</p>
+        <label>Dein persönlicher Kalender-Link
+          <input class="input" id="calUrl" readonly value="{{ url_for('main.kalender_ics', token=current_user.calendar_token, _external=True) }}" onclick="this.select()">
+        </label>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+          <button type="button" class="btn-ghost btn-sm" id="calCopy">🔗 Link kopieren</button>
+          <form method="post" action="{{ url_for('main.profile') }}" onsubmit="return confirm('Kalender-Link wirklich neu generieren? Der alte Link wird ungültig.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="calendar_regenerate" value="1">
+            <button type="submit" class="btn-ghost btn-sm">♻️ Neu generieren</button>
+          </form>
+        </div>
+        <small class="muted">Der Link ist geheim — nicht weitergeben. Nach „Neu generieren“ musst du den neuen Link einmal neu eintragen.</small>
+      </div>
+    </details>
+
     <!-- ====== Benachrichtigungszentrale ====== -->
     <details class="settings-section profile-details" id="benachrichtigungen">
       <summary class="settings-summary">
@@ -326,6 +349,20 @@
 {% endblock %}
 
 {% block scripts %}
+<script>
+// (91) Kalender-Link kopieren
+window.addEventListener('load', () => {
+  const btn = document.getElementById('calCopy');
+  const url = document.getElementById('calUrl');
+  if (!btn || !url) return;
+  btn.addEventListener('click', () => {
+    url.select();
+    const ok = () => { btn.textContent = '✅ Kopiert!'; setTimeout(() => { btn.textContent = '🔗 Link kopieren'; }, 2000); };
+    if (navigator.clipboard) navigator.clipboard.writeText(url.value).then(ok, () => document.execCommand('copy'));
+    else document.execCommand('copy');
+  });
+});
+</script>
 <script>
 window.addEventListener('load', () => {
   const data = {{ form_curve|tojson }};

@@ -61,8 +61,10 @@ def dashboard():
     upcoming = upcoming_q.order_by(Match.kickoff.asc()).all()
 
     user_points = current_user.total_points()
-    leaderboard = get_leaderboard()[:10]
-    user_rank = next((r["rank"] for r in get_leaderboard() if r["user"].id == current_user.id), None)
+    # (90) EIN Leaderboard-Aufruf statt zwei (war: Top-10 + eigener Rang je 1x)
+    lb = get_leaderboard()
+    leaderboard = lb[:10]
+    user_rank = next((r["rank"] for r in lb if r["user"].id == current_user.id), None)
     current_matchday = get_current_matchday()
     user_badges = UserBadge.query.filter_by(user_id=current_user.id).all()
 
@@ -117,6 +119,18 @@ def dashboard():
     tip_status = {"tipped": tipped_count, "total": total_count, "open": len(open_md_matches)}
     pot = compute_pot_summary()
 
+    # (90) N+1-fix: alle Tipps der kommenden Spiele in EINER Query vorladen
+    # (war: get_user_prediction-Lambda = 1 Query pro Template-Zeile)
+    upcoming_ids = [m.id for m in upcoming]
+    pred_map = {}
+    if upcoming_ids:
+        pred_map = {
+            p.match_id: p for p in Prediction.query.filter(
+                Prediction.user_id == current_user.id,
+                Prediction.match_id.in_(upcoming_ids),
+            ).all()
+        }
+
     return render_template(
         "dashboard.html",
         upcoming=upcoming,
@@ -134,8 +148,70 @@ def dashboard():
         # (87) naive UTC-Jetztzeit fuer Tippschluss-Chips (DB liefert naive UTC;
         # bewusst naive Konstruktion, damit die Template-Differenz klappt)
         now_utc=datetime.now(timezone.utc).replace(tzinfo=None),
-        get_user_prediction=lambda mid: Prediction.query.filter_by(user_id=current_user.id, match_id=mid).first(),
+        pred_map=pred_map,
     )
+
+# ============================================================ Kalender-Feed -
+@main_bp.route("/kalender/<token>.ics", endpoint="kalender_ics")
+def kalender_ics(token):
+    """(91) Persoenlicher ICS-Kalender-Feed.
+
+    Oeffentlich, aber token-geschuetzt: Kalender-Apps koennen keine
+    Session-Logins, der Token identifiziert den Spieler. Der Feed enthaelt
+    nur Paarungen/Anstosszeiten/Ergebnisse — KEINE Tipps.
+    """
+    from flask import Response, abort
+    from models import User as UserModel
+
+    if not token or len(token) < 16:
+        abort(404)
+    user = UserModel.query.filter_by(calendar_token=token).first()
+    if not user:
+        abort(404)
+
+    matches = filter_matches_for_active_competition(
+        Match.query
+    ).order_by(Match.kickoff.asc()).all()
+
+    def _esc(s):
+        return (str(s).replace("\\", "\\\\").replace(";", "\\;")
+                .replace(",", "\\,").replace("\n", "\\n"))
+
+    now_stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//Wulmstoerper Tipprunde//Kalender//DE",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+        "X-WR-CALNAME:Wulmstoerper Tipprunde",
+        "X-WR-TIMEZONE:Europe/Berlin",
+    ]
+    for m in matches:
+        if not m.kickoff or m.home_team is None or m.away_team is None:
+            continue
+        start = m.kickoff.strftime("%Y%m%dT%H%M%SZ")
+        end = (m.kickoff + timedelta(hours=2)).strftime("%Y%m%dT%H%M%SZ")
+        summary = f"{m.home_team.short_name} - {m.away_team.short_name} (ST {m.matchday})"
+        if m.status == "finished" and m.home_score is not None and m.away_score is not None:
+            summary += f" {m.home_score}:{m.away_score}"
+        lines += [
+            "BEGIN:VEVENT",
+            f"UID:match-{m.id}@tipp.wulmstorf.net",
+            f"DTSTAMP:{now_stamp}",
+            f"DTSTART:{start}",
+            f"DTEND:{end}",
+            f"SUMMARY:{_esc(summary)}",
+        ]
+        if m.venue:
+            lines.append(f"LOCATION:{_esc(m.venue)}")
+        lines.append("END:VEVENT")
+    lines.append("END:VCALENDAR")
+
+    resp = Response("\r\n".join(lines) + "\r\n", mimetype="text/calendar")
+    resp.headers["Content-Disposition"] = "inline; filename=tipprunde.ics"
+    return resp
+
 
 @main_bp.route("/einladen", methods=["GET", "POST"])
 @login_required
@@ -232,6 +308,33 @@ def invite_users():
         raw_emails=raw_emails,
         message=message,
     )
+
+
+def _recht_kontext():
+    """(96) Rechtliche Stammdaten aus den Einstellungen (Admin pflegbar).
+
+    DB statt FTP-Edit: Deploy-sicher (kein Überschreiben mehr möglich) und
+    in den täglichen DB-Backups enthalten. Fehlende Werte rendert das
+    Template als „❗ ANPASSEN“-Platzhalter weiter.
+    """
+    return {
+        "recht_anbieter": (get_setting("recht_anbieter", "") or "").strip(),
+        "recht_adresse": (get_setting("recht_adresse", "") or "").strip(),
+        "recht_email": (get_setting("recht_email", "") or "").strip(),
+        "recht_verantw": (get_setting("recht_verantw", "") or "").strip(),
+    }
+
+
+@main_bp.route("/impressum")
+def impressum():
+    """(89) Öffentliche Anbieterkennzeichnung (§ 5 DDG) — ohne Login."""
+    return render_template("impressum.html", **_recht_kontext())
+
+
+@main_bp.route("/datenschutz")
+def datenschutz():
+    """(89) Öffentliche Datenschutzerklärung (Art. 13 DSGVO) — ohne Login."""
+    return render_template("datenschutz.html", **_recht_kontext())
 
 
 @main_bp.route("/mehr")

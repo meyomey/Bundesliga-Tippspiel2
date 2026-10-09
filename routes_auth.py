@@ -25,6 +25,8 @@ def register():
     registration_mode = get_setting("registration_mode", "invite")
     if registration_mode not in ("open", "invite", "closed"):
         registration_mode = "invite"
+    # (95) Kontakt fuer Einladungs-Anfragen (Admin-Einstellung; leer = Impressum-Verweis)
+    contact_email = (get_setting("contact_email", "") or "").strip()
 
     invite_code_value = (request.values.get("invite") or "").strip()
     invite = InvitationCode.query.filter_by(code=invite_code_value).first() if invite_code_value else None
@@ -35,12 +37,14 @@ def register():
         return render_template(
             "auth/register.html", form=form, invite_required=True, registration_closed=True,
             invite_code=invite_code_value, registration_mode=registration_mode,
+            contact_email=contact_email,
         ), 403
 
     if request.method == "GET" and registration_mode == "invite" and not invite_valid_for_page:
         return render_template(
             "auth/register.html", form=form, invite_required=True, invite_code=invite_code_value,
             registration_mode=registration_mode, registration_closed=False,
+            contact_email=contact_email,
         ), 403
 
     if form.validate_on_submit():
@@ -52,6 +56,7 @@ def register():
             return render_template(
                 "auth/register.html", form=form, invite_required=True, invite_code=invite_code_value,
                 registration_mode=registration_mode, registration_closed=False,
+                contact_email=contact_email,
             ), 403
 
         u = User(username=form.username.data, email=email)

@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Impressum{% endblock %}
+{% block content %}
+{# ══════════════════════════════════════════════════════════════════
+   IMPRESSUM — BITTE ANPASSEN (einmalig, per FTP):
+   Die vier Werte unten ersetzen. Nur hier editieren, mehr nicht.
+   ══════════════════════════════════════════════════════════════════ #}
+{# (96) Stammdaten kommen aus Admin -> Einstellungen -> „Rechtliche Stammdaten“
+   (Datenbank, deploy-sicher). Ohne Eintragung greift der ANPASSEN-Fallback. #}
+{% set ANBIETER   = recht_anbieter or "❗ ANPASSEN: Name des Betreibers (z. B. Vorname Nachname)" %}
+{% set ADRESSE    = recht_adresse or "❗ ANPASSEN: Straße Hausnummer, PLZ Ort" %}
+{% set EMAIL      = recht_email or "❗ ANPASSEN: kontakt@deine-domain.tld" %}
+{% set VERANTW    = recht_verantw or "❗ ANPASSEN: Name (Verantwortlich i. S. d. § 18 Abs. 2 MStV)" %}
+
+<div class="card flat legal-page">
+  <span class="overline">Rechtliches</span>
+  <h1>Impressum</h1>
+
+  <h2>Angaben gemäß § 5 DDG</h2>
+  <p>
+    <strong>{{ ANBIETER }}</strong><br>
+    {{ ADRESSE }}
+  </p>
+
+  <h2>Kontakt</h2>
+  <p>E-Mail: <a href="mailto:{{ EMAIL }}">{{ EMAIL }}</a></p>
+
+  <h2>Verantwortlich für den Inhalt</h2>
+  <p>{{ VERANTW }} (Anschrift wie oben)</p>
+
+  <h2>Technischer Anbieter / Hosting</h2>
+  <p>
+    Die Website wird gehostet bei der <strong>netcup GmbH</strong>,
+    Daimlerstraße 25, 76185 Karlsruhe, Deutschland.
+    Die bei einem Besuch der Seite anfallenden Server-Logfiles werden vom
+    Hosting-Anbieter auf Grundlage des berechtigten Interesses an einem
+    sicheren und stabilen Betrieb verarbeitet (Art. 6 Abs. 1 lit. f DSGVO).
+  </p>
+
+  <h2>Hinweis zur Tipprunde</h2>
+  <p>
+    Die Wulmstörper Tipprunde ist eine private Tipprunde. Es werden keine
+    Waren oder Dienste angeboten; freiwillige Spieleinsätze fließen
+    ausschließlich in den vereinsinternen Gewinn-Topf.
+  </p>
+
+  <p class="muted">Streitschlichtung: Wir sind nicht verpflichtet und nicht
+  bereit, an Streitbeilegungsverfahren vor einer Verbraucherschlichtungsstelle
+  teilzunehmen.</p>
+</div>
+{% endblock %}
