@@ -58,6 +58,11 @@ GITHUB_UPLOAD_FILES = [
     "tests/test_theme_toggle.py",
     # 08.10.2026 (93): Theme-Konsolidierung — app.js delegiert an theme.js
     "static/js/app.js",
+    # 08.10.2026 (97): CI-Heilung — Werkzeug 3.1.9 (CVE-2026-102598),
+    # Cache-Test-Fixture 3.9-kompatibel, urllib3-Ignore (3.9-Drift)
+    "requirements_py39.txt",
+    ".github/workflows/tests.yml",
+    "tests/test_cache_manager.py",
     # 08.10.2026 (96): Rechtliche Stammdaten in DB (deploy-sicher)
     "tests/test_recht_einstellungen.py",
     # 08.10.2026 (95): Registrierung — Dopplung + Kontakt-E-Mail

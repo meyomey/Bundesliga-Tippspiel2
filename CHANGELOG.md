@@ -15,6 +15,14 @@
 
 
 
+
+## [3.1.67] - 2026-10-09
+
+### 🔧 CI-Heilung: Werkzeug-CVE + 3.9-kompatibler Cache-Test (97)
+
+- **Python 3.9 (nur dort) rot:** die Cache-Test-Fixture hängte ein `staticmethod(lambda…)` an ein Modul-Attribut — `staticmethod`-Objekte sind als Modul-Attribut erst ab Python 3.10 direkt aufrufbar, auf 3.9 (unserer Zielversion!) wirft der Aufruf einen TypeError, woraufhin der Cache im Test deaktiviert war (8 Fälschliche Fehlschläge). Fix: echte Test-Funktion statt staticmethod. **Beweis: volle Suite auf echtem Python 3.9.25 lokal gelaufen — 664/664.** Produktion war nie betroffen.
+- **pip-audit rot — zwei Ursachen:** ① echtes, neues **CVE-2026-102598** in Werkzeug 3.1.8 → glattes Bump auf **3.1.9** (unterstützt weiterhin Python 3.9) in `requirements.txt` UND `requirements_py39.txt`. ② Neue urllib3-Advisories (PYSEC-2026-4175/4176): Fixes gibt es erst ab urllib3 2.7.0/2.8.0, die **Python ≥ 3.10 verlangen** — auf 3.9 existiert keine gepatchte Version → beide IDs gemäß dem dokumentierten Konvent in die IGNORE_39-Liste des Workflows aufgenommen (Kommentar mit Begründung; Liste abbauen, sobald Netcup 3.10+ anbietet).
+- Suite **664/664** (3.9 lokal + 3.13), pip-audit beide Dateien grün, Hartgate 0.
 ## [3.1.66] - 2026-10-08
 
 ### ⚖️ Rechtliche Stammdaten in die Datenbank ((96) — Deploy-Falle aus (89) geschlossen)

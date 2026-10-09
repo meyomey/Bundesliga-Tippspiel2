@@ -77,8 +77,13 @@ class FakeRedis:
 def verbundener_cache(app, monkeypatch):
     """Verbindet den globalen cache mit FakeRedis und leert ihn danach."""
     fake = FakeRedis()
-    monkeypatch.setattr(cache_mod.redis, "from_url",
-                        staticmethod(lambda *a, **k: fake))
+
+    def _fake_from_url(*a, **k):
+        # Echte Funktion statt staticmethod(lambda): staticmethod-Objekte
+        # sind als Modul-Attribut erst ab Python 3.10 direkt callable —
+        # auf 3.9 (CI-Zielversion!) wirft der direkte Aufruf TypeError.
+        return fake
+    monkeypatch.setattr(cache_mod.redis, "from_url", _fake_from_url)
     monkeypatch.setitem(app.config, "REDIS_URL", "redis://fake:6379/0")
     cache.init_app(app)
     yield fake
@@ -109,8 +114,9 @@ def test_init_app_ohne_redis_url_deaktiviert(app, caplog):
 
 def test_init_app_redis_nicht_erreichbar(app, monkeypatch):
     """Ping-Fehler -> sauber deaktiviert statt Absturz."""
-    monkeypatch.setattr(cache_mod.redis, "from_url",
-                        staticmethod(lambda *a, **k: FakeRedis(kaputt=True)))
+    def _fake_kaputt(*a, **k):
+        return FakeRedis(kaputt=True)
+    monkeypatch.setattr(cache_mod.redis, "from_url", _fake_kaputt)
     monkeypatch.setitem(app.config, "REDIS_URL", "redis://fake:6379/0")
     cm = CacheManager()
     cm.init_app(app)
