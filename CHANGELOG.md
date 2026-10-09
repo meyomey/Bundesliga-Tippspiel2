@@ -23,6 +23,14 @@
 
 
 
+
+## [3.1.75] - 2026-10-09
+
+### ⏱️ Live-Uhr: eingefrorene Feed-Minute nach 10 Min entwaffnet ((105) — Nutzerbefund mit Live-Center-Screenshot)
+
+- **Befund:** das Live-Center blieb minutenlang bei „LIVE · 45. Min“, statt zur Halbzeit überzugehen. Ursache: die Feed-Minute (API-Football, echtes `elapsed`) hat in der Live-Uhr absoluten Vorrang — **ohne Frische-Check**. War das Tagesbudget des Gratis-Plans erschöpft (Spieltag = viele Live-Center-Besuche → viele Abfragen) oder der Liveticker langsam, blieb die zuletzt geschriebene Minute eingefroren stehen; auch der Score stand still. Das Modul versprach zwar „stiller Rückfall zur ≈-Uhr, nichts friert ein“ — der Rückfall griff aber nur bei *fehlender*, nicht bei *eingefrorener* Minute.
+- **Fix:** neue Spalte `matches.live_synced_at` (Zeitstempel jedes Live-Feed-Schreibversuchs, Migration `2026_10_09_001`, läuft beim Start automatisch). `live_clock_for` nimmt Minute/Phase des Feeds nur noch, wenn sie **jünger als 10 Minuten** sind; danach übernimmt die strukturierte Uhr mit „≈“ — im Befund-Fall also „Halbzeit ≈“ statt endloser „45. Min“ (im normalen Pausenfenster landet die Struktur-Uhr ohnehin bei Halbzeit, die Anzeige bleibt also stimmig). Zeitstempel ohne Wert (Alt-Bestand) bleibt wie bisher vertrauenswürdig.
+- Schreiber der Zeitstempel: Minute-Boost (API-Football) und football-data-Live-Sync; auch der Budget-Wächter-Rückfall friert damit nicht mehr ein. **+8 Tests** (Frische/Eingefroren/Pause früh/spät/Alt-Bestand/Zeitzonen-Normalisierung), Schreiber-Beweis in den Sync-Tests. Suite **686/686**, Hartgate 0, Node-Tests grün.
 ## [3.1.74] - 2026-10-09
 
 ### 🧹 Hausmeister-Runde: Test-Benachrichtigung im Digest-Format, tote Reminder-Wege entfernt, Version im Wartungscenter ((104))

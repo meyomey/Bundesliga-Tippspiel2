@@ -78,6 +78,7 @@ def test_live_minute_written_without_approx_sign(boost_env):
     dbm = Match.query.get(m.id)
     assert (dbm.status, dbm.home_score, dbm.away_score, dbm.minute, dbm.live_phase) \
         == ("live", 2, 1, 34, "IN_PLAY")
+    assert dbm.live_synced_at is not None  # (105) Frische-Guard-Stempel
     lc = live_clock_for(dbm)
     assert lc["minute"] == 34 and lc["derived"] is False   # echtes Feed-Datum -> ohne "≈"
 

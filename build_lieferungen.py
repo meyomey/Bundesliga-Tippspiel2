@@ -114,6 +114,7 @@ GITHUB_UPLOAD_FILES = [
     "templates/live.html",
     "static/js/live.js",
     "tests/test_live_minutes.py",
+    "tests/test_live_stale_guard.py",   # (105) Frische-Guard der Live-Uhr
     # 06.09.2026 (2): LIVE - Struktur-Uhr mit Feed-Vorrang (Free-Tier-Fix)
     "main_stats_routes.py",
     # 06.09.2026 (3): Live-Rangliste - Trend/+Punkte persistent statt 8s-Blur

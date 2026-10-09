@@ -180,6 +180,7 @@ class Match(db.Model):
     is_live = db.Column(db.Boolean, default=False)
     minute = db.Column(db.Integer, nullable=True)  # Aktuelle Minute (echter Feed-Wert; None = unbekannt)
     live_phase = db.Column(db.String(20), nullable=True)  # Live-Phase des Feeds: IN_PLAY / PAUSED (Halbzeit) / EXTRA_TIME / PENALTY_SHOOTOUT
+    live_synced_at = db.Column(db.DateTime, nullable=True)  # (105) UTC ohne TZ: letzter Feed-Schreibversuch (Frische-Guard gegen eingefrorene Minute)
     events = db.Column(db.Text, nullable=True)  # JSON: Torschuetzen-Liste {kind:"gf",...} (Goal-Boost)
     venue = db.Column(db.String(80), nullable=True)  # Stadion (football-data Free-Tier, "venue"-Feld)
 

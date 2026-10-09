@@ -22,7 +22,7 @@ EXPECTED_SCHEMA = {
         "notify_only_favorite", "default_tip_view", "calendar_token",
     ],
     "competitions": ["id", "code", "name", "season", "is_active"],
-    "matches": ["id", "competition_id", "matchday", "home_team_id", "away_team_id", "kickoff", "status"],
+    "matches": ["id", "competition_id", "matchday", "home_team_id", "away_team_id", "kickoff", "status", "live_synced_at"],
     "predictions": ["id", "user_id", "match_id", "home_tip", "away_tip", "joker", "points"],
     "notification_log": ["id", "user_id", "match_id", "channel", "kind", "sent_at"],
     "admin_activity_log": ["id", "admin_user_id", "action", "message", "created_at"],
@@ -117,6 +117,11 @@ def _migration_match_venue():
     return "matches.venue (Stadion aus football-data) sichergestellt"
 
 
+def _migration_match_live_synced_at():
+    _add_column_if_missing("matches", "live_synced_at", "DATETIME")
+    return "matches.live_synced_at (Frische-Guard gegen eingefrorene Live-Minute) sichergestellt"
+
+
 def _migration_invitation_codes_schema():
     """Stellt die Einladungscode-Tabelle explizit sicher.
 
@@ -177,6 +182,7 @@ MIGRATIONS = [
     ("2026_08_12_001_user_default_tip_view", "Standard-Tippansicht je User sicherstellen", _migration_user_default_tip_view),
     ("2026_09_12_001_match_venue", "Stadion-Spalte fuer Spielinfos", _migration_match_venue),
     ("2026_09_27_001_user_calendar_token", "Kalender-Token fuer ICS-Feed", _migration_user_calendar_token),
+    ("2026_10_09_001_match_live_synced_at", "Live-Sync-Zeitstempel fuer Frische-Guard", _migration_match_live_synced_at),
 ]
 
 

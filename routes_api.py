@@ -28,6 +28,27 @@ _LIVE_H1_END = 47      # 1. Halbzeit inkl. 1-2 Min Nachspielzeit vor der Pause
 _LIVE_HALF_END = 63    # Halbzeitpause bis ca. 15 Min + Anstossverzug
 _LIVE_FULL_END = 108   # spaetestens hier ist (inkl. 2. Nachspielzeit) Schluss
 _LIVE_BREAK = 15       # Dauer der Halbzeitpause
+_LIVE_STALE = 10 * 60  # (105) Sekunden ohne Feed-Schreiben -> Minute/Phase gilt als eingefroren
+
+
+def _live_sync_frisch(match, now=None):
+    """(105) True, solange der letzte Live-Feed-Schreibversuch frisch ist.
+
+    Hintergrund (Nutzerbefund 09.10.2026): das Live-Center blieb minutenlang
+    bei "45. Min", weil API-Football (Tagesbudget erschoepft) die letzte
+    Minute geschrieben und dann nicht mehr aktualisiert hatte. Ohne
+    Zeitstempel (Alt-Bestand vor (105)) gilt wie bisher: vertrauenswuerdig.
+    Naive/aware-Zeiten werden wie bei kickoff normalisiert.
+    """
+    ts = getattr(match, "live_synced_at", None)
+    if ts is None:
+        return True
+    now = now or datetime.now(timezone.utc)
+    if ts.tzinfo is None and now.tzinfo is not None:
+        now = now.replace(tzinfo=None)
+    elif ts.tzinfo is not None and now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    return abs((now - ts).total_seconds()) <= _LIVE_STALE
 
 
 def live_clock_for(match, now=None):
@@ -49,13 +70,18 @@ def live_clock_for(match, now=None):
     if not match or match.status != "live":
         return info
 
+    # 0) Frische-Guard ((105)): eingefrorene Feed-Werte (z. B. Tagesbudget
+    # erschoepft) duerfen die Anzeige nicht laenger als 10 Min blockieren —
+    # dann uebernimmt die als Naeherung markierte Struktur-Uhr (Regel 3).
+    frisch = _live_sync_frisch(match, now)
+
     # 1) Pause laut Liveticker ist verbindlich: keine Minute, klarer Hinweis.
-    if getattr(match, "live_phase", None) == "PAUSED":
+    if frisch and getattr(match, "live_phase", None) == "PAUSED":
         info["halftime"] = "feed"
         return info
 
-    # 2) Feed-Minute: verbindlich, wenn vorhanden.
-    if match.minute is not None:
+    # 2) Feed-Minute: verbindlich, wenn vorhanden (und frisch).
+    if frisch and match.minute is not None:
         try:
             info["minute"] = max(1, int(match.minute))
             if info["minute"] >= 90:

@@ -53,6 +53,7 @@ def test_sync_uebernimmt_echte_minute_und_pausiert_sie(db, competition, teams):
     assert m.status == 'live'
     assert m.minute == 34
     assert m.live_phase == 'IN_PLAY'
+    assert m.live_synced_at is not None   # (105) Frische-Guard-Stempel
 
     data = _fd_payload(900, teams[0], teams[1], status='PAUSED',
                        utc_date=ko, home_score=1, away_score=0)

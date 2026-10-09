@@ -330,6 +330,7 @@ def _process_football_data(data, comp_id, source="football-data.org"):
                 "IN_PLAY", "PAUSED", "EXTRA_TIME", "PENALTY_SHOOTOUT") else None
             if real_minute is not None:
                 existing.minute = real_minute
+            existing.live_synced_at = datetime.now(timezone.utc).replace(tzinfo=None)  # (105) Frische-Guard
         elif existing is not None and (existing.live_phase is not None or existing.minute is not None):
             existing.live_phase = None
 

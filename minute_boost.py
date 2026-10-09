@@ -451,6 +451,7 @@ def boost_minutes_from_apifootball(now=None):
 
     updated = 0
     affected_ids = set()
+    touched = []  # (105) auch ohne Wertveraenderung = Frische-Beweis
     for item in payload.get("response") or []:
         fix = item.get("fixture") or {}
         kickoff = _parse_dt(fix.get("date"))
@@ -492,13 +493,16 @@ def boost_minutes_from_apifootball(now=None):
             if elapsed is not None:
                 m.minute = max(1, elapsed)
             m.live_phase = "IN_PLAY"
+        m.live_synced_at = datetime.now(timezone.utc).replace(tzinfo=None)  # (105)
         after = (m.status, m.home_score, m.away_score, m.minute, m.live_phase)
         if before != after:
             updated += 1
             affected_ids.add(m.id)
+        touched.append(m.id)
 
+    if touched:
+        db.session.commit()  # (105) Frische-Stempel auch ohne Wertveraenderung
     if updated:
-        db.session.commit()
         from scoring import recalculate_matches_points
         from badges import check_and_award_badges
         from models import User
