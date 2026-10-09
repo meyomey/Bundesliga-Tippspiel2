@@ -16,6 +16,15 @@
 
 
 
+
+## [3.1.68] - 2026-10-09
+
+### 🔧 pip-audit-Nachbesserung: Blockskalar-Kommentare + Advisory-Drift (98)
+
+- **Run #103-Analyse:** Python 3.9 ist mit dem (97)-Fix **grün** — nur pip-audit stieß noch mit **Exit 2** (Argument-Fehler). Ursache: die (97)-Begründungskommentare standen INNERHALB des YAML-Blockskalars `IGNORE_39: >-` — Blockskalare kennen keine `#`-Kommentare, das `#` erreichte pip-audit als unbekanntes Argument. Die Kommentare stehen jetzt als echte YAML-Kommentare ÜBER dem Wert (mit Achtungs-Hinweis für die Zukunft).
+- **Advisory-Drift abgefangen:** die lokale CI-Simulation (IGNORE_39 exakt wie im Workflow expandiert) zeigte vor dem Push ein drittes neues urllib3-Advisory **PYSEC-2026-4177** (Fix wie 4175/4176 nur in ≥3.10-Versionen) → in die IGNORE_39-Liste aufgenommen. Genau dafür ist die Simulation da: Run #104 wäre damit sonst rot geworden.
+- **Regressionsschutz:** neuer Test `tests/test_ci_workflow.py` (ohne YAML-Abhängigkeit) wacht über den IGNORE_39-Block: kein `#` im Wert, nur valide `--ignore-vuln`-Tokens, urllib3-IDs + Werkzeug-3.1.9-Pin verdrahtet.
+- Beweis: pip-audit beide Dateien **exit 0** unter der exakt nachgestellten CI-Invocation.
 ## [3.1.67] - 2026-10-09
 
 ### 🔧 CI-Heilung: Werkzeug-CVE + 3.9-kompatibler Cache-Test (97)

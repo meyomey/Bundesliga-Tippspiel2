@@ -63,6 +63,7 @@ GITHUB_UPLOAD_FILES = [
     "requirements_py39.txt",
     ".github/workflows/tests.yml",
     "tests/test_cache_manager.py",
+    "tests/test_ci_workflow.py",
     # 08.10.2026 (96): Rechtliche Stammdaten in DB (deploy-sicher)
     "tests/test_recht_einstellungen.py",
     # 08.10.2026 (95): Registrierung — Dopplung + Kontakt-E-Mail
