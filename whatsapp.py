@@ -10,12 +10,9 @@ Setup für jeden User (einmalig):
 
 Doku: https://www.callmebot.com/blog/free-api-whatsapp-messages/
 """
-import time
 import urllib.parse
-from datetime import datetime, timedelta, timezone
 import requests
 from flask import current_app
-from competition_helpers import filter_matches_for_active_competition
 
 
 def send_whatsapp_message(phone: str, apikey: str, message: str) -> bool:
@@ -39,61 +36,6 @@ def send_whatsapp_message(phone: str, apikey: str, message: str) -> bool:
     except requests.RequestException as e:
         current_app.logger.error(f"CallMeBot Request-Fehler: {e}")
         return False
-
-
-def send_whatsapp_reminder_for_match(match, app=None) -> tuple[int, int]:
-    """Sendet WhatsApp-Erinnerung für ein Spiel an alle User, die noch nicht getippt haben."""
-    from models import User, Prediction
-    kickoff_str = match.kickoff.strftime("%d.%m. %H:%M Uhr")
-    message = (
-        f"⚽ *Wulmstörper Tipprunde*\n\n"
-        f"Erinnerung: {match.home_team.short_name} – {match.away_team.short_name} "
-        f"startet um *{kickoff_str}*!\n\n"
-        f"Du hast noch nicht getippt. Schnell sein! 🎯\n"
-        f"👉 Spieltag {match.matchday} tippen"
-    )
-    users = User.query.filter(
-        User.whatsapp_phone.isnot(None),
-        User.whatsapp_apikey.isnot(None),
-        User.whatsapp_phone != "",
-        User.whatsapp_apikey != "",
-        ~User.email.like("%@bot.local"),
-    ).all()
-    sent = 0
-    failed = 0
-    for user in users:
-        pred = Prediction.query.filter_by(user_id=user.id, match_id=match.id).first()
-        if pred:
-            continue
-        success = send_whatsapp_message(
-            user.whatsapp_phone, user.whatsapp_apikey, message
-        )
-        if success:
-            sent += 1
-        else:
-            failed += 1
-        time.sleep(1.2)
-    return sent, failed
-
-
-def whatsapp_reminder_job(app):
-    """Scheduler-Job: Schickt WhatsApp-Reminder 1h vor Spielbeginn."""
-    with app.app_context():
-        from models import Match
-        now = datetime.now(timezone.utc)
-        upcoming_q = Match.query.filter(
-            Match.kickoff > now,
-            Match.kickoff <= now + timedelta(hours=1, minutes=5),
-            Match.status == "scheduled",
-        )
-        upcoming = filter_matches_for_active_competition(upcoming_q).all()
-        for match in upcoming:
-            sent, failed = send_whatsapp_reminder_for_match(match, app)
-            if sent > 0 or failed > 0:
-                print(
-                    f"[{now}] WhatsApp Spieltag {match.matchday}: "
-                    f"{sent} gesendet, {failed} fehlgeschlagen"
-                )
 
 
 def send_whatsapp_test(user) -> bool:

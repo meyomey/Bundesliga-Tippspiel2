@@ -17,6 +17,58 @@
 
 
 
+
+
+
+
+
+
+## [3.1.74] - 2026-10-09
+
+### 🧹 Hausmeister-Runde: Test-Benachrichtigung im Digest-Format, tote Reminder-Wege entfernt, Version im Wartungscenter ((104))
+
+- **Test-Benachrichtigung zeigt jetzt das echte Digest-Format** ((100)/(101)): die Vorschau im Profil baute noch den alten Einzelspiel-Text („… startet am … Uhr“) — echte Erinnerungen sind aber zusammengefasste Listen. Die Test-Nachricht spiegelt jetzt exakt das Digest-Layout (Bullet-Liste „• Heim – Gast · Datum Zeit“, E-Mail-Subject mit Spielzahl, „👉 Jetzt tippen“-Link wie im echten Lauf, Push-Karte mit Gesamtzahl). Weiterhin ohne NotificationLog-Eintrag — der Test blockiert keine echten Erinnerungen.
+- **Tote Reminder-Wege entfernt** (parallel zum Digest, nie im Cron verdrahtet — Doppel-Erinnerungs-Risiko): `push_reminder_job` (push_routes) sowie `send_whatsapp_reminder_for_match` + `whatsapp_reminder_job` (whatsapp) inkl. zugehöriger Tests. Der produktive Weg läuft ausschließlich über `run_reminder_cycle` (Cron „reminder“); die manuelle Admin-Push-Erinnerung (`_remind_upcoming`) bleibt unangetastet.
+- **Wartungscenter zeigt die App-Version** als Kachel („v3.1.74 · App“) direkt neben der Python-Version — passend zur Versionskennung aus (103).
+- Suite **678/678** (−4 tote Tests, +1 Wartungscenter-Test), Hartgate 0, Node-Tests grün.
+## [3.1.73] - 2026-10-09
+
+### 🏷️ Versionskennung der App ((103) — Nutzerwunsch: „Es fehlt noch eine Versionskennung“)
+
+- **Neu `version.py`** als **einzige Quelle der Wahrheit** (`APP_VERSION` + `APP_RELEASE`): angezeigt im **Footer auf jeder Seite** („Wulmstörper Tipprunde · v3.1.73“) und maschinenlesbar in **`/healthz`** (`"version": …`) — Deploy-Kontrolle ohne Ratzen: ein Blick auf jede Seite bzw. ins Monitoring zeigt die Live-Version.
+- **Sync-Guard:** `tests/test_version_kennung.py` erzwingt, dass `version.py` und die neueste CHANGELOG-Sektion identisch stehen — ein Eintragsschritt pro Release, Vergessen unmöglich (der Test hat sein Funktionieren gleich bei der Einführung demonstriert: 3.1.73 im Code vs. noch 3.1.72 im CHANGELOG → sofortiger Alarm).
+- Release-Schritt künftig: `version.py` + CHANGELOG + README-Badge (3 Stellen, 1 Test bewacht sie). Suite **681/681**, Hartgate 0.
+## [3.1.72] - 2026-10-09
+
+### 🏷️ Irreführender „Tippschluss“-Chip umbenannt ((102) — Nutzerbefund mit Screenshot)
+
+- **Befund:** der bernsteinfarbene Chip an ungetippten Spielen mit Anstoß in < 24 h hieß „Tippschluss“ — das klingt nach *nicht mehr tippbar*, obwohl genau dort **noch getippt werden kann** (bis zum Anpfiff). Verwirrend auf dem Dashboard und besonders auf „Offene Tipps“, wo per Definition alles offen ist.
+- **Fix:** der Chip heißt jetzt **„Jetzt tippen“** (auf beiden Seiten: Dashboard-„Nächste Spiele“ + „Offene Tipps“) — aktiv, klar und dringlich; der bernstein-Stil bleibt als Dringlichkeits-Signal. Der Tooltip klart auf: „Tipp noch möglich – Anstoß in weniger als 24 Stunden“. CSS-Klassen bleiben unverändert (Style-Anker, kein vischer Unterschied außer dem Wort).
+- Neutraler Gegenpol bleibt: ≥ 24 h → „Tippen“ bzw. „Noch tippen“; getippt → „Getippt“.
+- Tests auf neuen Text umgestellt + Negativ-Guards („Tippschluss“ darf nicht mehr auftauchen). Suite **677/677**, Hartgate 0, Node-Tests grün.
+## [3.1.71] - 2026-10-09
+
+### 📬 Digest komplett: auch Telegram + Push als EINE Nachricht ((101) — Nutzerwunsch-Nachtrag)
+
+- Nachtrag zu (100): der Digest gilt jetzt für **alle vier Kanäle**. **Telegram** erhält dieselbe zusammengefasste Nachricht wie WhatsApp (Liste aller offenen Spiele + „👉 Jetzt tippen“-Link), **Push** eine kompakte Karte („Du hast noch nicht getippt (N Spiele)“) mit direktem Sprung zur Tipp-Seite bzw. Offene-Tipps-Übersicht.
+- Dedup bleibt wie gehabt spielgenau; Wellen-Fenster, Vorläufe und Master-Schalter unverändert. Zyklus-Report zählt jetzt Nachrichtenzahlen pro Kanal.
+- **+1 Test** (Telegram-Digest mit allen Spielen + Link), Push-Digest-Test mit Karte-/Link-/Dedup-Assertions. Suite **677/677**, Hartgate 0.
+## [3.1.70] - 2026-10-09
+
+### 📬 Erinnerungen als Digest: EINE E-Mail + EINE WhatsApp statt Spam-Kaskade ((100) — Nutzerwunsch mit Screenshot)
+
+- **Vorher:** pro Spiel eine Nachricht — bei 4 Spielen desselben Spieltags kamen 4 einzelne „Tipp-Erinnerungen“ (WhatsApp-Screenshot).
+- **Jetzt:** der automatische Reminder-Zyklus sendet **E-Mail und WhatsApp pro User als eine zusammengefasste Nachricht**: alle tipppflichtigen Spiele des Wellen-Fens­ters als Liste („Du hast noch nicht getippt (4 Spiele)“ + Zeilen „Heim – Gast · Datum Zeit“) **inkl. Tipp-Link** — alle Spiele desselben Spieltags verlinken auf `/tippen/<Spieltag>`, bei Spieltags-Mix auf `/meine-offenen-tipps`.
+- **CallMeBot-Link nachgerüstet:** auch die Einzel-Erinnerung (manueller Admin-Versand) enthält jetzt „👉 Jetzt tippen: …“ — vorher hatte nur die E-Mail einen Link (zweiter Nutzerbefund).
+- **Unverändert bleiben:** Push & Telegram (spielweise, mit Link zum Spiel — bewusst nicht angefasst), Wellen-Fenster/-Vorlauf, der spielgenaue Dedup (jedes Digest-Spiel wird individuell geloggt; taucht später ein weiteres Spiel im Fenster auf, folgt ein kleiner Nach-Digest nur dafür), Master-Schalter und Test-Benachrichtigung.
+- **+6 Tests** (Screenshot-Fall: genau 1 Mail + 1 WhatsApp mit allen 4 Spielen + Link; Dedup; Nach-Digest nur für neue Spiele; Telegram bleibt spielweise; Spieltags-Mix-Link; Einzelweg-Link). Suite **676/676**, Hartgate 0.
+## [3.1.69] - 2026-10-09
+
+### 🔢 Banner-Zahl im Spieltags-Scope ((99) — Nutzerbefund mit Screenshot: „Banner 5, aber 8 offen?“)
+
+- **Ursache:** der Countdown-Banner zählte nur Spiele im 24-h-Urgency-Fenster (`max_hours=24`) — bei Anpfiff in 21h57m lagen also nur 5 der 8 offenen ST5-Spiele im Fenster. Dashboard-Karte und Bottom-Bar zählen den ganzen Spieltag → drei Anzeigen, zwei verschiedene Zahlen.
+- **Fix:** der Banner zählt jetzt den **gesamten Spieltag seines Zielspieltags** (gemeinsamer Helfer `_md_tip_zahl` für Banner, Karte und Bottom-Bar — eine Quelle, eine Zahl). **Unverändert bleibt** das Feature-B-Design: Sichtbarkeit nur im 24-h-Fenster, Countdown-Semantik und CTA-Link exakt wie vorher. Randfall sauber gelöst: zeigt der Banner (selten) den Folgespieltag, zählt er genau den Spieltag, zu dem „Jetzt tippen“ führt.
+- **+3 Tests** (Screenshot-Lage: Banner 8 ≠ 5 + Deckungsgleichheit mit Karte/Bottom-Bar; Banner außerhalb 24 h weiterhin versteckt; alles getippt → kein Banner). Suite **670/670**, Hartgate 0.
 ## [3.1.68] - 2026-10-09
 
 ### 🔧 pip-audit-Nachbesserung: Blockskalar-Kommentare + Advisory-Drift (98)

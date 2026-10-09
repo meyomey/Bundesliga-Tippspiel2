@@ -33,6 +33,7 @@ from routes_main import main_bp
 # Partner-Module registrieren ihre Routen direkt auf main_bp (statt Lazy-Wrapper in routes_main.py)
 import main_tips_routes  # noqa: F401
 import main_stats_routes  # noqa: F401
+from version import APP_VERSION  # (103) sichtbare Versionskennung
 import main_pwa_routes  # noqa: F401
 import main_profile_routes  # noqa: F401
 import main_export_routes  # noqa: F401
@@ -100,7 +101,7 @@ def create_app(config_object=Config):
 
     @app.context_processor
     def inject_globals():
-        ctx = {"now": lambda: datetime.now(timezone.utc), "asset_version": _asset_version, "player_preview_mode": bool(session.get("player_preview_mode")), "comp_label": competition_label}
+        ctx = {"now": lambda: datetime.now(timezone.utc), "asset_version": _asset_version, "player_preview_mode": bool(session.get("player_preview_mode")), "comp_label": competition_label, "app_version": APP_VERSION}
 
         try:
             comp = get_active_competition()
@@ -116,35 +117,52 @@ def create_app(config_object=Config):
             ctx["active_competition_season"] = get_setting("current_season", "")
             ctx["all_competitions"] = []
 
+        def _md_tip_zahl(user, matchday):
+            """(99) Getippt/offen fuer einen Spieltag (aktiver Wettbewerb).
+
+            Eine Quelle fuer Banner, Dashboard-Karte und Bottom-Bar — alle
+            drei nennen dieselbe Zahl fuer denselben Spieltag.
+            """
+            from models import Match, Prediction
+            q = Match.query.filter_by(matchday=matchday)
+            comp = get_active_competition()
+            if comp:
+                q = q.filter(Match.competition_id == comp.id)
+            matches = q.all()
+            match_ids = [m.id for m in matches]
+            tipped = 0
+            if match_ids:
+                tipped = Prediction.query.filter(
+                    Prediction.user_id == user.id,
+                    Prediction.match_id.in_(match_ids),
+                ).count()
+            return {"tipped": tipped, "total": len(matches),
+                    "open": max(len(matches) - tipped, 0)}
+
         if current_user.is_authenticated:
             try:
+                # (99) Urgency-Fenster (24 h) bleibt: Es steuert nur, OB und
+                # WANN der Banner erscheint (Feature-B-Design). Die ZAHL im
+                # Banner zaehlt jetzt den ganzen Spieltag des Banner-Ziels —
+                # vorher zaehlte sie nur Spiele im 24-h-Fenster (5), waehrend
+                # Karte + Bottom-Bar den Spieltag zaehlten (8) → Widerspruch.
                 open_matches = get_open_matches_for_user(current_user, max_hours=24)
-                ctx["open_match_count"] = len(open_matches)
                 ctx["next_open_match"] = open_matches[0] if open_matches else None
+                ctx["open_match_count"] = (
+                    _md_tip_zahl(current_user, ctx["next_open_match"].matchday)["open"]
+                    if ctx["next_open_match"] is not None else 0)
             except Exception:
                 ctx["open_match_count"] = 0
                 ctx["next_open_match"] = None
             try:
-                from models import Match, Prediction
                 current_md = get_current_matchday()
-                q = Match.query.filter_by(matchday=current_md)
-                comp = ctx.get("active_competition_obj")
-                if comp:
-                    q = q.filter(Match.competition_id == comp.id)
-                matches = q.all()
-                match_ids = [m.id for m in matches]
-                tipped = 0
-                if match_ids:
-                    tipped = Prediction.query.filter(
-                        Prediction.user_id == current_user.id,
-                        Prediction.match_id.in_(match_ids),
-                    ).count()
+                zahl = _md_tip_zahl(current_user, current_md)
                 ctx["global_tip_status"] = {
                     "matchday": current_md,
-                    "tipped": tipped,
-                    "total": len(matches),
-                    "open": max(len(matches) - tipped, 0),
-                    "text": f"Spieltag {current_md}: {tipped}/{len(matches)} getippt" if matches else f"Spieltag {current_md}: —",
+                    "tipped": zahl["tipped"],
+                    "total": zahl["total"],
+                    "open": zahl["open"],
+                    "text": f"Spieltag {current_md}: {zahl['tipped']}/{zahl['total']} getippt" if zahl["total"] else f"Spieltag {current_md}: —",
                 }
             except Exception:
                 ctx["global_tip_status"] = None
@@ -415,6 +433,7 @@ def create_app(config_object=Config):
         except Exception:
             db_ok = False
         body = {"status": "ok" if db_ok else "degraded", "db": db_ok,
+                "version": APP_VERSION,  # (103) Deploy-Kontrolle ohne raten
                 "time": datetime.now(timezone.utc).isoformat()}
         return jsonify(body), (200 if db_ok else 503)
 

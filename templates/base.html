@@ -296,7 +296,7 @@
 </main>
 
 <footer class="footer">
-  <p>⚽ Wulmstörper Tipprunde · Made with Flask · {{ now().year }}</p>
+  <p>⚽ Wulmstörper Tipprunde · <span title="App-Version ({{ now().strftime('%d.%m.%Y') }})">v{{ app_version }}</span> · Made with Flask · {{ now().year }}</p>
   <p class="meta">
     <a href="{{ url_for('main.impressum') }}">Impressum</a> ·
     <a href="{{ url_for('main.datenschutz') }}">Datenschutz</a> ·

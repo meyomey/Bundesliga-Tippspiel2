@@ -18,6 +18,7 @@
   <div class="admin-stats" style="margin-bottom:0;">
     <div class="admin-stat"><div class="as-icon">🛡️</div><div><div class="as-num">{{ 'OK' if health.db_ok else '!' }}</div><div class="as-lbl">Datenbank</div></div></div>
     <div class="admin-stat"><div class="as-icon">🐍</div><div><div class="as-num">{{ health.python_version }}</div><div class="as-lbl">Python</div></div></div>
+    <div class="admin-stat"><div class="as-icon">🏷️</div><div><div class="as-num">v{{ app_version }}</div><div class="as-lbl">App</div></div></div>
     <div class="admin-stat"><div class="as-icon">⚽</div><div><div class="as-num">{{ health.teams_total }}</div><div class="as-lbl">Teams</div></div></div>
     <div class="admin-stat"><div class="as-icon">🌐</div><div><div class="as-num">{{ health.remote_logos }}</div><div class="as-lbl">Externe Logos</div></div></div>
   </div>

@@ -155,13 +155,6 @@ def _remind_upcoming() -> tuple[int, int]:
     return total_sent, total_failed
 
 
-def push_reminder_job(app):
-    """Wird vom Scheduler aufgerufen."""
-    with app.app_context():
-        sent, failed = _remind_upcoming()
-        if sent > 0:
-            print(f"[{datetime.now(timezone.utc)}] Push-Reminder: {sent} gesendet, {failed} fehlgeschlagen")
-
 
 def register_push_routes(app):
     app.register_blueprint(push_bp)

@@ -11,7 +11,6 @@ from push_routes import (
     _remind_for_match,
     _remind_upcoming,
     _send_push_to_users,
-    push_reminder_job,
 )
 
 
@@ -168,8 +167,3 @@ def test_remind_upcoming_fenster(app, db, user, competition, teams, monkeypatch)
     db.session.commit()
     sent, failed = _remind_upcoming()
     assert (sent, failed) == (1, 0)
-
-
-def test_push_reminder_job_laueft_leer(app):
-    """Scheduler-Job ohne passende Spiele: kein Crash."""
-    push_reminder_job(app)

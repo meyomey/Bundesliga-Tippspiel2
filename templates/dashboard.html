@@ -156,8 +156,10 @@
             {% if p %}
               <span class="chip-success">Getippt</span>
             {% elif m.is_open() and (m.kickoff - now_utc).total_seconds() < 86400 %}
-              {# (87) Dringlichkeit: ungetippt & Anstoss in < 24 h #}
-              <span class="chip chip-urgent" title="Anstoss in weniger als 24 Stunden">Tippschluss</span>
+              {# (102) „Tippschluss“ klang nach geschlossen, obwohl der Tipp
+                 weiter moeglich ist → jetzt aktives „Jetzt tippen“. Der
+                 Klassenname chip-urgent bleibt (Style-Anker, bernstein). #}
+              <span class="chip chip-urgent" title="Tipp noch möglich – Anstoß in weniger als 24 Stunden">Jetzt tippen</span>
             {% else %}
               <span class="chip">Tippen</span>
             {% endif %}

@@ -122,16 +122,18 @@ def test_st_kuerzel_ist_link_zum_schnelltipp(client, app, db, user,
     assert '/tippen/5' in body
 
 
-def test_tippschluss_chip_bei_ungetippt_und_kurzfristig(client, app, db, user,
-                                                        competition, teams, monkeypatch):
-    """(87) Ungetippt + Anstoss in < 24 h -> Warn-Chip „Tippschluss“;
+def test_urgent_chip_jetzt_tippen_bei_ungetippt_und_kurzfristig(client, app, db, user,
+                                                                competition, teams, monkeypatch):
+    """(87)/(102) Ungetippt + Anstoss in < 24 h -> bernstein-Chip „Jetzt
+    tippen“ (vorher „Tippschluss“ — klang nach geschlossen, Nutzerbefund);
     bei 72 h bleibt es der neutrale „Tippen“-Chip."""
     monkeypatch.setitem(app.config, "COMPETITION", competition.code)
     _spiel(db, competition, teams, 5, 5)     # kurzfristig
     _spiel(db, competition, teams, 6, 72)    # entspannt
     _login(client, user.email, "testpass123")
     body = client.get("/dashboard").get_data(as_text=True)
-    assert 'chip-urgent' in body and 'Tippschluss' in body
+    assert 'chip-urgent' in body and 'Jetzt tippen' in body
+    assert 'Tippschluss' not in body         # (102) irrefuehrendes Wort weg
     # der entspannte ST-6-Match hat den normalen Chip
     assert body.count('chip-urgent') == 1
 
@@ -188,16 +190,18 @@ def test_dashboard_nutzt_selbstinit_ohne_doppelte_verdrahtung():
     assert 'tagesLabel(el.dataset.utc)' not in tpl
 
 
-def test_offene_tipps_tippschluss_chip(client, app, db, user,
-                                       competition, teams, monkeypatch):
-    """(88) Offene-Tipps-Seite: ungetippt & < 24 h -> Warn-Chip
-    „Tippschluss"; 72 h -> neutraler „Noch tippen“-Chip."""
+def test_offene_tipps_urgent_chip(client, app, db, user,
+                                  competition, teams, monkeypatch):
+    """(88)/(102) Offene-Tipps-Seite: ungetippt & < 24 h -> bernstein-Chip
+    „Jetzt tippen“ (Klasse tippschluss bleibt Style-Anker); 72 h ->
+    neutraler „Noch tippen“-Chip. Das irrefuehrende „Tippschluss“ ist weg."""
     monkeypatch.setitem(app.config, "COMPETITION", competition.code)
     _spiel(db, competition, teams, 5, 5)     # kurzfristig
     _spiel(db, competition, teams, 5, 72)    # entspannt
     _login(client, user.email, "testpass123")
     body = client.get("/meine-offenen-tipps/5").get_data(as_text=True)
-    assert 'Tippschluss' in body and 'tippschluss' in body
+    assert 'Jetzt tippen' in body and 'Tippschluss' not in body
+    assert 'tippschluss' in body             # Klassenname bleibt (Style)
     assert 'Noch tippen' in body
     assert body.count('tippschluss') == 1    # nur der kurzfristige
 

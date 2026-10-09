@@ -89,4 +89,7 @@ def test_test_missing_tip_notification_sends_without_log(app, db, user, match, m
         assert res['email'] is True
         assert len(sent) == 1
         assert 'Test' in sent[0][0]
+        # (104) Vorschau im Digest-Format: Bullet-Liste + Link
+        assert '• ' in sent[0][2]
+        assert 'Jetzt tippen: ' in sent[0][2]
         assert NotificationLog.query.filter_by(user_id=user.id, match_id=match.id, channel='email').count() == 0

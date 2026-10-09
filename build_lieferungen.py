@@ -64,6 +64,20 @@ GITHUB_UPLOAD_FILES = [
     ".github/workflows/tests.yml",
     "tests/test_cache_manager.py",
     "tests/test_ci_workflow.py",
+    # 09.10.2026 (103): Versionskennung (version.py, Footer, /healthz)
+    "version.py",
+    "tests/test_version_kennung.py",
+    # 09.10.2026 (104): Hausmeister-Runde — Gate hat die Luecke gemeldet:
+    # push_routes/whatsapp waren NIE in der Liste (bis (104) nie geaendert)
+    "push_routes.py",
+    "whatsapp.py",
+    "tests/test_export_whatsapp_coverage.py",
+    "tests/test_notifications.py",
+    # 09.10.2026 (100): Erinnerungs-Digest (E-Mail/WhatsApp) + CallMeBot-Link
+    "notification_center.py",
+    "tests/test_reminder_digest.py",
+    # 09.10.2026 (99): Banner-Zahl im Spieltags-Scope
+    "tests/test_banner_zahl.py",
     # 08.10.2026 (96): Rechtliche Stammdaten in DB (deploy-sicher)
     "tests/test_recht_einstellungen.py",
     # 08.10.2026 (95): Registrierung — Dopplung + Kontakt-E-Mail

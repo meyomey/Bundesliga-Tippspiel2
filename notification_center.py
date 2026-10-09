@@ -157,14 +157,21 @@ def send_user_notification(user, match, channels=None, *, tipped_user_ids=None,
         if not _window_hit(match, user, wave, now):
             return result
 
+    # (100) Base-URL einmal vor allen Kanaelen berechnen — braucht E-Mail
+    # UND jetzt auch der WhatsApp-/CallMeBot-Link.
+    try:
+        from scoring import get_setting
+        _base = (email_base_url if email_base_url is not None
+                 else get_setting("public_base_url", current_app.config.get("PUBLIC_BASE_URL", ""))).rstrip("/")
+    except Exception:
+        _base = ""
+    match_url = (_base + f"/match/{match.id}") if _base else f"/match/{match.id}"
+
     # E-Mail
     if "email" in channels and _truthy(getattr(user, "notify_email", True), True) and not _already_sent(user, match, "email", kind, sent_cache=sent_cache):
         try:
             from mail_helpers import send_email
-            from scoring import get_setting
-            base = (email_base_url if email_base_url is not None
-                    else get_setting("public_base_url", current_app.config.get("PUBLIC_BASE_URL", ""))).rstrip("/")
-            match_url = (base + f"/match/{match.id}") if base else f"/match/{match.id}"
+
             result["email"] = send_email(
                 f"⚽ Tipp-Erinnerung: {match.home_team.short_name} – {match.away_team.short_name}",
                 [user.email],
@@ -206,8 +213,11 @@ def send_user_notification(user, match, channels=None, *, tipped_user_ids=None,
         if user.whatsapp_phone and user.whatsapp_apikey:
             try:
                 from whatsapp import send_whatsapp_message
+                # (100) CallMeBot-Nachricht enthielt bislang keinen Link
+                wa_text = (reminder_message(match, plain=False)
+                           + f"\n\n👉 Jetzt tippen: {match_url}")
                 result["whatsapp"] = send_whatsapp_message(
-                    user.whatsapp_phone, user.whatsapp_apikey, reminder_message(match, plain=False)
+                    user.whatsapp_phone, user.whatsapp_apikey, wa_text
                 )
                 if result["whatsapp"]:
                     _mark_sent(user, match, "whatsapp", kind, sent_cache=sent_cache)
@@ -263,6 +273,153 @@ def send_match_reminders(match, channels=None, *, wave: int = 1,
         db.session.flush()  # alle _mark_sent-Inserts auf einen Schlag
     except Exception as e:
         current_app.logger.warning(f"Notification-Log-Bulk-Flush fehlgeschlagen: {e}")
+        db.session.rollback()
+    return summary
+
+
+# ============================================================ Digest (100) —
+def _digest_link(matches, base):
+    """CTA-Link fuer den Digest: ein Spieltag -> /tippen/<md>, mehrere ->
+    /meine-offenen-tipps (uebersicht ueber ALLE offenen Tipps)."""
+    spieltage = {m.matchday for m in matches}
+    pfad = (f"/tippen/{matches[0].matchday}" if len(spieltage) == 1
+            else "/meine-offenen-tipps")
+    return (base + pfad) if base else pfad
+
+
+def _digest_zeile(match):
+    ko = match.kickoff.strftime("%d.%m. %H:%M") if match.kickoff else "?"
+    return f"• {match.home_team.name} – {match.away_team.name} · {ko}"
+
+
+def send_digest_reminders(matches, channels, *, wave: int = 1, now=None,
+                          tipped_by_match=None, sent_cache=None,
+                          email_base_url=None) -> dict:
+    """(100) E-Mail + WhatsApp als EINE zusammengefasste Nachricht pro User.
+
+    Anlass (Nutzerfeedback + Screenshot): 4 einzelne „Tipp-Erinnerung“-
+    Nachrichten fuers selben Spieltag sind Spam. Der Digest listet ALLE
+    tipppflichtigen Spiele im Wellen-Fenster mit Link. Dedup bleibt
+    spielgenau: Jedes enthaltene Spiel wird individuell markiert — taucht
+    spaeter ein weiteres Spiel im Fenster auf, folgt ein Digest nur dafuer.
+    Seit (101) gelten ALLE VIER Kanaele: Telegram erhaelt denselben Text
+    wie WhatsApp, Push eine kompakte Karte (Gesamtzahl + Digest-Link).
+    """
+    summary = {"users": 0, "email": 0, "whatsapp": 0, "telegram": 0, "push": 0}
+    matches = [m for m in matches if m is not None]
+    if not matches or not channels:
+        return summary
+    now = now or datetime.now(timezone.utc)
+    kind = WAVE_KINDS.get(wave, WAVE_KINDS[1])
+    users = User.query.filter(~User.email.like("%@bot.local")).all()
+    ids = [m.id for m in matches]
+
+    if tipped_by_match is None:
+        tipped_by_match = {}
+        for uid, mid in (db.session.query(Prediction.user_id, Prediction.match_id)
+                         .filter(Prediction.match_id.in_(ids)).all()):
+            tipped_by_match.setdefault(mid, set()).add(uid)
+    if sent_cache is None:
+        sent_cache = {
+            (r.user_id, r.match_id, r.channel, r.kind)
+            for r in db.session.query(
+                NotificationLog.user_id, NotificationLog.match_id,
+                NotificationLog.channel, NotificationLog.kind,
+            ).filter(NotificationLog.match_id.in_(ids),
+                     NotificationLog.kind == kind).all()
+        }
+    if email_base_url is None:
+        try:
+            from scoring import get_setting
+            email_base_url = get_setting("public_base_url",
+                                         current_app.config.get("PUBLIC_BASE_URL", ""))
+        except Exception:
+            email_base_url = current_app.config.get("PUBLIC_BASE_URL", "")
+    base = (email_base_url or "").rstrip("/")
+
+    for user in users:
+        user_bekam_etwas = False
+        for ch in channels:
+            if ch == "email":
+                if not user.email or not _truthy(getattr(user, "notify_email", True), True):
+                    continue
+            elif ch == "whatsapp":
+                if not _truthy(getattr(user, "notify_whatsapp", True), True):
+                    continue
+                if not (user.whatsapp_phone and user.whatsapp_apikey):
+                    continue
+            elif ch == "telegram":
+                if not _truthy(getattr(user, "notify_telegram", True), True):
+                    continue
+            elif ch == "push":
+                if not _truthy(getattr(user, "notify_push", True), True):
+                    continue
+                if not user.push_subscription:
+                    continue
+            else:
+                continue
+            eligible = [m for m in matches
+                        if user_wants_match_reminder(
+                            user, m, tipped_user_ids=tipped_by_match.get(m.id, set()))
+                        and _window_hit(m, user, wave, now)
+                        and (user.id, m.id, ch, kind) not in sent_cache]
+            if not eligible:
+                continue
+
+            link = _digest_link(eligible, base)
+            n = len(eligible)
+            liste = "\n".join(_digest_zeile(m) for m in eligible)
+            gesendet = False
+            try:
+                if ch == "email":
+                    from mail_helpers import send_email
+                    thema = (f"⚽ Tipp-Erinnerung: 1 offenes Spiel" if n == 1
+                             else f"⚽ Tipp-Erinnerung: {n} offene Spiele")
+                    body = (f"Hallo {user.username},\n\n"
+                            f"du hast noch nicht getippt ({n} "
+                            f"Spiel{'e' if n != 1 else ''}):\n\n"
+                            f"{liste}\n\nJetzt tippen: {link}\n")
+                    gesendet = send_email(thema, [user.email], body)
+                elif ch == "whatsapp":
+                    from whatsapp import send_whatsapp_message
+                    text = ("⚽ *Tipp-Erinnerung*\n\n"
+                            f"Du hast noch nicht getippt ({n} "
+                            f"Spiel{'e' if n != 1 else ''}):\n\n"
+                            f"{liste}\n\n👉 Jetzt tippen: {link}")
+                    gesendet = send_whatsapp_message(
+                        user.whatsapp_phone, user.whatsapp_apikey, text)
+                elif ch == "telegram":
+                    from telegram_bot import notify_user_telegram
+                    text = ("⚽ Tipp-Erinnerung\n\n"
+                            f"Du hast noch nicht getippt ({n} "
+                            f"Spiel{'e' if n != 1 else ''}):\n\n"
+                            f"{liste}\n\n👉 Jetzt tippen: {link}")
+                    gesendet = notify_user_telegram(user, text)
+                else:  # push — kompakte Karte statt Spielliste
+                    from push_routes import _send_push_to_users
+                    sent, _failed = _send_push_to_users([user], {
+                        "title": "⚽ Tipp-Erinnerung",
+                        "body": (f"Du hast noch nicht getippt ({n} "
+                                 f"Spiel{'e' if n != 1 else ''})."),
+                        "url": _digest_link(eligible, ""),
+                        "tag": f"digest-{kind}-{user.id}",
+                    })
+                    gesendet = sent > 0
+            except Exception as e:
+                current_app.logger.warning(
+                    f"Digest-{ch} fehlgeschlagen fuer User {user.id}: {e}")
+                gesendet = False
+            if gesendet:
+                summary[ch] += 1
+                user_bekam_etwas = True
+                for m in eligible:
+                    _mark_sent(user, m, ch, kind, sent_cache=sent_cache)
+        if user_bekam_etwas:
+            summary["users"] += 1
+    try:
+        db.session.flush()
+    except Exception as e:
+        current_app.logger.warning(f"Digest-Log-Bulk-Flush fehlgeschlagen: {e}")
         db.session.rollback()
     return summary
 
@@ -327,34 +484,52 @@ def send_test_missing_tip_notification(user, channels=None) -> dict:
     except Exception:
         base = current_app.config.get("PUBLIC_BASE_URL", "").rstrip("/")
 
+    # (104) Vorschau im DIGEST-Format wie ((100)/(101)): die echten
+    # Erinnerungen sind zusammengefasste Listen — der Test muss zeigen,
+    # was wirklich ankommt (vorher: alter Einzelspiel-Text). Link wie im
+    # Digest: ein Spieltag -> /tippen/<md>.
     if match:
-        teams = f"{match.home_team.name} – {match.away_team.name}"
         ko = match.kickoff.strftime("%d.%m. %H:%M") if match.kickoff else "?"
-        path = f"/match/{match.id}"
-        text = (
-            f"🧪 Test: Tipp-Erinnerung\n\n"
-            f"Hallo {user.username},\n\n"
-            f"so wuerde eine Erinnerung aussehen:\n"
-            f"{teams} startet am {ko} Uhr. Du hast dafuer noch keinen Tipp abgegeben."
-        )
+        zeile = f"• {match.home_team.name} – {match.away_team.name} · {ko}"
+        path = f"/tippen/{match.matchday}"
     else:
         path = "/meine-offenen-tipps"
-        text = (
-            f"🧪 Test: Tipp-Erinnerung\n\n"
-            f"Hallo {user.username},\n\n"
-            f"so wuerde eine Erinnerung aussehen, wenn vor Anpfiff noch ein Tipp fehlt."
-        )
     url = (base + path) if base else path
-    text_with_link = f"{text}\n\nJetzt tippen: {url}"
+    if match:
+        mail_thema = "🧪 Test: ⚽ Tipp-Erinnerung: 1 offenes Spiel"
+        mail_body = (
+            f"Hallo {user.username},\n\n"
+            f"du hast noch nicht getippt (1 Spiel):\n\n"
+            f"{zeile}\n\nJetzt tippen: {url}\n"
+        )
+        tg_body = (
+            "🧪 Test: ⚽ Tipp-Erinnerung\n\n"
+            f"Du hast noch nicht getippt (1 Spiel):\n\n"
+            f"{zeile}\n\n👉 Jetzt tippen: {url}"
+        )
+        wa_body = (
+            "🧪 *Test: Tipp-Erinnerung*\n\n"
+            f"Du hast noch nicht getippt (1 Spiel):\n\n"
+            f"{zeile}\n\n👉 Jetzt tippen: {url}"
+        )
+        push_body = "Du hast noch nicht getippt (1 Spiel)."
+    else:
+        generisch = (
+            "sobald ein Spiel ohne Tipp kurz bevorsteht, bekommst du hier "
+            "eine zusammengefasste Liste aller offenen Spiele."
+        )
+        mail_thema = "🧪 Test: ⚽ Tipp-Erinnerung"
+        mail_body = (
+            f"Hallo {user.username},\n\n{generisch}\n\nJetzt tippen: {url}\n"
+        )
+        tg_body = f"🧪 Test: ⚽ Tipp-Erinnerung\n\n{generisch}\n\n👉 Jetzt tippen: {url}"
+        wa_body = f"🧪 *Test: Tipp-Erinnerung*\n\n{generisch}\n\n👉 Jetzt tippen: {url}"
+        push_body = "So sehen zusammengefasste Tipp-Erinnerungen aus."
 
     if "email" in channels and _truthy(getattr(user, "notify_email", True), True) and user.email:
         try:
             from mail_helpers import send_email
-            result["email"] = send_email(
-                "🧪 Test: Tipp-Erinnerung bei fehlendem Tipp",
-                [user.email],
-                text_with_link,
-            )
+            result["email"] = send_email(mail_thema, [user.email], mail_body)
         except Exception as e:
             current_app.logger.warning(f"Test-Reminder E-Mail fehlgeschlagen fuer User {user.id}: {e}")
 
@@ -363,7 +538,7 @@ def send_test_missing_tip_notification(user, channels=None) -> dict:
             from push_routes import _send_push_to_users
             sent, _failed = _send_push_to_users([user], {
                 "title": "🧪 Test: Tipp-Erinnerung",
-                "body": "So wirst du bei fehlenden Tipps erinnert.",
+                "body": push_body,
                 "url": path,
                 "tag": f"test-reminder-{user.id}",
             })
@@ -374,7 +549,7 @@ def send_test_missing_tip_notification(user, channels=None) -> dict:
     if "telegram" in channels and _truthy(getattr(user, "notify_telegram", True), True):
         try:
             from telegram_bot import notify_user_telegram
-            result["telegram"] = notify_user_telegram(user, text_with_link)
+            result["telegram"] = notify_user_telegram(user, tg_body)
         except Exception as e:
             current_app.logger.warning(f"Test-Reminder Telegram fehlgeschlagen fuer User {user.id}: {e}")
 
@@ -382,7 +557,7 @@ def send_test_missing_tip_notification(user, channels=None) -> dict:
         if user.whatsapp_phone and user.whatsapp_apikey:
             try:
                 from whatsapp import send_whatsapp_message
-                result["whatsapp"] = send_whatsapp_message(user.whatsapp_phone, user.whatsapp_apikey, text_with_link)
+                result["whatsapp"] = send_whatsapp_message(user.whatsapp_phone, user.whatsapp_apikey, wa_body)
             except Exception as e:
                 current_app.logger.warning(f"Test-Reminder WhatsApp fehlgeschlagen fuer User {user.id}: {e}")
 
@@ -405,12 +580,14 @@ def run_reminder_cycle(channels=None, now=None) -> dict:
     waves = [1, 2] if reminder_second_wave_enabled() else [1]
     matches = upcoming_reminder_matches(now=now)
     total["matches"] = len(matches)
+    # (101) ALLE Kanaele als Digest — EINE Nachricht pro User und Kanal
+    # (Nutzer: „Bei Telegram und Push sollte es auch so sein“).
+    kanaele = channels or ["email", "push", "telegram", "whatsapp"]
     for wave in waves:
-        for match in matches:
-            res = send_match_reminders(match, channels=channels, wave=wave,
-                                        now=now, enforce_window=True)
-            for k in ("users", "email", "push", "telegram", "whatsapp"):
-                total[k] += res.get(k, 0)
-            total[f"wave{wave}"] += res.get("users", 0)
+        if kanaele and matches:
+            d = send_digest_reminders(matches, kanaele, wave=wave, now=now)
+            for k in ("users", "email", "whatsapp", "telegram", "push"):
+                total[k] += d.get(k, 0)
+            total[f"wave{wave}"] += d.get("users", 0)
     db.session.commit()
     return total
