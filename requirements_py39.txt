@@ -40,7 +40,7 @@ chardet==5.2.0
 dnspython==2.6.1
 
 # Sonstiges
-python-dotenv==1.2.1
+python-dotenv==1.2.3
 
 # Optional (kann fehlen falls Probleme)
 Pillow==11.3.0
