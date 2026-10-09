@@ -62,7 +62,9 @@
               {% for letter in r.form.split(',') %}
                 {% set l = letter|trim %}
                 {% if l in ['W','D','L'] %}
-                  <span class="form-dot form-{{ l }}">{{ l }}</span>
+                  {# (108) deutsche Kuerzel anzeigen (wie Spielplan/Schnelltipp/
+                     Spielbericht); Klasse form-W/D/L bleibt Style-Anker. #}
+                  <span class="form-dot form-{{ l }}">{{ {'W':'S','D':'U','L':'N'}.get(l, l) }}</span>
                 {% endif %}
               {% endfor %}
               </span>
@@ -110,9 +112,10 @@
 
   function rowHtml(r) {
     const cls = r.rank <= 4 ? 'cl' : (r.rank <= 6 ? 'el' : (r.rank >= 16 ? 'rel' : ''));
+    const FORM_DE = { W: 'S', D: 'U', L: 'N' };  // (108) Kuerzel deutsch
     const form = (r.form || '').split(',').map(l => l.trim())
       .filter(l => ['W','D','L'].includes(l))
-      .map(l => `<span class="form-dot form-${l}">${l}</span>`).join('');
+      .map(l => `<span class="form-dot form-${l}">${FORM_DE[l] || l}</span>`).join('');
     return `<tr class="${cls}">
       <td class="rank-cell"><span class="rank-num">${r.rank}</span></td>
       <td><div class="user-cell bl-team-cell">

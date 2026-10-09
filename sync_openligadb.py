@@ -448,6 +448,25 @@ def _fill_missing_from_openligadb():
 
 
 # ---------------------------------------------------------- OLB Live-Boost -
+def _live_score_plausibel(old_h, old_a, new_h, new_a):
+    """(106) Live-Zwischenstaende nur vorwaerts und in plausiblen Schritten.
+
+    Schuetzt gegen Feed-Ausrutscher: Tore duerfen zwischen zwei Ticks nur
+    dazukommen (nie verschwinden) und max. 3 pro Schritt. Der Endstand-Pfad
+    (finished) ist bewusst NICHT betroffen -- dort gelten die (83)-Regeln.
+    """
+    try:
+        if new_h is None or new_a is None:
+            return False
+        new_h, new_a = int(new_h), int(new_a)
+        if old_h is None or old_a is None:
+            return True
+        return (new_h >= int(old_h) and new_a >= int(old_a)
+                and (new_h - int(old_h)) + (new_a - int(old_a)) <= 3)
+    except (TypeError, ValueError):
+        return False
+
+
 _OLB_BOOST_CACHE_KEY = "olb_live_boost:last_fetch"
 _OLB_BOOST_TTL_SECONDS = 20
 # In-Prozess-Fallback, wenn der Redis-Cache nicht laeuft (CacheManager ist
@@ -516,13 +535,16 @@ def boost_live_from_openligadb(matchday=None):
 
     updated = 0
     affected_ids = set()
+    fetch_fehler = 0
     for url in urls:
         try:
             r = requests.get(url, timeout=8)
             if r.status_code != 200:
+                fetch_fehler += 1
                 continue
             payload = r.json()
         except Exception:
+            fetch_fehler += 1
             continue
         for md in payload if isinstance(payload, list) else []:
             kickoff = _parse_dt(_olb_kickoff(md))
@@ -556,6 +578,14 @@ def boost_live_from_openligadb(matchday=None):
                 continue  # noch nicht angepfiffen
             if (match.home_score, match.away_score, match.status) == (h_score, a_score, target_status):
                 continue
+            if target_status == "live" and not _live_score_plausibel(
+                    match.home_score, match.away_score, h_score, a_score):
+                # (106) Rueckschritt/Ausrutscher im Feed: lieber alter Stand.
+                current_app.logger.debug(
+                    f"OLB-Live-Boost: unplausibler Zwischenstand "
+                    f"{h_score}:{a_score} statt {match.home_score}:"
+                    f"{match.away_score} verworfen")
+                continue
             apply_match_update(match, home_score=h_score, away_score=a_score,
                                status=target_status, is_live=target_live)
             if target_status == "finished":
@@ -573,6 +603,20 @@ def boost_live_from_openligadb(matchday=None):
             users = User.query.filter(User.id.in_(affected_users)).all()
             check_and_award_badges(users=users)
         current_app.logger.info(f"OLB-Live-Boost: {updated} Spiele aktualisiert ({', '.join(str(i) for i in sorted(affected_ids))})")
+    # (106) Beobachtbarkeit: der Admin sieht im Aktivitaets-Protokoll, OB
+    # der Boost den Server verlaesst und was er gebracht hat (Nutzerbefund
+    # 09.10.: fehlende Tore waren von aussen nicht von OLB-Ausfall
+    # unterscheidbar).
+    try:
+        from datasource_activity import record as _rec
+        if fetch_fehler >= len(urls):
+            _rec("olb-live", False,
+                 f"OLB nicht erreichbar ({fetch_fehler} Request(s) fehlgeschlagen)")
+        else:
+            _rec("olb-live", True,
+                 f"{updated} Spiel(e) aktualisiert" if updated else "keine Aenderungen")
+    except Exception:
+        pass
     return {"ok": True, "updated": updated}
 
 
@@ -618,6 +662,17 @@ def sync_results():
                 res_fd["msg"] += f" · {filled} Ergebnis(se) via OpenLigaDB nachgezogen/korrigiert"
         except Exception as e:
             current_app.logger.warning(f"OpenLigaDB-Nachzug fehlgeschlagen: {e}")
+        # (106) Live-Tore auch OHNE Live-Center-Besucher: der OLB-Live-Boost
+        # laeuft jetzt mit jedem Sync-Tick (Plesk-Cron), nicht mehr nur
+        # bedarfsgetrieben beim Polling. Eigene Drossel + Fenster-Guard
+        # bleiben wirksam; bei OLB-Stoerung stiller Rueckzug (fd bleibt Quelle).
+        try:
+            lb = boost_live_from_openligadb()
+            lb_n = int(lb.get("updated") or 0)
+            if lb_n:
+                res_fd["msg"] += f" · OLB-Live: {lb_n} Update(s)"
+        except Exception as e:
+            current_app.logger.debug(f"OLB-Live-Boost im Cron-Sync uebersprungen: {e}")
         current_app.logger.info(f"✅ Sync via football-data.org: {res_fd.get('msg')}")
         store_sync_result(res_fd)
         return res_fd
@@ -651,6 +706,14 @@ def sync_results():
             "skipped": res_olb.get("skipped", 0),
             "msg": f"{res_olb['msg']} (Fallback – football-data.org: {fd_reason}){hint}",
         }
+        # (106) siehe fd-Pfad: Live-Boost auch im Fallback-Tick.
+        try:
+            lb = boost_live_from_openligadb()
+            lb_n = int(lb.get("updated") or 0)
+            if lb_n:
+                result["msg"] += f" · OLB-Live: {lb_n} Update(s)"
+        except Exception as e:
+            current_app.logger.debug(f"OLB-Live-Boost im Fallback-Sync uebersprungen: {e}")
         store_sync_result(result)
         return result
 

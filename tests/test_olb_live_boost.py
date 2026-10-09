@@ -125,3 +125,69 @@ def test_fd_path_gets_boost_counts_via_hook(live_setup, monkeypatch):
     assert result["updated"] == 1 and result["olb_boost"] == 1
     assert result["ok"] is True  # fd down, aber Boost liefert -> Live-Center bleibt "gruen"
     assert calls["n"] == 1
+
+
+# ------------------------------------------------------------ (106) -------
+
+def test_live_score_rueckschritt_wird_abgewiesen(live_setup):
+    """(106) Feed-Ausrutscher (Rueckschritt 2:0 -> 1:0) aendert den Stand
+    nicht — Tore duerfen zwischen Ticks nur dazukommen."""
+    m, calls, set_payload = live_setup
+    m.status, m.home_score, m.away_score, m.is_live = "live", 2, 0, True
+    from extensions import db as _db
+    _db.session.commit()
+    set_payload(_olb_payload("FC Bayern München", "Borussia Dortmund", m.kickoff, 1, 0))
+    r = boost_live_from_openligadb()
+    assert r["updated"] == 0
+    dbm = Match.query.get(m.id)
+    assert (dbm.home_score, dbm.away_score, dbm.status) == (2, 0, "live")
+
+
+def test_live_score_schritt_ueber_drei_wird_abgewiesen(live_setup):
+    """(106) Mehr als 3 Tore in einem Tick: unplausibel, verwerfen."""
+    m, calls, set_payload = live_setup
+    m.status, m.home_score, m.away_score, m.is_live = "live", 1, 0, True
+    from extensions import db as _db
+    _db.session.commit()
+    set_payload(_olb_payload("FC Bayern München", "Borussia Dortmund", m.kickoff, 5, 0))
+    r = boost_live_from_openligadb()
+    assert r["updated"] == 0
+    dbm = Match.query.get(m.id)
+    assert (dbm.home_score, dbm.away_score) == (1, 0)
+
+
+def test_boost_protokolliert_aktivitaet(live_setup):
+    """(106) Der Boost schreibt ein Aktivitaets-Protokoll (olb-live), damit
+    Admin sees ob/was er geholt hat (Nutzerbefund: fehlende Tore waren
+    von aussen nicht diagnostizierbar)."""
+    m, calls, set_payload = live_setup
+    set_payload(_olb_payload("FC Bayern München", "Borussia Dortmund", m.kickoff, 2, 1))
+    boost_live_from_openligadb()
+    from scoring import get_setting
+    from datasource_activity import SETTING_KEY
+    import json as _json
+    data = _json.loads(get_setting(SETTING_KEY, "") or "{}")
+    eintrag = data.get("olb-live") or {}
+    assert eintrag, "olb-live-Aktivitaet fehlt"
+    assert eintrag.get("ok") is True
+    assert "1 Spiel(e) aktualisiert" in (eintrag.get("note") or "")
+
+
+def test_cron_sync_ruft_live_boost(app, db, monkeypatch):
+    """(106) sync_results (Plesk-Cron) ruft den OLB-Live-Boost jetzt in
+    jedem Tick — Live-Tore kommen auch ohne Live-Center-Besucher an."""
+    import sync_openligadb as sol
+    aufgerufe = []
+
+    monkeypatch.setattr(sol, "sync_with_football_data",
+                        lambda: {"ok": True, "msg": "fd ok", "updated": 0})
+    monkeypatch.setattr(sol, "_fill_missing_from_openligadb", lambda: 0)
+
+    def fake_boost(matchday=None):
+        aufgerufe.append(matchday)
+        return {"ok": True, "updated": 2}
+
+    monkeypatch.setattr(sol, "boost_live_from_openligadb", fake_boost)
+    res = sol.sync_results()
+    assert aufgerufe == [None]
+    assert "OLB-Live: 2 Update(s)" in (res.get("msg") or "")

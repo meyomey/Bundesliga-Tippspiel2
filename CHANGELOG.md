@@ -24,6 +24,33 @@
 
 
 
+
+
+
+## [3.1.78] - 2026-10-09
+
+### 🇩🇪 Bundesliga-Tabelle: Form-Kürzel jetzt deutsch ((108) — Nutzerbefund „da tauchen noch die falschen englischen Abkürzungen auf“)
+
+- Die FORM-Spalte der Tabelle zeigte die Roh-Kürzel des football-data-Feeds (**W/D/L**) — während Spielplan, Schnelltipp und Spielbericht dieselben Buchstaben bereits in **S/U/N** übersetzen. Die Tabelle war der letzte Ausreisser; jetzt ist sie konsistent (Sieg/Unentschieden/Niederlage).
+- Übersetzt werden beide Render-Pfade: die serverseitige Tabelle **und** der JavaScript-Auto-Refresh (60 s), damit die Kürzel nicht nach dem ersten Refresher zurückwechseln. Die Feed-Daten und die CSS-Klassen (`form-W/D/L`, Style-Anker) bleiben nichtdeutsch — reine Anzeige-Übersetzung wie bei den anderen Seiten.
+- **+2 Tests** (serverseitige Kürzel + Auto-Refresh-Mapping; Patch-Ziel ist der lokal gebundene Routen-Name). Suite **693/693**, Hartgate 0, Node-Tests grün.
+## [3.1.77] - 2026-10-09
+
+### 🚫 Tipp-Banner: wegklickbar für den Tag + nicht mehr auf seinen eigenen Zielseiten ((107) — Nutzerbefund „der Hinweis ist fast überall im Weg“)
+
+- **Ausblenden-Kreuz (×)** am Banner: einmal geklickt verschwindet der Banner **für den ganzen Tag** (lokaler Speicher im Browser, kein Konto-Beeinfluss) und kehrt am nächsten Morgen zurück — wenn das Tippspiel wieder relevant wird. 24-h-Fenster, Countdown und CTA bleiben unangetastet (Feature-B-Design).
+- **Redundanz-Schutz:** auf **Schnelltipp** und **Spielplan** — genau die Seiten, auf die der Banner selbst verlinkt — erscheint er jetzt gar nicht erst (dort wäre er doppelt).
+- **Überlappung behoben (Screenshot-Fall):** Info-/Erfolgsmeldungen (z. B. „football-data.org: … aktualisiert“) werden jetzt **über** dem mitscrollenden Banner gerendert statt dahinter.
+- Tests: Banner-Markup mit Kreuz + Abwesenheit auf Schnelltipp/Spielplan. Suite **691/691**, Hartgate 0, Node-Tests grün.
+## [3.1.76] - 2026-10-09
+
+### ⚽ Live-Tore ohne Zuschauer: OLB-Live-Boost wandert in den Cron ((106) — Nutzerbefund „es steht mittlerweile 2:0, aber keine Änderung der Anzeige“)
+
+- **Befund:** im Live-Center blieb der Score 0:0, obwohl real längst getroffen war (BVB–Werder: Tore 85./88. Minute). Analyse: Live-Ergebnisse kamen bisher nur zustande, wenn **gerade jemand das Live-Center offen hatte** (bedarfsgetriebenes Polling); der Plesk-Cron-Sync ignorierte laufende Spiele komplett. Der seit 11.09. vorhandene, funktionierende OLB-Live-Boost (holt Zwischenstände quasi in Echtzeit, laborverifiziert gegen die echte API: 2:1 korrekt geschrieben) lief dadurch nur beim Karten-Besuch — war die Karte zu, gab es stundenlange Tore-Durststrecken.
+- **Fix:** `sync_results()` ruft den OLB-Live-Boost jetzt **in jedem Sync-Tick** (Cron) — in beiden Pfaden (football-data primär und OLB-Fallback). Live-Tore und Endstände kommen spätestens nach einem Cron-Takt an, unabhängig davon, wer gerade schaut. Drossel (20 s), Fenster-Guard und Recalc-Kette bleiben wirksam.
+- **Robustheit:** neuer Plausibilitäts-Guard `_live_score_plausibel` — Zwischenstände dürfen zwischen zwei Ticks nur vorwärts gehen (nie Tore verlieren, max. 3 pro Schritt); Feed-Ausrutscher werden verworfen statt übernommen. Endstände bleiben über die bewährten (83)-Regeln geregelt.
+- **Beobachtbarkeit:** der Boost schreibt jetzt ein Aktivitäts-Protokoll („olb-live“ in Admin → Versuche je Quelle): erfolgreich aktualisiert / keine Änderungen / **OLB nicht erreichbar** — WARUM Tore fehlen ist damit im Admin sichtbar, statt von außen rätselhaft.
+- **+4 Tests** (Rückschritt abgewiesen, >3-Tore-Schritt abgewiesen, Protokoll-Eintrag, Cron-Aufruf-Verdrahtung). Suite **690/690**, Hartgate 0, Node-Tests grün.
 ## [3.1.75] - 2026-10-09
 
 ### ⏱️ Live-Uhr: eingefrorene Feed-Minute nach 10 Min entwaffnet ((105) — Nutzerbefund mit Live-Center-Screenshot)

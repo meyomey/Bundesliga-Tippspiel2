@@ -113,7 +113,9 @@ GITHUB_UPLOAD_FILES = [
     "routes_api.py",
     "templates/live.html",
     "static/js/live.js",
+    "templates/standings.html",         # (108) Form-Kuerzel deutsch (S/U/N)
     "tests/test_live_minutes.py",
+    "tests/test_standings_form_de.py",  # (108) Form-Kuerzel deutsch
     "tests/test_live_stale_guard.py",   # (105) Frische-Guard der Live-Uhr
     # 06.09.2026 (2): LIVE - Struktur-Uhr mit Feed-Vorrang (Free-Tier-Fix)
     "main_stats_routes.py",

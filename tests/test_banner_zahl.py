@@ -57,6 +57,24 @@ def test_banner_zaehlt_ganzen_spieltag_nicht_nur_24h(client, app, db, user,
     assert "Spieltag 5: 1/9 getippt" in body               # Bottom-Bar
 
 
+def test_banner_wegklickbar_und_weg_auf_zielseiten(client, app, db, user,
+                                                   competition, teams,
+                                                   monkeypatch):
+    """(107) Nutzerbefund „Banner ist fast überall im Weg“: a) er hat ein
+    Ausblenden-Kreuz, b) auf Schnelltipp und Spielplan — seinen eigenen
+    Zielen — erscheint er gar nicht (dort ist er redundant)."""
+    monkeypatch.setitem(app.config, "COMPETITION", competition.code)
+    _screenshot_lage(db, user, competition, teams)
+    _login(client, user.email, "testpass123")
+    dash = client.get("/dashboard").get_data(as_text=True)
+    assert "tipreminder-banner" in dash
+    assert 'id="trClose"' in dash and "Banner für heute ausblenden" in dash
+    st = client.get("/schnelltipp/5").get_data(as_text=True)
+    assert "tipreminder-banner" not in st
+    plan = client.get("/spielplan/5").get_data(as_text=True)
+    assert "tipreminder-banner" not in plan
+
+
 def test_banner_ausserhalb_24h_weiterhin_versteckt(client, app, db, user,
                                                    competition, teams,
                                                    monkeypatch):

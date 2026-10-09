@@ -254,7 +254,9 @@
 </div>
 {% endif %}
 
-{% if current_user.is_authenticated and open_match_count and next_open_match %}
+<!-- (107) Nicht auf Schnelltipp/Spielplan: dort ist der Banner redundant
+     (seine Ziele sind genau diese Seiten). Ausblenden-Kreuz unten. -->
+{% if current_user.is_authenticated and open_match_count and next_open_match and request.endpoint not in ('main.quick_tip', 'main.schedule') %}
 <!-- Countdown-Banner für ungetippte Spiele (Feature B) -->
 <div class="tipreminder-banner"
      id="tipReminderBanner"
@@ -269,6 +271,8 @@
   </a>
   <a class="tr-cta" href="{{ url_for('main.quick_tip', matchday=next_open_match.matchday) }}"
      aria-label="Jetzt tippen - Schnelltipp für Spieltag {{ next_open_match.matchday }} öffnen">Jetzt tippen<span class="tr-arrow" aria-hidden="true">→</span></a>
+  <button type="button" class="tr-close" id="trClose"
+          aria-label="Banner für heute ausblenden" title="Für heute ausblenden">×</button>
 </div>
 {% endif %}
 

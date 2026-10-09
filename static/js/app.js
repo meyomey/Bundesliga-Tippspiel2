@@ -391,6 +391,21 @@ document.addEventListener('DOMContentLoaded', () => {
   // ====================================================================
   const banner = document.getElementById('tipReminderBanner');
   if (banner) {
+    // (107) Ausblenden-Kreuz: einmal weg = fuer den ganzen lokalen Tag weg
+    // (naechster Morgen zeigt den Banner wieder). 24-h-Fenster, Countdown
+    // und CTA bleiben unangetastet (Feature-B-Design).
+    try {
+      if (localStorage.getItem('trBannerAus') === new Date().toDateString()) {
+        banner.style.display = 'none';
+      }
+    } catch (e) { /* Speicher nicht verfuegbar: Banner bleibt sichtbar */ }
+    const trClose = document.getElementById('trClose');
+    if (trClose) {
+      trClose.addEventListener('click', () => {
+        banner.style.display = 'none';
+        try { localStorage.setItem('trBannerAus', new Date().toDateString()); } catch (e) {}
+      });
+    }
     const target = new Date(banner.dataset.kickoff);
     const cdEl = document.getElementById('trCountdown');
     function updateBannerCountdown() {
