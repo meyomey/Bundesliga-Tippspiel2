@@ -21,7 +21,7 @@ Pillow==11.3.0
 reportlab==5.0.1
 
 # Optional - nur fuer Standalone-Server (NICHT fuer Plesk/Netcup):
-gunicorn==23.0.0
+gunicorn==26.2.0
 APScheduler==3.10.4
 
 # Optional - fuer Web Push Benachrichtigungen (haeufig nicht auf Shared Hosting verfuegbar):
