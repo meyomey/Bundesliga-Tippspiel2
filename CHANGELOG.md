@@ -27,6 +27,50 @@
 
 
 
+
+
+
+
+
+## [3.1.83] - 2026-10-10
+
+### ⏱️ Live-Uhr, Teil 4: In der 2. Halbzeit gibt es keine 45 mehr ((113) — Nutzerwunsch: „die 2. Halbzeit sollte mindestens 46. Min. anzeigen“)
+
+- **Live-Befund (direkt beobachtet):** gleich nach dem Pausen Anpfiff der 2. Halbzeit stand wieder „LIVE · 45. Min“ — der Feed hatte den eingefrorenen Pausenwert noch nicht auf 46 hochgezählt, und der (110)-Schwellwert („deutlich zu klein“) ließ die 45 am H2-Anfang noch durch.
+- **Fix (definitionell):** Minuten 1–45 existieren in der 2. Halbzeit **nicht** — ein Feed-Wert unter 46 im H2-Fenster ist per Definition der eingefrorene Pausenwert und wird jetzt durch die Struktur-Uhr ersetzt („≈ 49. Min“ o. Ä., also **mindestens 46**). Sobald der Feed real hochzählt (46+), gilt er wieder verbatim.
+- **+3 Tests** (45@H2-Start → Struktur 49 ≈, 46@H2-Start verbatim, 45 später → Struktur). Suite **714/714**, Hartgate 0, Node-Tests grün.
+## [3.1.82] - 2026-10-10
+
+### ⏱️ Live-Uhr, Teil 3: „≈“-Marke für die Nachspielzeit-Lücke ((112) — Screenshot RB Leipzig 19:21, „45. Min“ bei 4:0)
+
+- **Befund:** 51 Minuten nach Anstoß zeigte das Live-Center „LIVE · 45. Min“ — knapp hinter der (110)-Halbzeit-Schwelle (50 Min). Code, Tests und Deployment geprüft (v3.1.81 live, verify_04-Proof im frischen Klon): der Moment lag mit hoher Wahrscheinlichkeit in der **Nachspielzeit-Zone (elapsed 46–50)**, in der „45. Min“ feed-stimmig, aber für Zuschauer irritierend war — oder die Seite hatte einen steckengebliebenen Stand (stiller Poll-Fehler).
+- **Fix:** frische Endwert-Minuten (43–47) ab der 46. Minute nach Anstoß werden jetzt ehrlich als Näherung markiert — **„≈ 45. Min“** statt verbatim, mit erklärendem Tooltip. Damit ist jede Phase ehrlich beschriftet: Normalzeit verbatim → Nachspielzeit „≈“ → ab 50 „Halbzeit ≈“ → 2. Halbzeit Struktur „≈“.
+- **+2 Tests**, 1 bestehender Test auf die neue Marke angepasst. Suite **711/711**, Hartgate 0, Node-Tests grün.
+- **Beobachtungshinweis:** sollte „45. Min“ (ohne ≈) erneut NACH elapsed 50 erscheinen, wäre das ein Anzeichen für einen steckengebliebenen Seitenaufstand im Browser (Poll schweigend gescheitert, z. B. nach Server-Restart) — dann einfach Seite neu laden und melden.
+## [3.1.81] - 2026-10-10
+
+### 🔍 Live-Daten-Audit: drei Lücken geschlossen ((111) — komplettes Audit aller Live-Datenwege)
+
+- **Audit-Anlass:** nach den Live-Fixes (105)/(106)/(110) systematische Prüfung ALLE Live-Wege (Quellen → Schreiber → Speicher → Leser → UI), inkl. Echt-Abgleich: alle 6 Spiele von Fr/Stand in Produktion **100 % deckungsgleich mit OpenLigaDB** (Endstände Mainz 3:4, Hoffenheim 2:3, Augsburg 2:2, BVB 2:2 …), v3.1.80 live. Ergebnis-Kette gesund.
+- **Lücke 1 (wichtig):** das (106)-Aktivitätsprotokoll schrieb „olb-live“ fleißig, aber die **Admin-Quellenliste kannte den Eintrag nicht** — der OLB-Live-Boost war im Admin unsichtbar (deshalb fehlte er in der Statuszeile). Jetzt gelistet → „Versuche je Quelle“ zeigt den Boost endlich.
+- **Lücke 2 (Härtung):** Live-API-Antworten tragen jetzt **`Cache-Control: no-store`** (/api/live/*, /api/leaderboard, /api/matches, /api/tip-overview) — sonst könnten Browser/Proxies veraltete Tore/Minuten/Tabellen ausliefern, obwohl das Backend stimmt.
+- **Lücke 3 (Härtung):** die drei ungeboundeten Live-GETs haben jetzt ein großzügiges **Rate-Limit 120/min** (UI pollt 2/min pro Client — hart gegen Missbrauch, weit über realem Bedarf; Upstreams waren durch interne Drosseln bereits geschützt).
+- Geprüft und für gut befunden: SSE bewusst deaktiviert (Passenger-Doku), Service-Worker cached keine Live-APIs, Monotonie-/Sanity-Gates, Budgetwächter, Fallback-Ketten, Standings-JS degradiert graceful. **+4 Tests** (Quellenliste-Vertrag, olb-live-Renderpfad, no-store public+auth). Suite **709/709**, Hartgate 0, Node-Tests grün.
+## [3.1.80] - 2026-10-10
+
+### ⏱️ Live-Uhr, Teil 2: Struktur-Widerspruch schlägt frische Falschmeldung ((110) — Nutzerbefund: Halbzeit heute wieder nur „45. Min“ trotz 3.1.79)
+
+- **Neue Erkenntnis:** nach dem Deploy der Frische-Guard-Fixes (105)–(109) frierte die Minute heute erneut — diesmal während der **ganzen Halbzeitpause**. Ursache: der Feed meldete die Pause hindurch frisch „1. Halbzeit / 45.“; der (105)-Guard misst nur Frische, und der Wert war ja frisch. Frische ist nicht alles: eine Minute 45 kann 55 Minuten nach Anstoß real nicht mehr stimmen.
+- **Fix:** Struktur-Widerspruchs-Check in `live_clock_for`: ① im Pausenfenster (ab ~50 Min nach Anstoß, bis Pausenende) wird ein frisches „43–47 ohne PAUSED-Phase“ zur **„Halbzeit ≈“**-Näherung umgedeutet; ② in der 2. Halbzeit ersetzt die Struktur-Uhr eine **strukturell unmögliche** Minute (deutlich zu klein gegenüber der verstrichenen Echtzeit). Prioritäten bleiben: echte PAUSED-Phase → Struktur-Check → Feed-Minute → Struktur-Uhr.
+- Plausible Feed-Minuten (Nachspielzeit 1. Halbzeit, 2.-Halbzeit-Werte 46+) bleiben unangetastet — Feed-Priorität gilt, wo die Werte möglich sind.
+- **+8 Tests** (Pausenfenster 45/46/47, PAUSED-Priorität, Nachspielzeit-Grenze, atypische Minuten, 2.-Halbzeit-Clamp, Alt-Bestand). Suite **705/705**, Hartgate 0, Node-Tests grün.
+## [3.1.79] - 2026-10-10
+
+### 🕐 Erinnerungen: Anstoßzeiten jetzt in deutscher Lokalzeit ((109) — Nutzerbefund „Bei den Erinnerungen ist die Zeit falsch“)
+
+- Der Digest (und auch Einzel-Erinnerung + Test-Benachrichtigung) zeigte die Anstoßzeiten als UTC — „10.10. 13:30“ statt **15:30 deutscher Zeit**. Grund: Kickoffs liegen naiv in UTC in der DB; die UI rechnet über den `de_local`-Filter nach Europe/Berlin, die Benachrichtigungs-Texte formatierten den Rohstempel direkt.
+- Fix: neuer Helper `_berlin_fmt` in `notification_center.py` (dieselbe Semantik wie die UI-Konvertierung: naiv = UTC → Europe/Berlin, Sommer-/Winterzeit korrekt); alle drei Textstellen nutzen ihn — **Digest-Zeile**, `reminder_message` (Einzelweg E-Mail/WhatsApp/Telegram) und die Test-Benachrichtigung.
+- **+4 Tests** (CEST, CET, Digest/Einzelweg-Texte, Fehl-Kickoff). Suite **697/697**, Hartgate 0, Node-Tests grün.
 ## [3.1.78] - 2026-10-09
 
 ### 🇩🇪 Bundesliga-Tabelle: Form-Kürzel jetzt deutsch ((108) — Nutzerbefund „da tauchen noch die falschen englischen Abkürzungen auf“)

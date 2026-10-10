@@ -24,6 +24,7 @@ SOURCES = [
     ("openligadb", "OpenLigaDB (Fallback + Nachzug)"),
     ("minute", "API-Football · Live-Minute"),
     ("goals", "API-Football · Torschützen"),
+    ("olb-live", "OpenLigaDB · Live-Boost (Zwischenstände)"),
     ("torjaeger", "OpenLigaDB · Torjäger-Liste (Torschützen)"),
     ("the_odds_api", "The-Odds-API · Tipp-Optimizer-Quoten (nur bei Abruf)"),
 ]

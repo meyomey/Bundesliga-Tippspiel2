@@ -65,6 +65,13 @@ def live_clock_for(match, now=None):
        Falschanzeige. Dieser Wert ist Naeherung und wird in der UI mit '≈'
        gekennzeichnet - ehrlicher als die alte blinde Stoppuhr, die Halbzeit
        und Nachspielzeit ignorierte und bis 90 weiterlief.
+    3. Seit (110): Frische ist nicht alles — widerspricht ein FRISCHER
+       Feed-Wert der Spielstruktur (Pausenfenster mit "45."), gewinnt die
+       Struktur-Uhr. Hintergrund: ein traeger Feed kann die ganze Pause
+       ueber "1. Halbzeit / 45." weitermelden; der (105)-Frische-Guard
+       fasst ihn dann zu Recht nicht an. Real unmoegliche Werte werden
+       durch die Naeherung ersetzt (Pausenfenster ab ~50 Min nach Anstoss;
+       2. Halbzeit mit deutlich zu kleiner Minute).
     """
     info = {"minute": None, "derived": False, "halftime": None, "overtime": False}
     if not match or match.status != "live":
@@ -75,30 +82,63 @@ def live_clock_for(match, now=None):
     # dann uebernimmt die als Naeherung markierte Struktur-Uhr (Regel 3).
     frisch = _live_sync_frisch(match, now)
 
+    # (110) Verstrichene Echtzeit seit Anstoss (fuer Struktur-Widersprueche):
+    kickoff = match.kickoff
+    elapsed = None
+    if kickoff:
+        now_cmp = now or datetime.now(timezone.utc)
+        if kickoff.tzinfo is None:
+            if now_cmp.tzinfo is not None:
+                now_cmp = now_cmp.replace(tzinfo=None)
+        elif now_cmp.tzinfo is None:
+            now_cmp = now_cmp.replace(tzinfo=timezone.utc)
+        elapsed = int((now_cmp - kickoff).total_seconds() // 60)
+
+
     # 1) Pause laut Liveticker ist verbindlich: keine Minute, klarer Hinweis.
     if frisch and getattr(match, "live_phase", None) == "PAUSED":
         info["halftime"] = "feed"
         return info
 
-    # 2) Feed-Minute: verbindlich, wenn vorhanden (und frisch).
+    # (110) Pausenfenster: ab ~50 Min nach Anstoss kann die 1. Halbzeit real
+    # nicht mehr laufen (47' + Nachspielzeit-Puffer). Meldet der Feed dort
+    # frisch eine Endwert-Minute (43-47) ohne PAUSED-Phase, ist das ein
+    # Widerspruch -> Halbzeit-Naeherung statt ewiger "45. Min" (Nutzerbefund
+    # 10.10.: ganze Pause nur "45. Min", obwohl der Feed frisch schrieb).
+    if (frisch and elapsed is not None and 50 < elapsed < _LIVE_HALF_END
+            and match.minute is not None and 43 <= match.minute <= 47):
+        info["halftime"] = "derived"
+        return info
+
+    # 2) Feed-Minute: verbindlich, wenn vorhanden (und frisch) — ausser
+    # (110): in der 2. Halbzeit ist eine deutlich zu kleine Minute
+    # eingefroren (z. B. haengende 45) -> Struktur-Uhr statt Falschanzeige.
+    # (113) und definiert: Minuten 1-45 existieren in der 2. Halbzeit NICHT
+    # mehr — ein frisches "45" dort ist der eingefrorene Pausenwert des
+    # Feeds (Nutzerbefund 10.10. abend: H2-Start zeigte wieder "45. Min").
+    # Untergrenze H2 = 46; alles darunter -> Struktur-Uhr (mindestens 46).
     if frisch and match.minute is not None:
         try:
-            info["minute"] = max(1, int(match.minute))
-            if info["minute"] >= 90:
+            mi = max(1, int(match.minute))
+        except (TypeError, ValueError):
+            mi = None
+        if mi is not None and not (
+                elapsed is not None and elapsed >= _LIVE_HALF_END
+                and (mi < 46 or mi <= elapsed - _LIVE_BREAK - 5)):
+            info["minute"] = mi
+            # (112) Endwert-Fenster: eine frische 43-47 kurz NACH der
+            # regulären Spielzeit ist meist haengende Nachspielzeit-Anzeige
+            # (Feed zaehlt 45+X nicht) -> ehrlich als Naeherung markieren
+            # ('≈ 45. Min'), bis (110) im Pausenfenster auf Halbzeit dreht.
+            if (elapsed is not None and 46 <= elapsed < _LIVE_HALF_END
+                    and 43 <= mi <= 47):
+                info["derived"] = True
+            if mi >= 90:
                 info["overtime"] = True
             return info
-        except (TypeError, ValueError):
-            pass
 
     # 3) Struktur-Uhr ab Anstoss (nur als Naeherung -> UI zeigt '≈').
-    kickoff = match.kickoff
-    if not kickoff:
-        return info
-    now = now or datetime.now(timezone.utc)
-    if kickoff.tzinfo is None:
-        now = now.replace(tzinfo=None)
-    elapsed = int((now - kickoff).total_seconds() // 60)
-    if elapsed < 0 or elapsed > _LIVE_FULL_END:
+    if elapsed is None or elapsed < 0 or elapsed > _LIVE_FULL_END:
         return info  # vor Anstoss oder laengst vorbei: ehrlich ohne Zahl
     info["derived"] = True
     if elapsed <= _LIVE_H1_END:
@@ -155,6 +195,7 @@ def api_leaderboard():
 
 @api_bp.route("/live/standings")
 @login_required
+@limiter.limit("120/minute")  # (111)
 def api_live_standings():
     rows, err = fetch_live_standings()
     if not rows:
@@ -253,6 +294,7 @@ def api_save_tip(match_id):
 
 @api_bp.route("/live/center")
 @login_required
+@limiter.limit("120/minute")  # (111) UI pollt 2/min pro Client — hart gegen Missbrauch
 def api_live_center():
     now = datetime.now(timezone.utc)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -328,6 +370,7 @@ def api_live_center_stream():
 
 @api_bp.route("/live/matchday/<int:matchday>")
 @login_required
+@limiter.limit("120/minute")  # (111)
 def api_live_matchday(matchday):
     res = fetch_live_match_updates(matchday=matchday)
     matches = active_match_query().filter_by(matchday=matchday).order_by(Match.kickoff).all()

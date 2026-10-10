@@ -127,8 +127,30 @@ def user_wants_match_reminder(user, match, *, tipped_user_ids=None) -> bool:
     return True
 
 
+def _berlin_fmt(value, fmt="%d.%m. %H:%M"):
+    """(109) Kickoff in deutscher Lokalzeit formatieren.
+
+    Kickoffs liegen NAIV in UTC in der DB (API-UTC-Zeitstempel). Die UI
+    rechnet ueber den de_local-Filter nach Europe/Berlin — die Benachrich-
+    tigungen hatten das bisher vergessen und UTC angezeigt (Nutzerbefund:
+    „13:30" statt 15:30 im Digest). Naive Werte werden wie in der UI als
+    UTC behandelt; zoneinfo ist Python-3.9-Stdlib.
+    """
+    if not value:
+        return "?"
+    from datetime import timezone as _tz
+    try:
+        from zoneinfo import ZoneInfo
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=_tz.utc)
+        value = value.astimezone(ZoneInfo("Europe/Berlin"))
+    except Exception:
+        pass  # Notfall: roher Stempel (besser als Absturz im Versand)
+    return value.strftime(fmt)
+
+
 def reminder_message(match, plain=True):
-    ko = match.kickoff.strftime("%d.%m. %H:%M") if match.kickoff else "?"
+    ko = _berlin_fmt(match.kickoff)
     teams = f"{match.home_team.name} – {match.away_team.name}"
     if plain:
         return f"⚽ Tipp-Erinnerung: {teams} startet um {ko}. Du hast noch nicht getippt."
@@ -288,7 +310,7 @@ def _digest_link(matches, base):
 
 
 def _digest_zeile(match):
-    ko = match.kickoff.strftime("%d.%m. %H:%M") if match.kickoff else "?"
+    ko = _berlin_fmt(match.kickoff)
     return f"• {match.home_team.name} – {match.away_team.name} · {ko}"
 
 
@@ -489,7 +511,7 @@ def send_test_missing_tip_notification(user, channels=None) -> dict:
     # was wirklich ankommt (vorher: alter Einzelspiel-Text). Link wie im
     # Digest: ein Spieltag -> /tippen/<md>.
     if match:
-        ko = match.kickoff.strftime("%d.%m. %H:%M") if match.kickoff else "?"
+        ko = _berlin_fmt(match.kickoff)
         zeile = f"• {match.home_team.name} – {match.away_team.name} · {ko}"
         path = f"/tippen/{match.matchday}"
     else:

@@ -115,8 +115,11 @@ GITHUB_UPLOAD_FILES = [
     "static/js/live.js",
     "templates/standings.html",         # (108) Form-Kuerzel deutsch (S/U/N)
     "tests/test_live_minutes.py",
+    "tests/test_audit_live_haertung.py",  # (111) Live-Daten-Audit-Haertung
     "tests/test_standings_form_de.py",  # (108) Form-Kuerzel deutsch
+    "tests/test_reminder_zeiten_de.py",  # (109) Erinnerungszeiten = Berlin-Lokalzeit
     "tests/test_live_stale_guard.py",   # (105) Frische-Guard der Live-Uhr
+    "tests/test_live_uhr_struktur.py",  # (110) Struktur-Widerspruchs-Check
     # 06.09.2026 (2): LIVE - Struktur-Uhr mit Feed-Vorrang (Free-Tier-Fix)
     "main_stats_routes.py",
     # 06.09.2026 (3): Live-Rangliste - Trend/+Punkte persistent statt 8s-Blur

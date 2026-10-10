@@ -420,6 +420,11 @@ def create_app(config_object=Config):
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        # (111) Live-Daten niemals cachen (Browser/Proxy): sonst koennen
+        # Tore/Minuten/Tabellen veraltet ankommen, obwohl das Backend stimmt.
+        if request.path.startswith(("/api/live", "/api/leaderboard",
+                                    "/api/matches", "/api/tip-overview")):
+            response.headers.setdefault("Cache-Control", "no-store")
         return response
 
     @app.route("/healthz")
