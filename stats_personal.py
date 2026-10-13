@@ -39,18 +39,66 @@ def rank_map_through(max_matchday):
 
 
 def vor_spieltag_rangkarte():
-    """(94) Rangkarte des ZULETZT abgeschlossenen Vor-Spieltags + dessen Nr.
+    """Referenz-Rangkarte der Vorplatzierungs-Pfeile + Spieltags-Nummer.
 
-    Fuer die Ranglisten-Seite: einmal pro Aufruf berechnen und an alle
-    get_user_trend-Aufrufe verteilen (statt N Einzel-Replays). Liefert
-    ({user_id: rank}, matchday) oder (None, None) bei < 2 fertigen Spieltagen.
+    (119) Rangkarte aus ``get_leaderboard(bis_matchday=...)`` — EXAKT die
+    Sortierkette der aktuellen Tabelle (inkl. Sonderpunkte/Tie-Break-Kette),
+    damit Pfeil und Platz nie auseinanderlaufen.
+
+    (120) Referenz-Zeitpunkt, Nutzerkorrektur zu (119):
+    - Läuft ein neuerer Spieltag (irgendein fertiges Spiel hinter dem letzten
+      VOLLSTÄNDIGEN Spieltag N): Referenz = Stand nach N → die Pfeile zeigen
+      die Bewegung des laufenden Spieltags.
+    - Liegt der letzte vollständige Spieltag N noch ohne Nachfolger-Ergebnis
+      (Lücke zwischen den Spieltagen): Referenz = Stand nach N−1 → die
+      Bewegung von Spieltag N bleibt sichtbar (wie die TV-Tabelle), statt
+      überall „unverändert" anzuzeigen.
+    - Erst wenn NUR Spieltag 1 fertig ist, gibt es noch keine Referenz
+      (vorher gibt es nichts Vergleichbares) → (None, None).
+    Quelle für N ist ``abgeschlossene_spieltage`` — dieselbe wie die
+    Sieger-Ansage (115).
     """
-    q = db.session.query(Match.matchday).filter(Match.status == "finished")
-    q = filter_matches_for_active_competition(q)
-    mds = sorted({row[0] for row in q.all()})
-    if len(mds) < 2:
+    comp = get_active_competition()
+    if not comp:
         return None, None
-    return rank_map_through(mds[-2]), mds[-2]
+    from matchday_announce import abgeschlossene_spieltage
+    fertige = abgeschlossene_spieltage(comp.id)
+    if not fertige:
+        return None, None
+    letzter = fertige[-1]
+    f_q = db.session.query(func.max(Match.matchday)).filter(
+        Match.status == "finished")
+    f_q = filter_matches_for_active_competition(f_q)
+    frischester = f_q.scalar()
+    if frischester is not None and frischester > letzter:
+        ref_md = letzter            # laufender ST: seine Bewegung zeigen
+    elif letzter > 1:
+        ref_md = letzter - 1        # Lücke: Bewegung des fertigen ST halten
+    else:
+        return None, None           # nur ST 1 fertig → noch keine Pfeile
+    ref_rows = get_leaderboard(bis_matchday=ref_md)
+    return {r["user"].id: r["rank"] for r in ref_rows}, ref_md
+
+
+def rang_deltas_berechnen(rows):
+    """(119) Pfeil-Deltas fuer Ranglisten-Zeilen (EINMAL je Aufruf).
+
+    Liefert ({user_id: {"delta": int|None, "prev_rank": int|None}}, ref_md):
+    delta > 0 = Plaetze gut, delta < 0 = Plaetze schlechter, delta None =
+    keine Referenz (neu in der Rangliste). ({}, None), wenn kein Spieltag
+    vollstaendig abgeschlossen ist.
+    """
+    prev_map, ref_md = vor_spieltag_rangkarte()
+    if prev_map is None:
+        return {}, None
+    deltas = {}
+    for r in rows:
+        prev = prev_map.get(r["user"].id)
+        if prev is None:
+            deltas[r["user"].id] = {"delta": None, "prev_rank": None}
+        else:
+            deltas[r["user"].id] = {"delta": prev - r["rank"], "prev_rank": prev}
+    return deltas, ref_md
 
 
 def get_user_trend(user_id, last_n_matchdays=8, rows=None,
@@ -86,12 +134,17 @@ def get_user_trend(user_id, last_n_matchdays=8, rows=None,
                 current_rank = r["rank"]
                 break
 
+    # (119) Referenz EINHEITLICH ueber vor_spieltag_rangkarte (letzter
+    # vollstaendiger Spieltag, get_leaderboard-Sortierkette) — davor:
+    # zweitletzter Tipp-Spieltag via _compute_rank_through, was zwischen
+    # den Spieltagen einen Spieltag zu weit hinten lag. prev_map_md ist
+    # nur noch Informationsparameter (Kompatibilitaet der Signatur).
     previous_rank = None
-    if len(recent_mds) >= 2:
-        if prev_rank_map is not None and prev_map_md == recent_mds[-2]:
-            previous_rank = prev_rank_map.get(user_id)
-        else:
-            previous_rank = _compute_rank_through(user_id, recent_mds[-2])
+    if prev_rank_map is not None:
+        previous_rank = prev_rank_map.get(user_id)
+    else:
+        ref_map, _ref_md = vor_spieltag_rangkarte()
+        previous_rank = ref_map.get(user_id) if ref_map else None
 
     delta = None
     if current_rank and previous_rank:

@@ -17,7 +17,7 @@ from stats import (
     get_matchday_recap,
     get_user_insights,
     get_user_trend,
-    vor_spieltag_rangkarte,
+    rang_deltas_berechnen,
     get_current_matchday,
 )
 from sync import fetch_live_standings
@@ -564,25 +564,16 @@ def _leaderboard(matchday=None):
         MatchdayWinner,
     )
     md_wins = dict(md_wins_q.group_by(MatchdayWinner.user_id).all())
-    trends = {}
-    if not matchday and rows:
-        # (94) Bulk: Rangkarte des Vor-Spieltags EINMAL je Aufruf + fertige
-        # Zeilen an alle Trends mitgeben. Vorher lief jede Zeile erneut in
-        # get_leaderboard() + _compute_rank_through (N Punktsummen-Queries
-        # pro User) — gemessen: 2064 Queries/Aufruf, jetzt ~20.
-        prev_rank_map, prev_map_md = vor_spieltag_rangkarte()
-        for r in rows:
-            try:
-                trends[r["user"].id] = get_user_trend(
-                    r["user"].id, last_n_matchdays=6,
-                    rows=rows, prev_rank_map=prev_rank_map,
-                    prev_map_md=prev_map_md)
-            except Exception:
-                pass
+    # (119) Pfeil-Deltas EINMAL je Aufruf: Referenz = letzter vollständiger
+    # Spieltag, Rangkarte aus get_leaderboard(bis_matchday) — dieselbe
+    # Sortierkette wie die angezeigte Tabelle (inkl. Sonderpunkte). Ersetzt
+    # die (94)-Einzeltrend-Schleife (das Template nutzt nur das Delta);
+    # die Referenz-Rangliste selbst kommt aus dem Cache.
+    rank_deltas, ref_md = rang_deltas_berechnen(rows) if (not matchday and rows) else ({}, None)
     return render_template(
         "leaderboard.html",
         rows=rows, current_md=matchday, matchdays=matchdays,
-        md_wins=md_wins, trends=trends,
+        md_wins=md_wins, rank_deltas=rank_deltas, ref_md=ref_md,
     )
 
 @main_bp.route("/spieltagsieger", endpoint="matchday_winners")

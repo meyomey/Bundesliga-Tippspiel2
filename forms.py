@@ -90,7 +90,7 @@ class ProfileForm(FlaskForm):
     notify_email = BooleanField("E-Mail", default=True)
     notify_push = BooleanField("Push", default=True)
     notify_telegram = BooleanField("Telegram", default=True)
-    notify_whatsapp = BooleanField("WhatsApp", default=True)
+    notify_whatsapp = BooleanField("WhatsApp (CallMeBot)", default=True)
     notify_hours_before = IntegerField("Erinnerung Stunden vor Anpfiff", default=1, validators=[Optional(), NumberRange(0, 24)])
     notify_only_favorite = BooleanField("Nur Spiele meines Lieblingsvereins", default=False)
     default_tip_view = SelectField(
@@ -287,6 +287,11 @@ class SettingsForm(FlaskForm):
         "Telegram Webhook Secret",
         validators=[Optional(), Length(0, 200)],
         description="Geheimer Wert fuer /telegram/webhook/<secret> oder Header X-Telegram-Bot-Api-Secret-Token.",
+    )
+    whatsapp_enabled = BooleanField(
+        "Sieger-Ansage automatisch per WhatsApp verschicken",
+        default=True,
+        description="Nach Abschluss aller Spiele eines Spieltags geht die Ansage (Spieltagssieger + Top 3) automatisch als WhatsApp an Mitglieder mit CallMeBot. Betrifft NUR diese Automatik - Erinnerungen und Test-Nachrichten bleiben immer aktiv.",
     )
     reminders_enabled = BooleanField(
         "Automatische Erinnerungen bei fehlenden Tipps aktivieren",

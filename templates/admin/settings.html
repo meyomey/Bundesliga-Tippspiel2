@@ -107,8 +107,8 @@ Verwendungszweck: Tippspiel + Spielername') }}
 
 
   {# Registrierung #}
-  <details class="section-group" open>
-    <summary>👥 Registrierung</summary>
+  <details class="section-group" {% if not registrierung_vollstaendig %}open{% endif %}>
+    <summary>👥 Registrierung {% if not registrierung_vollstaendig %}<span class="missing-badge">⚠ Nicht konfiguriert</span>{% endif %}</summary>
     <div class="section-body">
       <div class="settings-subcard">
         <label>{{ form.contact_email.label }} {{ form.contact_email(class_='input', placeholder='chef@wulmstorf.example') }}
@@ -136,8 +136,8 @@ Verwendungszweck: Tippspiel + Spielername') }}
   </details>
 
   {# Reminder / fehlende Tipps #}
-  <details class="section-group" open>
-    <summary>🔔 Tipp-Erinnerungen</summary>
+  <details class="section-group" {% if not form.reminders_enabled.data %}open{% endif %}>
+    <summary>🔔 Tipp-Erinnerungen {% if not form.reminders_enabled.data %}<span class="missing-badge">⚠ Deaktiviert</span>{% endif %}</summary>
     <div class="section-body">
       <div class="settings-subcard">
         <label class="check">{{ form.reminders_enabled() }}
@@ -167,6 +167,23 @@ Verwendungszweck: Tippspiel + Spielername') }}
           <a href="{{ url_for('admin.admin_open_tips') }}" class="btn-ghost">Offene Tipps prüfen →</a>
         </div>
         <small class="muted">Test nutzt deine Profil-Kanäle. Echte Erinnerungen werden dabei nicht als gesendet markiert.</small>
+      </div>
+    </div>
+  </details>
+
+  {# (118) Schalter nur fuer die Sieger-Ansage-Automatik — bewusst
+     zugeklappt (ein Schalter; Zustand steht in der Summary). #}
+  <details class="section-group">
+    <summary>🏆 Sieger-Ansage (WhatsApp) {% if not form.whatsapp_enabled.data %}<span class="missing-badge">⚠ Automatik aus</span>{% endif %}</summary>
+    <div class="section-body">
+      <div class="settings-subcard">
+        <label class="check">{{ form.whatsapp_enabled() }}
+          <span>
+            <strong>{{ form.whatsapp_enabled.label.text }}</strong>
+            <small class="muted" style="display:block;margin-top:3px">{{ form.whatsapp_enabled.description }}</small>
+          </span>
+        </label>
+        <small class="muted">Betrifft nur die automatische Sieger-Ansage nach Spieltagende — Erinnerungen und Test-Nachrichten bleiben unberührt. Wer generell keine CallMeBot-Nachrichten will, stellt es im eigenen Profil ab („WhatsApp (CallMeBot)“).</small>
       </div>
     </div>
   </details>

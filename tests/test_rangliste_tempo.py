@@ -195,6 +195,8 @@ def test_trend_mit_bulk_params_identisch_zu_alt(app, db, user, admin_user,
     from scoring import get_leaderboard
     rows = get_leaderboard()
     karte, md = vor_spieltag_rangkarte()
+    # (120) Alle 3 Spieltage fertig, kein neueres Ergebnis → Referenz = ST 2,
+    # damit die ST-3-Bewegung sichtbar bleibt
     assert karte and md == 2
     for u in (user, admin_user):
         schnell = get_user_trend(u.id, last_n_matchdays=6, rows=rows,

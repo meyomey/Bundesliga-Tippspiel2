@@ -184,6 +184,13 @@
       {% for r in leaderboard %}
         <li class="{{ 'me' if r.user.id == current_user.id }}">
           <span class="rank">{{ r.rank }}</span>
+          {% set tr = rank_deltas.get(r.user.id) if rank_deltas else none %}
+          {% if tr %}
+            {% if tr.delta is none %}<span class="lb-trend neu" title="Neu in der Rangliste">NEU</span>
+            {% elif tr.delta > 0 %}<span class="lb-trend up" title="Platz {{ tr.prev_rank }} nach Spieltag {{ ref_md }}">▲ {{ tr.delta }}</span>
+            {% elif tr.delta < 0 %}<span class="lb-trend down" title="Platz {{ tr.prev_rank }} nach Spieltag {{ ref_md }}">▼ {{ -tr.delta }}</span>
+            {% else %}<span class="lb-trend same" title="unverändert">•</span>{% endif %}
+          {% endif %}
           <span class="user has-tooltip" tabindex="0">
             {{ r.user.username }}
             {% if r.user.favorite_team %}

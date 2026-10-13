@@ -147,6 +147,15 @@ def run_sync():
         result = sync_results()
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         print(f"[{ts}] SYNC: {result['msg']}")
+        # (115) Spieltag komplett? -> Sieger-Ansage (1x, WhatsApp + Text)
+        try:
+            from matchday_announce import pruefe_und_sende_offene_sieger
+            res_s = pruefe_und_sende_offene_sieger()
+            if res_s.get("gesendet"):
+                print(f"[{ts}] SPIELTAGSSIEGER: Ansage fuer Spieltag "
+                      f"{', '.join(map(str, res_s['gesendet']))} versendet")
+        except Exception as e:
+            print(f"[{ts}] SPIELTAGSSIEGER: uebersprungen ({e})")
         return result["ok"]
 
 

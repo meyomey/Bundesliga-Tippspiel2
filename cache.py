@@ -311,10 +311,11 @@ def cached(ttl: int = 300, key_prefix: str = None, key_builder: Callable = None)
 # ---------------------------------------------------------------------------
 # Cache-Key-Helfer
 # ---------------------------------------------------------------------------
-def cache_key_leaderboard(matchday: int = None, season: str = None, competition: str = None, live: bool = False) -> str:
-    """Baut Cache-Key fuer Ranglisten."""
+def cache_key_leaderboard(matchday: int = None, season: str = None, competition: str = None, live: bool = False, bis: int = None) -> str:
+    """Baut Cache-Key fuer Ranglisten. (119) ``bis`` = Tabelle nur bis ST X."""
     prefix = "live_leaderboard" if live else "leaderboard"
-    return f"{CACHE_VERSION}:{prefix}:{season or 'current'}:{competition or 'all'}:{matchday or 'total'}"
+    key = f"{CACHE_VERSION}:{prefix}:{season or 'current'}:{competition or 'all'}:{matchday or 'total'}"
+    return key + (f":bis{bis}" if bis else "")
 
 
 def cache_key_user_stats(user_id: int, season: str = None, competition: str = None, live: bool = False) -> str:

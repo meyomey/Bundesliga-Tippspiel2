@@ -114,6 +114,14 @@ GITHUB_UPLOAD_FILES = [
     "templates/live.html",
     "static/js/live.js",
     "templates/standings.html",         # (108) Form-Kuerzel deutsch (S/U/N)
+    "match_results.py",                 # (114) Score-Monotonie im Live-Betrieb
+    "matchday_announce.py",             # (115) Spieltags-Sieger-Ansage
+    "tests/test_kanal_sichtbarkeit.py",  # (116) Kanal-Badges + CMB-Schalter
+    "tests/test_cmb_master.py",
+    "tests/test_rang_pfeile.py",         # (117) CallMeBot-Master + Einklapp-UX
+    "templates/admin/users.html",       # (116) Kanal-Badges in Spielerverwaltung
+    "tests/test_spieltagsieger_ansage.py",  # (115) Sieger + Top 3 Ansage
+    "tests/test_score_monotonie.py",    # (114) Flackern 1:0->0:0 behoben
     "tests/test_live_minutes.py",
     "tests/test_audit_live_haertung.py",  # (111) Live-Daten-Audit-Haertung
     "tests/test_standings_form_de.py",  # (108) Form-Kuerzel deutsch

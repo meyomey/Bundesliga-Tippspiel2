@@ -15,6 +15,7 @@ from mail_helpers import send_email
 from models import InvitationCode, Match, Prediction, User, UserBadge
 from notification_center import send_test_missing_tip_notification
 from scoring import compute_pot_summary, get_leaderboard, get_setting
+from stats_personal import rang_deltas_berechnen
 from stats import get_current_matchday
 from competition_helpers import (
     active_match_query, filter_matches_for_active_competition,
@@ -65,6 +66,9 @@ def dashboard():
     lb = get_leaderboard()
     leaderboard = lb[:10]
     user_rank = next((r["rank"] for r in lb if r["user"].id == current_user.id), None)
+    # (119) Vorplatzierungs-Pfeile im Top-10: Delta gegenüber dem letzten
+    # vollständigen Spieltag (dieselbe Referenz wie /tabelle).
+    rank_deltas, ref_md = rang_deltas_berechnen(lb)
     current_matchday = get_current_matchday()
     user_badges = UserBadge.query.filter_by(user_id=current_user.id).all()
 
@@ -136,6 +140,7 @@ def dashboard():
         upcoming=upcoming,
         user_points=user_points,
         leaderboard=leaderboard,
+        rank_deltas=rank_deltas, ref_md=ref_md,
         user_rank=user_rank,
         current_matchday=current_matchday,
         badges=user_badges,

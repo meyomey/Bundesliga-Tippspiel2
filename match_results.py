@@ -40,6 +40,25 @@ def apply_match_update(match, *, home_score=None, away_score=None, status=None, 
         status = None
         is_live = None
 
+    # (114) Score-Monotonie im Live-Betrieb: ein Tor kann nicht verschwinden.
+    # Hintergrund (Nutzerbefund 10.10., RB Leipzig): der schnelle OLB-Live-
+    # Boost schrieb 1:0, danach ueberschrieb der zeitversetzte football-data-
+    # Sync (Free-Tier-Verzoegerung) den Stand mit seinem veralteten 0:0 — der
+    # Score flackerte auf "Jetzt aktualisieren" zurueck. Solange das Spiel
+    # live bleibt, verwerfen automatische Quellen deshalb Rueckschritte im
+    # Score (Paar-weise). Vorwaerts-Updates, der Abschluss-Pfad live->
+    # finished ((83)-Regeln) und Admin-Korrekturen
+    # (allow_status_reset=True) bleiben unangetastet.
+    if (match.status == "live"
+            and (status is None or status == "live")
+            and not allow_status_reset
+            and home_score is not None and away_score is not None
+            and match.home_score is not None and match.away_score is not None
+            and (home_score < match.home_score
+                 or away_score < match.away_score)):
+        home_score = None
+        away_score = None
+
     changed = False
     if kickoff is not None and match.kickoff != kickoff:
         match.kickoff = kickoff

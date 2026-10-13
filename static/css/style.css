@@ -3589,6 +3589,9 @@ html[data-team] .lp-orb.orb-1 {
 .lb-trend.up    { background: rgba(20,184,166,.15); color: var(--primary-text); }
 .lb-trend.down  { background: rgba(239,68,68,.12); color: var(--danger); }
 .lb-trend.same  { color: var(--text-muted); }
+.lb-trend.neu   { background: rgba(59,130,246,.14); color: #3b82f6; }
+/* (119) Pfeile im Dashboard-Top10: kompakter in der Mini-Liste */
+.leaderboard.mini .lb-trend { font-size: 9px; padding: 1px 5px; margin-left: 4px; }
 
 /* Sparkline-Minigrafiken in der Rangliste entfernt (Nutzerwunsch 06.09.2026:
    "Diese grünen Grafiken mag ich nicht und müssen nicht sein."); die ▲/▼-
@@ -3866,6 +3869,11 @@ html[data-team] .lp-orb.orb-1 {
   .tr-text small { font-size: 11.5px; }
   .tr-cta { padding: 5px 10px; font-size: 11.5px; }
 }
+
+/* (116) Admin: Nachrichtenkanal-Badges in der Spielerverwaltung */
+.kanal-badges { display: inline-flex; gap: 4px; margin: 0 8px 4px 0; vertical-align: middle; }
+.kb { font-size: 13px; line-height: 1; opacity: .3; filter: grayscale(1); }
+.kb.on { opacity: 1; filter: none; }
 
 /* ============================================================
    FEATURE D: Toast-Notification-System

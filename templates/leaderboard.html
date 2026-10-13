@@ -90,16 +90,18 @@
           {% endif %}
           <div class="lb-card-id">
             <strong>{{ r.user.username }}</strong>
-            {% set tr = trends.get(r.user.id) if trends else none %}
-            {% set has_sub = r.user.favorite_team or (tr and tr.delta is not none and tr.delta != 0) %}
+            {% set tr = rank_deltas.get(r.user.id) if rank_deltas else none %}
+            {% set has_sub = r.user.favorite_team or tr %}
             {% if has_sub %}
             <span class="lb-card-sub">
               {% if r.user.favorite_team %}
                 <img src="{{ r.user.favorite_team.logo }}" alt="" class="lb-fav-mini" title="{{ r.user.favorite_team.name }}" />
               {% endif %}
-              {% if tr and tr.delta is not none and tr.delta != 0 %}
-                {% if tr.delta > 0 %}<span class="lb-trend up">▲ {{ tr.delta }}</span>
-                {% else %}<span class="lb-trend down">▼ {{ -tr.delta }}</span>{% endif %}
+              {% if tr %}
+                {% if tr.delta is none %}<span class="lb-trend neu" title="Neu in der Rangliste">NEU</span>
+                {% elif tr.delta > 0 %}<span class="lb-trend up" title="Platz {{ tr.prev_rank }} nach Spieltag {{ ref_md }}">▲ {{ tr.delta }}</span>
+                {% elif tr.delta < 0 %}<span class="lb-trend down" title="Platz {{ tr.prev_rank }} nach Spieltag {{ ref_md }}">▼ {{ -tr.delta }}</span>
+                {% else %}<span class="lb-trend same" title="unverändert gegenüber Spieltag {{ ref_md }}">•</span>{% endif %}
               {% endif %}
             </span>
             {% endif %}
@@ -198,10 +200,12 @@
               {% if r.user.favorite_team %}
                 <img src="{{ r.user.favorite_team.logo }}" alt="" class="lb-fav-mini" title="{{ r.user.favorite_team.name }}" />
               {% endif %}
-              {% set tr = trends.get(r.user.id) if trends else none %}
+              {% set tr = rank_deltas.get(r.user.id) if rank_deltas else none %}
               {% if tr %}
-                {% if tr.delta is not none and tr.delta > 0 %}<span class="lb-trend up" title="{{ tr.delta }} Plätze gut"> ▲ {{ tr.delta }}</span>
-                {% elif tr.delta is not none and tr.delta < 0 %}<span class="lb-trend down" title="{{ -tr.delta }} Plätze schlechter">▼ {{ -tr.delta }}</span>{% endif %}
+                {% if tr.delta is none %}<span class="lb-trend neu" title="Neu in der Rangliste">NEU</span>
+                {% elif tr.delta > 0 %}<span class="lb-trend up" title="{{ tr.delta }} Plätze gut — Platz {{ tr.prev_rank }} nach Spieltag {{ ref_md }}"> ▲ {{ tr.delta }}</span>
+                {% elif tr.delta < 0 %}<span class="lb-trend down" title="{{ -tr.delta }} Plätze schlechter — Platz {{ tr.prev_rank }} nach Spieltag {{ ref_md }}">▼ {{ -tr.delta }}</span>
+                {% else %}<span class="lb-trend same" title="unverändert gegenüber Spieltag {{ ref_md }}">•</span>{% endif %}
               {% endif %}
               {{ player_tooltip(r.user) }}
             </div>

@@ -1,5 +1,21 @@
 {% extends "base.html" %}
 {% block title %}Spielerverwaltung{% endblock %}
+
+{# (116) Nachrichtenkanäle je Spieler: farbig = eingerichtet UND im Profil
+    aktiv, grau = aus/nicht eingerichtet. Chat-Symbol = CallMeBot. #}
+{% macro kanal_badges(u) -%}
+{% set kb_email = u.notify_email and u.email %}
+{% set kb_push = u.notify_push and u.push_subscription %}
+{% set kb_tg = u.notify_telegram and u.phone and u.phone.startswith('tg:') %}
+{% set kb_wa = u.notify_whatsapp and u.whatsapp_phone and u.whatsapp_apikey %}
+<span class="kanal-badges" title="Nachrichtenkanäle">
+  <span class="kb {{ 'on' if kb_email else 'off' }}" title="E-Mail {{ 'aktiv' if kb_email else 'aus' }}">📧</span>
+  <span class="kb {{ 'on' if kb_push else 'off' }}" title="Push {{ 'aktiv' if kb_push else 'aus' }}">🔔</span>
+  <span class="kb {{ 'on' if kb_tg else 'off' }}" title="Telegram {{ 'aktiv' if kb_tg else 'aus' }}">🤖</span>
+  <span class="kb {{ 'on' if kb_wa else 'off' }}" title="WhatsApp/CallMeBot {{ 'aktiv' if kb_wa else 'aus' }}">💬</span>
+</span>
+{%- endmacro %}
+
 {% block content %}
 <script>document.body.classList.add('admin-subpage', 'admin-users-page');</script>
 
@@ -108,6 +124,7 @@
         {% endif %}
       </div>
 
+      {{ kanal_badges(u) }}
       {% if u.email or u.phone %}
       <div class="uc-contact">
         <a href="mailto:{{ u.email }}" class="uc-link">📧 <span>{{ u.email }}</span></a>
@@ -165,6 +182,7 @@
         </td>
         <td>{{ u.full_name or '—' }}</td>
         <td>
+          {{ kanal_badges(u) }}
           <small><a href="mailto:{{ u.email }}">📧 {{ u.email }}</a></small>
           {% if u.phone %}
             {% set wa = u.phone | replace('+','') | replace(' ','') | replace('-','') | replace('/','') %}

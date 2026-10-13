@@ -32,6 +32,68 @@
 
 
 
+
+
+
+
+## [3.1.90] - 2026-10-11
+
+### 📊 Pfeil-Korrektur: Bewegung des letzten Spieltags bleibt zwischen den Spieltagen sichtbar ((120) — Nutzerkorrektur zu (119))
+
+- **Fund im Live-Betrieb:** stand nach dem letzten Spieltag überall „• unverändert" — die (119)-Referenz (= Stand nach dem letzten vollständigen Spieltag) war identisch mit der aktuellen Tabelle, solange der nächste Spieltag noch keine Ergebnisse liefert. Korrekt gerechnet, aber unbrauchbar angezeigt.
+- **Neue Referenz-Regel:** läuft ein Spieltag (erstes fertiges Spiel hinter dem letzten vollständigen N) → Pfeile zeigen dessen Bewegung (Referenz = Stand nach N, wie in (119)). Liegt der letzte vollständige Spieltag noch ohne Nachfolger-Ergebnis → die Bewegung **dieses** Spieltags bleibt sichtbar (Referenz = Stand nach N−1, wie die TV-Tabelle): nach Spieltag 5 sieht man jetzt die ST-5-Verschiebungen gegenüber ST 4, bis Spieltag 6 beginnt. Nur direkt nach Spieltag 1 (ohne Vergleichswert) gibt es keine Pfeile.
+- **+1 Test netto** (Semantik-Tests umgeschrieben: Zwischen-den-Spieltagen zeigt ST-Bewegung, Abschluss löscht die Bewegung nicht mehr, Saisonstart ohne Pfeile; (94)-Paritätstest auf neue Referenz). Suite **753/753**, Hartgate 0, Node-Tests grün.
+
+## [3.1.89] - 2026-10-11
+
+### 📊 Vorplatzierungs-Pfeile mit klarer Referenz: letzter vollständiger Spieltag ((119) — Nutzerwunsch)
+
+- **Was der Pfeil bedeutet:** ▲/▼ in der Rangliste vergleicht den Platz jetzt mit dem Platz **nach dem letzten vollständig abgeschlossenen Spieltag** — dieselbe Quelle wie die Sieger-Ansage ((115), `abgeschlossene_spieltage`), nicht „die vorherigen Spiele". Damit gibt es genau einen Update-Punkt pro Spieltag: Die Referenz friert beim Spieltagsabschluss ein, alle Pfeile gehen auf neutral (•), und mit dem ersten Ergebnis des nächsten Spieltags zeigen sie wieder dessen Bewegung an. Kein Flackern, kein Springen pro Spiel.
+- **Referenz rechnet jetzt exakt wie die Tabelle:** die Vor-Spieltags-Rangkarte kommt nicht mehr aus einer eigenen Punkteliste (nur Punkte, Username-Tie-Break, ohne Sonderpunkte), sondern aus derselben `get_leaderboard()`-Logik über `bis_matchday=N` — identische Sortierkette inkl. Sonderpunkte. Pfeil und Platznummer können nie auseinanderlaufen. Der „Zwischen-den-Spieltagen"-Bug ist weg: davor lag die Referenz zwischen zwei Spieltagen einen Spieltag zu weit hinten.
+- **Überall derselbe Pfeil:** /tabelle (Mobil-Karten + Desktop-Tabelle, jetzt mit `• unverändert` und `NEU`-Pille und Tooltip „Platz X nach Spieltag Y"), Top-10 auf dem Dashboard (neu) und die Delta-Anzeige im Statistik-Dashboard teilen sich eine Berechnung (`rang_deltas_berechnen`, Referenz-Rangliste gecacht).
+- **+11 Tests** (Referenz-Stand, Überholvorgang, Einfrieren während laufendem Spieltag, Nachrücken beim Abschluss, kein vollständiger Spieltag, Zwischen-den-Spieltagen neutral, Sortierketten-Tie-Break, `bis_matchday`-Filter, /tabelle-Rendering, Dashboard-Rendering, Stats-Konsistenz). Suite **752/752**, Hartgate 0, Node-Tests grün.
+
+## [3.1.88] - 2026-10-11
+
+### 🎛️ CallMeBot-Schalter präzisiert: steuert NUR die Sieger-Ansage-Automatik ((118) — Nutzerkorrektur zu (117))
+
+- **Klarstellung:** der Schalter „Sieger-Ansage automatisch per WhatsApp verschicken" (Admin → Einstellungen → 🏆 Sieger-Ansage) regelt **ausschließlich**, ob nach Spieltagende die automatische Sieger-Ansage per WhatsApp rausgeht. **Sonst bleibt alles aktiv:** Erinnerungen/Digests, Test-Nachrichten und die Profil-Schalter laufen unabhängig davon weiter — die globale Sperre aus (117) ist zurückgebaut, der Schalter wirkt nur noch an der Ansage-Stelle im Cron.
+- **Schalter aus = sauber abgehakt:** bereits abgeschlossene Spieltage ohne Ansage werden beim Lauf als erledigt markiert (ohne Versand) — schaltet man später wieder ein, werden alte Spieltage **nicht nachgeholt**; die Automatik greift erst wieder beim nächsten frisch abgeschlossenen Spieltag.
+- **Einstellungen:** die Sektion heißt jetzt **„🏆 Sieger-Ansage (WhatsApp)"** mit „⚠ Automatik aus"-Badge, wenn der Schalter aus ist. Die (117)-Einklapp-Logik für Registrierung/Tipp-Erinnerungen bleibt unverändert.
+- **+2 Tests netto** (7 neue anstelle der 5 (117)-Master-Tests: markieren-ohne-Versand, kein Nachholen, An→sendet, Versand-Weg ungebremst, Profil-Schalter, 2× Einklapp-UX). Suite **741/741**, Hartgate 0, Node-Tests grün.
+
+## [3.1.87] - 2026-10-11
+
+### 🎛️ CallMeBot-Master-Schalter + aufgeräumte Einstellungen ((117) — zwei Nutzerwünsche)
+
+- **„Ich möchte manuell einstellen können, ob CallMeBot genutzt wird“:** in Admin → Einstellungen gibt es jetzt die neue Sektion **„💬 CallMeBot (WhatsApp)“** mit einem Master-Schalter. Der greift **zentral an der einzigen Versandfunktion** — mit „aus“ verlässt keine einzige WhatsApp die App (Erinnerungen, Tests, Spieltags-Sieger-Ansage), und das bewusst **vor** dem HTTP-Aufruf. Die Wege überspringen den Kanal dann sauber (kein „fehlgeschlagen“-Rauschen, keine Wiederhol-Loops). Zusätzlich zum Profil-Schalter jedes Mitglieds ((116)) — beides wirkt: Master AND Profil.
+- **„Registrierungen und Tipp-Erinnerungen sollten eingeklappt sein, wenn fertig konfiguriert“:** die Einstellungs-Sektionen **👥 Registrierung** und **🔔 Tipp-Erinnerungen** sind jetzt zugeklappt, sobald alles steht — Registrierung öffnet sich nur noch, wenn Kontakt-E-Mail oder rechtliche Stammdaten fehlen („⚠ Nicht konfiguriert“), Tipp-Erinnerungen nur, wenn sie ausgeschaltet sind („⚠ Deaktiviert“). Gleiche UX wie die API-Sektion.
+- **+5 Tests** (Master aus → kein HTTP; Master an → wie gehabt; Ansage skippt sauber; Sektionen zu bei konfiguriert / offen bei fehlend). Suite **739/739**, Hartgate 0, Node-Tests grün.
+## [3.1.86] - 2026-10-11
+
+### 📡 Kanal-Sichtbarkeit: Admin sieht, wer welchen Weg nutzt; CallMeBot-Schalter greift überall; Ranglisten-Link in der Ansage ((116) — drei Nutzerwünsche)
+
+- **Wer nutzt was?** die Spielerverwaltung (Admin → Spieler) zeigt je Spieler **vier Kanal-Badges** (📧 E-Mail · 🔔 Push · 🤖 Telegram · 💬 CallMeBot) — farbig = Kanal eingerichtet **und** im Profil aktiv, grau = aus/nicht eingerichtet (Tooltip je Kanal). In beiden Layouts (Mobil-Karten + Desktop-Tabelle).
+- **CallMeBot ein-/ausschaltbar:** der Profil-Schalter heißt jetzt klar **„WhatsApp (CallMeBot)“** — und greift jetzt **überall**: Digest/Erinnerungen und Test-Nachricht prüften ihn bereits, die neue Sieger-Ansage ((115)) respektiert ihn jetzt ebenfalls (wer CallMeBot abstellt, bekommt keine automatischen Sieger-Nachrichten mehr).
+- **Ranglisten-Link am Ende:** die Sieger-Ansage endet auf „📊 Rangliste: <Basis-URL>/tabelle“ (Basis-URL aus den Admin-Settings; ohne konfigurierte Basis-URL entfällt die Zeile sauber, statt einen toten relativen Pfad zu verschicken).
+- **+6 Tests** (Link mit/ohne Basis-URL, Schalter an/aus bei der Ansage, Badges gerendert, Profil-Label). Suite **734/734**, Hartgate 0, Node-Tests grün.
+## [3.1.85] - 2026-10-11
+
+### 🏆 Spieltags-Sieger-Ansage: WhatsApp an alle + Gruppentext zum Kopieren ((115) — Nutzerwunsch)
+
+- **Wunsch:** nach Abschluss aller Spiele den **Spieltagssieger plus Top 3 der Gesamtrangliste** in die WhatsApp-Gruppe posten.
+- **Ehrliche Grenze:** CallMeBot (unser 0-€-Weg) kann **keine Gruppen**, nur private Chats — die bezahlte WhatsApp-Business-API bleibt laut Regel dokumentiert, nicht eingebaut. Deshalb zwei Wege, beide mit demselben Text (Sieger mit Punkten, bei geteiltem Sieg alle Namen mit „je“, plus Top-3-Gesamt):
+  1. **Automatik:** der Cron-Sync prüft nach jedem Lauf, ob ein Spieltag komplett beendet ist, und sendet die Ansage **einmalig an alle Mitglieder mit eingerichtetem WhatsApp** (privater Chat). Versand-Markierung in den DB-Settings — kein Doppelpost; bei Sendefehlern wird am nächsten Tick wiederholt. Nutzt die vorhandene `matchday_winners`-Tabelle (Punkte/Exaktheit/geteilter Sieg) und rechnet sie defensiv vor dem Versand neu.
+  2. **Gruppentext im Admin** (API-Sync-Seite): fertige Nachricht in einem Textfeld mit Kopieren-Knopf — der Admin postet sie in die Gruppe.
+- **+7 Tests** (Textaufbau, Spieltag-Filter, Empfänger-Gates ohne Bots, Einmaligkeit + Wiederholung bei Fehlern, Admin-Karte, Cron-Verdrahtung). Suite **728/728**, Hartgate 0, Node-Tests grün.
+## [3.1.84] - 2026-10-11
+
+### 🚫⚽ Score-Flackern behoben: Tore verschwinden nicht mehr ((114) — Nutzerwunsch-Befund: „1:0 wurde angezeigt, dann aktualisiert, dann 0:0")
+
+- **Befund:** beim laufenden Spiel stand kurz korrekt 1:0 — nach einem Klick auf „Jetzt aktualisieren" stand wieder 0:0. Ursache: **zwei Quellen mit unterschiedlicher Latenz** kämpfen um denselben Score — der schnelle OLB-Live-Boost schrieb den Treffer, der danach laufende football-data-Sync (Free-Tier liefert Tore zeitversetzt) überschrieb ihn mit seinem veralteten Stand. Der (106)-Plausibilitäts-Guard schützte nur den OLB-Weg — der fd-Weg war offen.
+- **Fix an der zentralen Schreibstelle** (`apply_match_update`, dem Modul, über das laut Architektur ALLE Ergebnis-Schreibvorgänge laufen): **Score-Monotonie im Live-Betrieb** — solange ein Spiel live bleibt, verwerfen automatische Quellen Score-Rückschritte (Paar-weise geprüft). Ein Tor kann nicht mehr verschwinden, egal welche Quelle flackert.
+- **Bewusst unangetastet:** Vorwärts-Updates, der Abschluss-Pfad live → finished ((83)-Regeln inkl. 0:0-Heilung gegen OLB-Wahrheit), Erstanlagen bei geplanten Spielen und explizite Admin-Korrekturen (`allow_status_reset=True`).
+- **+7 Tests** (u. a. Integrationstest mit echtem fd-Payload: 1:0 bleibt gegen 0:0-Sync bestehen). Suite **721/721**, Hartgate 0, Node-Tests grün.
 ## [3.1.83] - 2026-10-10
 
 ### ⏱️ Live-Uhr, Teil 4: In der 2. Halbzeit gibt es keine 45 mehr ((113) — Nutzerwunsch: „die 2. Halbzeit sollte mindestens 46. Min. anzeigen“)

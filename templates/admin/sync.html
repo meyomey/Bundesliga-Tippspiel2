@@ -102,4 +102,13 @@
   <p class="muted" style="margin:8px 0 0">Heutiger API-Football-Verbrauch: Live-Minute {{ af_calls.get('minute', 0) or 0 }}/{{ af_caps.get('minute', 90) }} · Torschützen {{ af_calls.get('goals', 0) or 0 }}/{{ af_caps.get('goals', 8) }} — Freigrenze 100 Abrufe/Tag gesamt.</p>
   {% endif %}
 </div>
+
+{% if gruppen_text %}
+<div class="card" style="margin-top:16px;">
+  <h2 style="margin-top:0;">📣 Spieltags-Sieger (Spieltag {{ gruppen_md }})</h2>
+  <p class="muted small">CallMeBot kann keine Gruppen posten — Text kopieren und in die WhatsApp-Gruppe einfügen. An alle Mitglieder mit eingerichtetem WhatsApp geht die Ansage zusätzlich automatisch per Cron (privater Chat).</p>
+  <textarea id="mdWinnerText" readonly class="input" style="width:100%; min-height:140px; font-family:inherit;">{{ gruppen_text }}</textarea>
+  <button type="button" class="btn-primary" style="margin-top:8px;" onclick="var t=document.getElementById('mdWinnerText'); t.select(); if (navigator.clipboard) { navigator.clipboard.writeText(t.value); } this.textContent='✓ Kopiert';">📋 Kopieren</button>
+</div>
+{% endif %}
 {% endblock %}

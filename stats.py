@@ -202,7 +202,7 @@ def get_matchday_recap(matchday=None):
 # unveraendert weiter. Neue Code-Stellen koennen direkt aus den Fachmodulen
 # importieren.
 from stats_personal import (  # noqa: F401
-    get_user_trend,
+    get_user_trend, rang_deltas_berechnen,
     vor_spieltag_rangkarte, _compute_rank_through, get_user_insights,
     get_match_tip_distribution, get_user_stats_20,
 )

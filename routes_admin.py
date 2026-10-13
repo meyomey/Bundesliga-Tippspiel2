@@ -135,7 +135,20 @@ def sync():
         log_admin_action("sync", "competition", get_active_competition().code if get_active_competition() else None, res.get("msg"), {"ok": res.get("ok"), "source": res.get("source"), "created": res.get("created"), "updated": res.get("updated")})
         flash(res["msg"], "success" if res["ok"] else "danger")
         return redirect(url_for("admin.sync"), code=303)
-    return render_template("admin/sync.html", diag=get_sync_diagnostics())
+    # (115) Kopier-Text fuer die WhatsApp-Gruppe (CallMeBot kann keine Gruppen)
+    gruppen_text = gruppen_md = None
+    try:
+        from matchday_announce import abgeschlossene_spieltage, sieger_text
+        _comp = get_active_competition()
+        if _comp:
+            _fertig = abgeschlossene_spieltage(_comp.id)
+            if _fertig:
+                gruppen_md = _fertig[-1]
+                gruppen_text = sieger_text(gruppen_md, _comp.id)
+    except Exception:
+        pass
+    return render_template("admin/sync.html", diag=get_sync_diagnostics(),
+                           gruppen_text=gruppen_text, gruppen_md=gruppen_md)
 
 
 @admin_bp.route("/purge-demo", methods=["POST"])
@@ -640,6 +653,8 @@ def settings():
         form.telegram_bot_token.data = ""
         form.telegram_bot_username.data = get_setting("telegram_bot_username", "")
         form.telegram_webhook_secret.data = ""
+        from notification_center import _truthy as _t_117
+        form.whatsapp_enabled.data = _t_117(get_setting("whatsapp_enabled", True), True)
         form.reminders_enabled.data = get_setting("reminders_enabled", True)
         form.reminders_lead_hours.data = get_setting("reminders_lead_hours", 1)
         form.reminders_force_lead_hours.data = bool(get_setting("reminders_force_lead_hours", False))
@@ -720,6 +735,7 @@ def settings():
         if tg_webhook_secret:
             set_setting("telegram_webhook_secret", tg_webhook_secret)
         set_setting("reminders_enabled", bool(form.reminders_enabled.data))
+        set_setting("whatsapp_enabled", bool(form.whatsapp_enabled.data))
         try:
             set_setting("reminders_lead_hours", max(0, min(24, int(form.reminders_lead_hours.data))))
         except (TypeError, ValueError):
@@ -769,7 +785,12 @@ def settings():
     pts_missing = not (form.points_exact.data) or not (form.points_diff.data) or not (form.points_tendency.data)
     pot_missing = not (form.pot_amount.data) or form.pot_amount.data == 0
 
+    registrierung_vollstaendig = bool(
+        (get_setting("contact_email", "") or "").strip()
+        and (get_setting("recht_anbieter", "") or "").strip()
+    )
     return render_template("admin/settings.html", form=form,
+                           registrierung_vollstaendig=registrierung_vollstaendig,
                            mail_missing=mail_missing, api_missing=api_missing,
                            vapid_missing=vapid_missing, pts_missing=pts_missing,
                            pot_missing=pot_missing,

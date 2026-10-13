@@ -561,8 +561,12 @@ def _leaderboard_rows_aus_serial(serial):
     return rows
 
 
-def get_leaderboard(matchday=None):
+def get_leaderboard(matchday=None, bis_matchday=None):
     """Erweiterte Tabelle mit allen Tipp-Kategorien (mit Cache!).
+
+    (119) ``bis_matchday``: Gesamttabelle nur bis inklusive Spieltag N —
+    Referenzrechnung fuer die Vorplatzierungs-Pfeile (identische Sortier-
+    kette inkl. Sonderpunkte, damit Pfeil und Platz nie auseinanderlaufen).
     
     🔥 PERFORMANCE-OPTIMIZED: 
     - Eager loading von Predictions + Matches + Teams
@@ -573,7 +577,7 @@ def get_leaderboard(matchday=None):
     comp = get_active_competition()
     comp_key = comp.code if comp else "all"
     season_key = comp.season if comp else get_setting("current_season", "current")
-    cache_key = cache_key_leaderboard(matchday=matchday, season=season_key, competition=comp_key)
+    cache_key = cache_key_leaderboard(matchday=matchday, season=season_key, competition=comp_key, bis=bis_matchday)
     cached_result = cache.get(cache_key)
     if cached_result is not None:
         # (94) Cache-Hit: User-Objekte frisch aus der Session dazuladen —
@@ -597,6 +601,9 @@ def get_leaderboard(matchday=None):
         base_q = base_q.filter(Match.competition_id == comp.id)
     if matchday:
         base_q = base_q.filter(Match.matchday == matchday)
+    if bis_matchday:
+        # (119) Referenz-Stand: nur Spiele bis inklusive dieses Spieltags
+        base_q = base_q.filter(Match.matchday <= bis_matchday)
 
     all_preds = base_q.options(
         db.joinedload(Prediction.match).joinedload(Match.home_team),
