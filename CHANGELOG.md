@@ -36,6 +36,15 @@
 
 
 
+## [3.1.91] - 2026-10-13
+
+### 🐍 Hotfix: Server läuft jetzt unter Python 3.11.2 — vendor/ komplett neu gebaut ((121) — Betrieb)
+
+- **Fund:** nach dem Host-Update von Python 3.9.2 auf **3.11.2** startete die App nicht mehr (`ImportError: cannot import name '_imaging' from 'PIL'`). Ursache: der per FTP gepflegte `vendor/`-Ordner enthielt das komplette Abhängigkeits-Set als **cp39**-Binärteile — Pillow hat keinen Pure-Python-Fallback und krachte beim Import von `avatars.py` (Avatar-Upload).
+- **Fix:** `vendor/` komplett für **cp311/manylinux x86_64** neu gebaut (alle Pakete aus requirements.txt: Flask 3.1.3, SQLAlchemy 2.1.4 mit Cython-Extensions, Pillow 11.3.0 mit `pillow.libs`, psycopg2 2.9.12, MarkupSafe 3.0.4, reportlab 5.0.1 …). Verifiziert: **0** cp39/cp313-Reste über alle `.so`-Tags. Liefert als neues Paket **`05_Vendor_Python311_2026-10-11.zip`** (26 MB, mit LIESMICH + Deploy-Schritten: alten vendor-Ordner komplett löschen, neuen hochladen, `__pycache__` weg, RESTART). App-Code unverändert.
+- **Doku:** requirements-Kopfkommentar + Vendor-Hinweise auf Python 3.11.2 / `build_vendor.bat`-Auswahl [2] aktualisiert (CI-Matrix bleibt 3.9–3.13).
+- Suite **753/753**, Hartgate 0, Node-Tests grün (kein App-Code-Change außer version.py/Doku).
+
 ## [3.1.90] - 2026-10-11
 
 ### 📊 Pfeil-Korrektur: Bewegung des letzten Spieltags bleibt zwischen den Spieltagen sichtbar ((120) — Nutzerkorrektur zu (119))

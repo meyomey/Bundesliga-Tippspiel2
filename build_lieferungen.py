@@ -314,7 +314,7 @@ INHALT (ZIP direkt in den Application Root entpacken):
 - static/     (komplett)
 
 NICHT ENTHALTEN - bitte beachten:
-- vendor/ (manylinux-Wheels fuer Python 3.9): lokal per build_vendor.bat
+- vendor/ (manylinux-Wheels fuer Python 3.11 — 05_Vendor_Python311_*.zip): lokal per build_vendor.bat
   bauen und separat per FTP hochladen.
 - .env: liegt auf dem Server - beim Upload NICHT ueberschreiben!
 - tippspiel.db: SQLite-Datenbank auf dem Server NICHT ueberschreiben!
@@ -384,7 +384,7 @@ UPLOAD:
 2. Entpacken, vorhandene Dateien UEBERSCHREIBEN lassen.
 3. Abhaengigkeiten: redis + flask-caching sind seit Langem in
    requirements.txt - falls auf dem Server noch nicht vorhanden, via
-   build_vendor.bat (Auswahl [1] Python 3.9.x) + vendor/-FTP nachziehen.
+   vendor/-FTP nachziehen (05_Vendor_Python311_*.zip bzw. build_vendor.bat Auswahl [2]).
 
 RESTART:
 Plesk -> Domain -> Python -> Restart App.
