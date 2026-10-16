@@ -4,6 +4,8 @@ Punkte-Neuberechnung, Rate-Limit/Timeout/Cache-Fallback und Purge-Bremse."""
 from datetime import datetime, timedelta, timezone
 
 import pytest
+
+from extensions import db
 import requests as real_requests
 
 import sync
@@ -96,7 +98,7 @@ def test_fd_result_update_recalculates_prediction_points(db, bl1_comp, user, app
     res = sync._process_football_data(finished, bl1_comp.id)
     assert res["updated"] == 1
 
-    fresh = Match.query.get(match.id)
+    fresh = db.session.get(Match, match.id)
     assert fresh.status == "finished" and (fresh.home_score, fresh.away_score) == (2, 1)
     pred = Prediction.query.filter_by(user_id=user.id, match_id=match.id).one()
     assert pred.points == app.config["POINTS_EXACT"]  # exakter Tipp

@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from extensions import db
 from models import Competition, Match, Team
 
 from sync_openligadb import boost_live_from_openligadb
@@ -78,7 +79,7 @@ def test_goal_from_olb_marks_match_live(live_setup):
     set_payload(_olb_payload("FC Bayern München", "Borussia Dortmund", m.kickoff, 2, 1))
     r = boost_live_from_openligadb()
     assert r["updated"] == 1 and calls["n"] == 1
-    dbm = Match.query.get(m.id)
+    dbm = db.session.get(Match, m.id)
     assert (dbm.status, dbm.home_score, dbm.away_score, dbm.is_live) == ("live", 2, 1, True)
 
 
@@ -99,7 +100,7 @@ def test_finished_via_olb_clears_minute(live_setup):
     set_payload(_olb_payload("FC Bayern München", "Borussia Dortmund", m.kickoff, 3, 0, finished=True))
     r = boost_live_from_openligadb()
     assert r["updated"] == 1
-    dbm = Match.query.get(m.id)
+    dbm = db.session.get(Match, m.id)
     assert dbm.status == "finished" and (dbm.home_score, dbm.away_score) == (3, 0)
     assert dbm.minute is None and dbm.live_phase is None and not dbm.is_live
 
@@ -139,7 +140,7 @@ def test_live_score_rueckschritt_wird_abgewiesen(live_setup):
     set_payload(_olb_payload("FC Bayern München", "Borussia Dortmund", m.kickoff, 1, 0))
     r = boost_live_from_openligadb()
     assert r["updated"] == 0
-    dbm = Match.query.get(m.id)
+    dbm = db.session.get(Match, m.id)
     assert (dbm.home_score, dbm.away_score, dbm.status) == (2, 0, "live")
 
 
@@ -152,7 +153,7 @@ def test_live_score_schritt_ueber_drei_wird_abgewiesen(live_setup):
     set_payload(_olb_payload("FC Bayern München", "Borussia Dortmund", m.kickoff, 5, 0))
     r = boost_live_from_openligadb()
     assert r["updated"] == 0
-    dbm = Match.query.get(m.id)
+    dbm = db.session.get(Match, m.id)
     assert (dbm.home_score, dbm.away_score) == (1, 0)
 
 

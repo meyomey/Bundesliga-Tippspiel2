@@ -52,16 +52,23 @@ GITHUB_UPLOAD_FILES = [
     "requirements.txt",
     "pytest.ini",
     ".github/workflows/tests.yml",
+    ".github/dependabot.yml",
     # 27.09.2026 (92): Hell/Dunkel-Umschalter
     "static/js/theme.js",
     "tests/js/theme_test.js",
     "tests/test_theme_toggle.py",
     # 08.10.2026 (93): Theme-Konsolidierung — app.js delegiert an theme.js
     "static/js/app.js",
-    # 08.10.2026 (97): CI-Heilung — Werkzeug 3.1.9 (CVE-2026-102598),
-    # Cache-Test-Fixture 3.9-kompatibel, urllib3-Ignore (3.9-Drift)
-    "requirements_py39.txt",
+    # 16.10.2026 (126): 3.9-Dekommissionierung + Security-Bumps
+    "mail_helpers.py",
+    "NETCUP_OHNE_SSH.md",
+    "docs/MIGRATIONS.md",
+    "build_vendor.bat",
+    "tests/test_season_wizard.py",
+    "tests/test_mail_whatsapp_pwa.py",
+    # 08.10.2026 (97): CI-Heilung — Werkzeug 3.1.9 (CVE-2026-102598)
     ".github/workflows/tests.yml",
+    ".github/dependabot.yml",
     "tests/test_cache_manager.py",
     "tests/test_ci_workflow.py",
     # 09.10.2026 (103): Versionskennung (version.py, Footer, /healthz)
@@ -252,6 +259,7 @@ GITHUB_UPLOAD_FILES = [
     "static/js/to_engine.js",
     "tests/js/tip_optimizer_engine_test.js",
     ".github/workflows/tests.yml",
+    ".github/dependabot.yml",
     # 16.09.2026 (62): Quoten-Bewegung (J) + Scheduler-Tests + utils-Export-Fix
     "utils.py",
     "tests/test_scheduler.py",
@@ -304,12 +312,12 @@ Build-Datum:   {TODAY}
 Quelle:        git clone meyomey/Bundesliga-Tippspiel2
 Commit:        {commit} ({commit_date})
 Teststand:     281/281 Tests gruen, Coverage 79 %
-Python-Ziel:   3.9 (Netcup/Plesk), kompatibel bis 3.13
+Python-Ziel:   3.11 (Netcup/Plesk seit 13.10.2026), kompatibel bis 3.13
 
 INHALT (ZIP direkt in den Application Root entpacken):
 - passenger_wsgi.py  (Pflicht! Entry Point)
 - alle Runtime-Python-Module (*.py am Root)
-- requirements.txt + requirements_py39.txt
+- requirements.txt
 - templates/  (komplett)
 - static/     (komplett)
 
@@ -337,7 +345,7 @@ INHALT:
              SYNC_AUDIT_2026-07-06.md, DEPLOY_NETCUP.md,
              NETCUP_OHNE_SSH.md, NETCUP_TROUBLESHOOTING.md, docs/
 - Tests:     tests/ (31 Dateien, 235 Tests) + pytest.ini
-- CI:        .github/workflows/tests.yml (flake8-Gate + pytest-Matrix 3.9-3.13)
+- CI:        .github/workflows/tests.yml (flake8-Gate + pytest-Matrix 3.11-3.13)
 - Dev-Tools: build_vendor.bat, install.bat, start.bat, start_scheduler.bat,
              generate_pwa_icons.py, scheduler.py, build_lieferungen.py
 - Docker:    Dockerfile, docker-compose.yml
@@ -364,8 +372,8 @@ Teststand:     281/281 Tests gruen, Coverage 79 %
 
 WAS IST DRIN:
 Der KOMPLETTE aktuelle Runtime-Stand: alle Python-Module, templates/,
-static/ (inkl. reparierter Team-Logos), requirements.txt +
-requirements_py39.txt, passenger_wsgi.py.
+static/ (inkl. reparierter Team-Logos), requirements.txt,
+passenger_wsgi.py.
 Empfohlen, weil seit dem letzten Server-Stand viele zusammenspielende
 Aenderungen offen sind (Liste unten).
 
@@ -438,7 +446,7 @@ DANACH in GitHub Desktop:
 DIE CI LAEUFT DANN AUTOMATISCH:
     github.com/meyomey/Bundesliga-Tippspiel2 > Actions > "Tests & Lint"
     - Flake8-Gate (Syntaxfehler/undefinierte Namen)
-    - pytest auf Python 3.9-3.13 (3.9 = Netcup-Zielversion)
+    - pytest auf Python 3.11-3.13 (3.11 = Netcup-Produktion)
 
 Quelle:  Commit {commit} ({commit_date}) + lokale Aenderungen
 Teststand: 281/281 Tests gruen, Coverage 79 %

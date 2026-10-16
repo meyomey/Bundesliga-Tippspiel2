@@ -36,6 +36,58 @@
 
 
 
+## [3.1.97] - 2026-10-16
+
+### 🤖 Dependabot aktiviert: wöchentliche Update-Vorschläge für pip + GitHub-Actions ((127) — Audit-Folge)
+
+- **Neu:** `.github/dependabot.yml` — Dependabot öffnet ab sofort **wöchentlich Pull Requests** für veraltete Abhängigkeiten (`requirements.txt`) und GitHub-Actions-Versionen. Jeder Vorschlag läuft durch die komplette CI (Matrix 3.11–3.13, Hartgate, Node, **pip-audit als hartes Gate**) — nur grün mergen.
+- **Einmalig im Web zu klicken** (public repo, meist schon aktiv): Repo → Settings → Code security and analysis → „Dependabot alerts" + „Dependabot security updates" AN — dann kommen für künftige Advisories automatisch Fix-PRs, und der harte Audit-Gate + Dependabot spielen zusammen.
+- **+1 Wächter-Test** (Dependabot-Konfig vorhanden, beide Ökosysteme drin). Suite **755/755**, Hartgate 0, Node-Tests grün.
+
+## [3.1.96] - 2026-10-16
+
+### 🐍🔒 Python-3.9-Dekommissionierung + Security-Bumps: Audit jetzt ohne Ignores ((126) — komplettes Audit)
+
+- **Anlass:** Netcup läuft seit (121) unter **Python 3.11.2** — die 3.9-Pflege ist obsolet. Umgesetzt, was der CI-Audit-Kommentar seit (98) verspricht: „Sollte Netcup 3.10+ anbieten, Ignore-Liste abbauen und Pins anheben."
+- **Security-Bumps** (alle brauchen ≥ 3.10): **Pillow 11.3.0 → 12.3.0** (6 Advisories! — verarbeitet User-Uploads, echte Angriffsfläche), **bleach 6.2.0 → 6.4.0** (2), **requests 2.32.5 → 2.33.0**, **python-dotenv 1.2.1 → 1.2.2**, **pytest 8.4.2 → 9.0.3** (Test-Dep). **pip-audit meldet jetzt „No known vulnerabilities found" — der CI-Audit-Job läuft ohne jegliche Ignore-Liste = hartes Gate** (vorher 28 ignorierte IDs).
+- **3.9-Rückbau:** CI-Matrix **3.11–3.13** (3.11 = Produktion), `requirements_py39.txt` gelöscht, `build_vendor.bat` wählt jetzt [1] 3.11 / [2] 3.12+, README/Netcup-Doku/Migrations-Hinweise aktualisiert, vendor/ für cp311 neu gebaut (05er-Zip, jetzt 4,2 MB kleiner ohne ungenutzte Test-Bauer).
+- **pytest-9-Hygiene (echte Funde!):** ① zwei Tests liefen nur dank eines **geleakten App-Kontexts** (pytest 9 räumt sauber auf) — `url_for` im Passwort-Reset-Mail baute auf Request-Kontext + **Host-Header** (Injektionsfläche!): basiert jetzt wie Ansage/Erinnerung auf `public_base_url` mit festem Pfad (`/passwort-zuruecksetzen/…`), kontext- und host-unabhängig. ② alle 14 SQLAlchemy-`Query.get()`-Legacy-Warnungen beseitigt → Suite jetzt **warnungsfrei**.
+- **Ungenutzte Test-Abhängigkeiten entfernt:** pytest-flask, factory-boy, faker (waren nie importiert).
+- Suite **754/754, 0 Warnungen**, Hartgate 0, Node-Tests grün.
+
+## [3.1.95] - 2026-10-16
+
+### 💬 WhatsApp-Button: (124)-CSS-Rest behoben (Stat-Box sauber bündig) + Desktop-Logo größer ((125) — Nutzerkorrektur)
+
+- **Fehler eingestanden:** bei der (124)-Umbauaktion blieben die (123)-Desktop-Regeln als globale CSS-Reste stehen — die Stat-Leiste (Punkte/Rang/Badges) wurde dadurch auf **allen** Viewports nach rechts geschoben und wirkte auf dem Smartphone ungleichmäßig verschoben. Die Reste sind entfernt, die Stat-Box ist wieder bündig/flächig wie vor (123).
+- **Desktop:** das Logo ist jetzt einen Tick größer (36px-Kreis mit 20px-Icon statt 30/18, etwas mehr Abstand zur Begrüßung) — Mobil bleibt es kompakt (30/18).
+- Rein CSS (`style.css`/`style.min.css`), Markup unverändert. Suite **753/753**, Hartgate 0, Node-Tests grün.
+
+## [3.1.94] - 2026-10-16
+
+### 💬 WhatsApp-Button sitzt jetzt direkt nach der Begrüßung ((124) — Nutzerkorrektur zu (123))
+
+- **Neuer Platz:** das Logo erscheint als kleiner runder Button **direkt nach dem 👋** in „Hallo, …“ — mit ~10px Abstand, vertikal zur Zeile ausgerichtet (Mobil und Desktop identisch, kein Eck-Positionieren mehr).
+- Rein CSS/Markup: Button ist in die `<h1>`-Begrüßung eingebettet (30px Kreis, 18px Logo, dezenter grüner Hover, Tooltip/aria-label wie gehabt). Die absolute Positionierung aus (122)/(123) ist komplett entfernt.
+- Suite **753/753**, Hartgate 0, Node-Tests grün.
+
+## [3.1.93] - 2026-10-16
+
+### 💬 WhatsApp-Button Feinschliff: mobile tiefer, Desktop neben der Stat-Leiste ((123) — Nutzerkorrektur zu (122))
+
+- **Desktop:** der Button klebte direkt **über** dem „BADGES"-Wert und wirkte wie ein viertes Stat. Jetzt ist er auf Desktop ein **eigenes Element rechts neben der Punkte-/Rang-/Badges-Leiste**, vertikal mittig ausgerichtet — mit klarem Abstand, kein Überlapp mehr.
+- **Mobil:** das Logo hing einen Hauch zu hoch (an der Oberkante der Kopfzeile); es sitzt jetzt ~10px tiefer, auf Höhe der „Hallo"-Begrüßung.
+- Rein CSS (`style.css`/`style.min.css`), Markup unverändert. Suite **753/753**, Hartgate 0, Node-Tests grün.
+
+## [3.1.92] - 2026-10-16
+
+### 💬 WhatsApp-Einstieg aufgeräumt: nacktes Logo in der Kopfzeile ((122) — Nutzerwunsch)
+
+- **Vorher:** auf dem Dashboard hing zwischen Zahlungsinfo und Spiele-Grid eine Textzeile („In die WhatsApp-Gruppe der Tipprunde" mit 16px-Logo) — ein Fremdkörper im Layout.
+- **Jetzt:** die Textzeile ist weg; das WhatsApp-Logo sitzt als **runder, dezenter Icon-Button (34px) oben rechts in der Dashboard-Kopfzeile** — Mobil neben der Begrüßung (Daumen-nah, immer ohne Scrollen sichtbar), Desktop in der oberen rechten Ecke über der Punkte-Leiste. Hover/Tooltip „In die WhatsApp-Gruppe der Tipprunde" (als `aria-label` für Screenreader), dezenter grüner Hover-Schimmer. Ohne hinterlegten Gruppen-Link erscheint gar kein Button.
+- Die WhatsApp-**Karte** auf der Mehr-Seite und der WhatsApp-Share-Link beim Einladungs-Link bleiben unverändert.
+- Suite **753/753**, Hartgate 0, Node-Tests grün.
+
 ## [3.1.91] - 2026-10-13
 
 ### 🐍 Hotfix: Server läuft jetzt unter Python 3.11.2 — vendor/ komplett neu gebaut ((121) — Betrieb)

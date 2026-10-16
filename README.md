@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/meyomey/Bundesliga-Tippspiel2/actions/workflows/tests.yml/badge.svg)](https://github.com/meyomey/Bundesliga-Tippspiel2/actions/workflows/tests.yml)
 ![Python](https://img.shields.io/badge/Python-3.9%20|%203.10%20|%203.11%20|%203.12%20|%203.13-blue)
-![Tests](https://img.shields.io/badge/Tests-753%2F753-green)
+![Tests](https://img.shields.io/badge/Tests-755%2F755-green)
 ![Coverage](https://img.shields.io/badge/Coverage-85%25-yellowgreen)
 
 Ein umfangreiches, produktionsnahes Bundesliga-Tippspiel mit Flask, Admin-Bereich, Live-Features, KI-Bots, PWA, Benachrichtigungen, Saisonarchiv und Netcup-/Shared-Hosting-Unterstützung.
@@ -119,7 +119,7 @@ Dann startet die App nicht mehr mit Default-`SECRET_KEY` oder `admin123`.
 
 ## 🌐 Netcup / Plesk ohne SSH
 
-Für Netcup mit Python 3.9.2:
+Für Netcup mit Python 3.11.2 (seit 13.10.2026):
 
 ```bat
 build_vendor.bat
@@ -128,7 +128,7 @@ build_vendor.bat
 Dann Auswahl:
 
 ```txt
-1 = Python 3.9.x
+1 = Python 3.11
 ```
 
 Das Skript baut `vendor/` mit Linux/manylinux-Wheels und schreibt zusätzlich:
@@ -145,7 +145,6 @@ templates/
 static/
 vendor/
 requirements.txt
-requirements_py39.txt
 ```
 
 Danach in Plesk:

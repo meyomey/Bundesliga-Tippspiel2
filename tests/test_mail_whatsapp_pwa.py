@@ -24,8 +24,11 @@ def test_send_email_and_password_reset(monkeypatch, app, user):
     monkeypatch.setattr('mail_helpers.mail.send', fake_send)
     with app.app_context():
         assert send_email('Betreff', [user.email], 'Body') is True
+        # (126) Reset-Link kommt aus public_base_url (wie in Produktion):
+        set_setting('public_base_url', 'https://tipp.example.test')
         send_password_reset(user)
     assert len(sent) == 2
+    assert 'https://tipp.example.test/passwort-zuruecksetzen/' in sent[1].body
     assert sent[0].subject == 'Betreff'
 
 

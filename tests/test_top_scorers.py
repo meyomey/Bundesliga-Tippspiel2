@@ -337,7 +337,7 @@ def test_picker_sets_alias_and_row_immediately(app, client, admin_user, ts_env, 
         entries, _ = top_scorers.top_scorers_listing(allow_refresh=False)
         row = next(e for e in entries if "Matanovic" in e["name"])
         from models import Team
-        frg = Team.query.get(fid)
+        frg = db.session.get(Team, fid)
         assert row["team"] == (frg.short_name or frg.name)
 
 

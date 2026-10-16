@@ -32,25 +32,20 @@ REM ----- Python-Version auswaehlen -----
 echo Welche Python-Version laeuft auf NETCUP?
 echo (siehst du in Plesk -^> Domain -^> Python)
 echo.
-echo   [1] Python 3.9          (alt, aber haeufig auf Netcup)
-echo   [2] Python 3.10 oder 3.11
-echo   [3] Python 3.12 oder neuer
+echo   [1] Python 3.11         (Netcup-Produktion seit 13.10.2026)
+echo   [2] Python 3.12 oder neuer
 echo.
-set /p PYVER="Auswahl [1/2/3] (Default 1): "
+set /p PYVER="Auswahl [1/2] (Default 1): "
 if "%PYVER%"=="" set PYVER=1
 
 if "%PYVER%"=="1" (
-    set REQ_FILE=requirements_py39.txt
-    set TARGET_PY=39
-    echo Verwende Python 3.9-kompatible Pakete
-) else if "%PYVER%"=="2" (
     set REQ_FILE=requirements.txt
     set TARGET_PY=311
-    echo Verwende Python 3.10/3.11-kompatible Pakete
+    echo Verwende Python 3.11-Pakete (cp311)
 ) else (
     set REQ_FILE=requirements.txt
     set TARGET_PY=312
-    echo Verwende Python 3.12+ kompatible Pakete
+    echo Verwende Python 3.12+ Pakete
 )
 
 REM ----- Vendor-Ordner aufraeumen -----

@@ -37,16 +37,21 @@ def test_settings_verwirft_link_mit_leerzeichen(client, db, admin_user):
 
 
 def test_startseite_zeigt_wa_eingang_nur_mit_hinterlegtem_link(auth_client, db):
-    """Ohne Eintrag rendert die Startseite keine Zeile; mit Eintrag die ruhige .wa-quiet-Zeile."""
+    """Ohne Eintrag kein Logo; mit Eintrag der Icon-Button .dash-wa in der Kopfzeile ((122))."""
     html = auth_client.get("/", follow_redirects=True).get_data(as_text=True)
-    assert "wa-quiet" not in html
+    assert "dash-wa" not in html
+    assert "wa-quiet" not in html  # alte Textzeile ist komplett entfernt
 
     set_setting("whatsapp_group_url", GROUP_LINK)
     html = auth_client.get("/", follow_redirects=True).get_data(as_text=True)
-    assert 'class="wa-quiet"' in html
+    assert 'class="dash-wa"' in html
     assert f'href="{GROUP_LINK}"' in html
-    # Finalform aus Update (34): nur Logo + Linktext, ohne Untertitel.
-    assert "In die WhatsApp-Gruppe der Tipprunde" in html
+    # nacktes Logo: Bedienungstitel als Tooltip/aria-label, KEIN sichtbarer Text
+    assert 'aria-label="In die WhatsApp-Gruppe der Tipprunde"' in html
+    assert ">In die WhatsApp-Gruppe der Tipprunde<" not in html
+    # Sitzt in der Kopfzeile, direkt NACH der Begruessungs-Hand ((124))
+    assert html.index("dashboard-header") < html.index("dash-wa")
+    assert html.index("👋") < html.index('class="dash-wa"')
     assert "Los-Tausch" not in html
 
 
@@ -55,7 +60,7 @@ def test_startseite_und_mehr_ignorieren_unsichere_linkschemata(auth_client, db):
     set_setting("whatsapp_group_url", "javascript:alert(1)")
     for path in ("/", "/mehr"):
         html = auth_client.get(path, follow_redirects=True).get_data(as_text=True)
-        assert "wa-quiet" not in html
+        assert "dash-wa" not in html
         assert "javascript:alert(1)" not in html
         assert 'href="javascript' not in html
 

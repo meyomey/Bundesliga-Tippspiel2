@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from extensions import db
 from models import Competition, Match, Team
 from routes_api import live_clock_for
 
@@ -75,7 +76,7 @@ def test_live_minute_written_without_approx_sign(boost_env):
     _set_payload(calls, _af_item(m, "1H", 34, 2, 1))
     r = minute_boost.boost_minutes_from_apifootball()
     assert r["updated"] == 1 and calls["headers"]["x-apisports-key"] == "TESTKEY"
-    dbm = Match.query.get(m.id)
+    dbm = db.session.get(Match, m.id)
     assert (dbm.status, dbm.home_score, dbm.away_score, dbm.minute, dbm.live_phase) \
         == ("live", 2, 1, 34, "IN_PLAY")
     assert dbm.live_synced_at is not None  # (105) Frische-Guard-Stempel
@@ -87,7 +88,7 @@ def test_halftime_sets_authoritative_pause(boost_env):
     m, calls = boost_env
     _set_payload(calls, _af_item(m, "HT", 45, 2, 1))
     assert minute_boost.boost_minutes_from_apifootball()["updated"] == 1
-    lc = live_clock_for(Match.query.get(m.id))
+    lc = live_clock_for(db.session.get(Match, m.id))
     assert lc["halftime"] == "feed" and lc["minute"] is None
 
 
@@ -98,7 +99,7 @@ def test_finished_clears_clock_and_locks_result(boost_env):
     _db.session.commit()
     _set_payload(calls, _af_item(m, "FT", 92, 3, 1))
     assert minute_boost.boost_minutes_from_apifootball()["updated"] == 1
-    dbm = Match.query.get(m.id)
+    dbm = db.session.get(Match, m.id)
     assert dbm.status == "finished" and (dbm.home_score, dbm.away_score) == (3, 1)
     assert dbm.minute is None and dbm.live_phase is None
 
@@ -127,7 +128,7 @@ def test_foreign_or_ambiguous_payload_is_ignored(boost_env):
     m, calls = boost_env
     _set_payload(calls, _af_item(m, "1H", 20, 1, 1, home="Arsenal", away="Chelsea"))
     assert minute_boost.boost_minutes_from_apifootball()["updated"] == 0
-    dbm = Match.query.get(m.id)
+    dbm = db.session.get(Match, m.id)
     assert dbm.status == "scheduled" and dbm.minute is None
     calls["payload"] = {"response": [], "errors": {"rate limit": "reached"}}
     minute_boost._STATE_FALLBACK["last"] = 0.0

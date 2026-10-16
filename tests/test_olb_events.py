@@ -154,7 +154,9 @@ def test_match_detail_renders_cards_and_goals(client, db, user, app):
         db.session.add(m)
         db.session.commit()
         from flask import url_for
-        url = url_for("main.match_detail", match_id=m.id)
+        # (126) expliziter Request-Kontext: pytest 9 leakt keinen mehr
+        with app.test_request_context("/"):
+            url = url_for("main.match_detail", match_id=m.id)
     client.post("/auth/login", data={"email": user.email, "password": "testpass123"},
                 follow_redirects=True)
     html = client.get(url, follow_redirects=True).get_data(as_text=True)

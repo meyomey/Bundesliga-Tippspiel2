@@ -30,9 +30,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 3.9 = einzige auf Netcup/Plesk waehlbare Version (Zielversion);
-        # 3.10-3.13 = Abwaertskompatibilitaet
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        # 3.11 = Produktionsversion auf Netcup/Plesk (seit 13.10.2026, (121));
+        # 3.12/3.13 = Abwaertskompatibilitaet nach vorn
+        python-version: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -42,15 +42,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: "Python-3.9-Gate: requirements_py39.txt installierbar?"
-        if: matrix.python-version == '3.9'
-        # requirements_py39.txt wird von den Tests NICHT installiert - ohne
-        # dieses Gate wuerden Dependabot-PRs, die nur die 3.9-Datei aendern
-        # (z. B. click 8.5.0), "blind gruen" laufen. pip download prueft
-        # requires_python jedes Pins gegen den echten 3.9-Interpreter und
-        # bricht bei unpassendem Pin ab (Job wird rot = PR ablehnen).
-        run: |
-          pip download -r requirements_py39.txt --no-deps -d /tmp/py39check
       - name: Testsuite
         run: python -m pytest -q
 
@@ -72,38 +63,10 @@ jobs:
   audit:
     name: Security Audit (pip-audit)
     runs-on: ubuntu-latest
-    env:
-      # Python 3.9 ist auf Netcup die fest vorgegebene Zielversion. Die hier
-      # ignorierten Advisories sind ausschliesslich in Versionen behoben, die
-      # Python >= 3.10 verlangen - auf 3.9 existiert keine gepatchte Version
-      # (z. B. Pillow: Fix erst ab 12.x; pytest: Fix erst ab 9.0.3; bleach:
-      # Fix erst ab 6.4.0). Die Pins stehen deshalb auf der jeweils NEUESTEN
-      # 3.9-kompatiblen Version.
-      # WICHTIG: Sollte Netcup kuenftig Python 3.10+ anbieten, diese Liste
-      # abbauen und die betroffenen Pins anheben!
-      # urllib3 (PYSEC-2026-4175/4176/4177): Fixes gibt es erst ab
-      # 2.7.0/2.8.0, diese Versionen verlangen Python >= 3.10 - auf 3.9
-      # existiert keine gepatchte Version (Stand bleibt 2.6.3).
-      # ACHTUNG: Keine '#'-Zeilen INNERHALB des Werts! Blockskalare (>-)
-      # kennen keine Kommentare - ein '#' wuerde pip-audit als Argument
-      # erreichen (Exit 2, Run #103). Begruendungen nur HIER drueber.
-      IGNORE_39: >-
-        --ignore-vuln PYSEC-2026-141 --ignore-vuln PYSEC-2026-142
-        --ignore-vuln PYSEC-2026-165 --ignore-vuln PYSEC-2026-1845
-        --ignore-vuln PYSEC-2026-2132 --ignore-vuln PYSEC-2026-2249
-        --ignore-vuln PYSEC-2026-2250 --ignore-vuln PYSEC-2026-2251
-        --ignore-vuln PYSEC-2026-2252 --ignore-vuln PYSEC-2026-2253
-        --ignore-vuln PYSEC-2026-2254 --ignore-vuln PYSEC-2026-2255
-        --ignore-vuln PYSEC-2026-2256 --ignore-vuln PYSEC-2026-2257
-        --ignore-vuln PYSEC-2026-2270 --ignore-vuln PYSEC-2026-2275
-        --ignore-vuln PYSEC-2026-2874 --ignore-vuln PYSEC-2026-3451
-        --ignore-vuln PYSEC-2026-3453 --ignore-vuln PYSEC-2026-3454
-        --ignore-vuln PYSEC-2026-3493 --ignore-vuln PYSEC-2026-3494
-        --ignore-vuln PYSEC-2026-3495 --ignore-vuln PYSEC-2026-3496
-        --ignore-vuln GHSA-gj48-438w-jh9v
-        --ignore-vuln GHSA-8rfp-98v4-mmr6
-        --ignore-vuln PYSEC-2026-4175 --ignore-vuln PYSEC-2026-4176
-        --ignore-vuln PYSEC-2026-4177
+    # (126): bewusst OHNE Ignore-Liste - seit dem Python-3.11-Floor sind
+    # alle Pins auf gepatchten Versionen (lokal verifiziert: "No known
+    # vulnerabilities found"). Neue Advisories machen den Job ROT = hartes
+    # Gate statt Stille.
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -112,6 +75,4 @@ jobs:
       - name: pip-audit installieren
         run: pip install pip-audit
       - name: Audit requirements.txt
-        run: pip-audit -r requirements.txt $IGNORE_39
-      - name: Audit requirements_py39.txt
-        run: pip-audit -r requirements_py39.txt $IGNORE_39
+        run: pip-audit -r requirements.txt

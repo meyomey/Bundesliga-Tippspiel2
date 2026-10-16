@@ -1,51 +1,23 @@
-# Dependabot: automatische Update-PRs fuer Abhaengigkeiten.
+# (127) Dependabot: woechentliche Update-Vorschlaege als Pull Requests.
 #
-# WICHTIG: Python 3.9 ist die feste Netcup-Zielversion (Plesk bietet dort nur
-# 3.9 an). Dependabot-PRs werden von der CI automatisch geprueft: Die Test-
-# Matrix laeuft auf 3.9-3.13 - ein Update, das Python 3.9 nicht mehr
-# unterstuetzt, laesst den 3.9-Job rot werden und ist abzulehnen.
-# (Der Audit-Job mit pip-audit prueft zusaetzlich auf bekannte Schwachstellen.)
+# Zwei Oekosysteme:
+#   pip            -> requirements.txt (App-Abhaengigkeiten)
+#   github-actions -> .github/workflows/* (Action-Versionen wie checkout@v5)
+#
+# Jeder Vorschlag laeuft durch die komplette CI (pytest-Matrix 3.11-3.13,
+# flake8-Hartgate, Node-Tests, pip-audit als hartes Gate) — nur gruen
+# mergen. Zusätzlich empfohlen (Repo-Settings, einmalig klicken):
+#   Settings -> Code security and analysis ->
+#   - "Dependabot alerts" AN (public repo: meist schon an)
+#   - "Dependabot security updates" AN (oeffnet Fix-PRs automatisch)
 version: 2
 updates:
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
       interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 10
-    labels:
-      - "dependencies"
-    commit-message:
-      prefix: "deps(pip)"
-    ignore:
-      # Python 3.9 ist die feste Netcup-Zielversion (Plesk bietet dort nur 3.9
-      # an). Die folgenden Pakete brauchen ab den genannten Versionen Python
-      # >= 3.10 (bzw. >= 3.11) - diese Updates wuerden die 3.9-CI rot machen
-      # und sind deshalb zu ignorieren. Die Pins stehen jeweils auf der
-      # neuesten 3.9-tauglichen Version.
-      # WICHTIG: Sollte Netcup kuenftig Python 3.10+ anbieten, diese Regeln
-      # entfernen und die betroffenen Pins anheben!
-      # Letzte 3.9-Versionen: click 8.1.8, WTForms 3.1.2, Pillow 11.3.0,
-      # flask-caching 2.3.0, zipp 3.20.2, dnspython 2.6.1
-      - dependency-name: "click"
-        versions: [">=8.2"]
-      - dependency-name: "wtforms"
-        versions: [">=3.2"]
-      - dependency-name: "pillow"
-        versions: [">=12"]
-      - dependency-name: "flask-caching"
-        versions: [">=2.4"]
-      - dependency-name: "zipp"
-        versions: [">=4"]
-      - dependency-name: "dnspython"
-        versions: [">=2.8"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
-      day: "monday"
-    labels:
-      - "dependencies"
-    commit-message:
-      prefix: "deps(actions)"

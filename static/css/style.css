@@ -7319,11 +7319,23 @@ a.tu-venue-route {
 .ts-goals small { display: block; font-size: 10.5px; white-space: nowrap; }
 .ts-foot { margin: 10px 12px 0; }
 
-/* WhatsApp-Gruppen-Eingang (dezente Zeile, Startseite) */
-.wa-quiet { display: inline-flex; align-items: center; gap: 8px; margin: 2px 2px 14px;
-            font-size: 14px; color: var(--muted, #9ca3af); text-decoration: none; }
-.wa-quiet:hover, .wa-quiet:focus-visible { color: var(--text, #e5e7eb); text-decoration: underline; }
-.wa-quiet svg { flex: none; display: block; }
+/* WhatsApp-Gruppen-Einstieg: nacktes Logo als kleiner runder Button
+   direkt NACH der Begruessungs-Hand ((124); vorher Kopfzeile rechts
+   ((122)/(123)), Textzeile davor entfernt) */
+.dash-wa { display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border-radius: 50%;
+  vertical-align: middle; margin-left: 10px; transform: translateY(-2px);
+  background: var(--surface-2); border: 1px solid var(--border);
+  transition: background .15s ease, border-color .15s ease; }
+.dash-wa svg { display: block; flex: none; }
+.dash-wa:hover, .dash-wa:focus-visible { background: rgba(37,211,102,.12); border-color: rgba(37,211,102,.45); }
+/* (125) Desktop: Logo einen Tick groesser (30 -> 36px Kreis, 18 -> 20px Icon).
+   (Fehler in (124) behoben: dort blieben die (123)-Desktop-Regeln als globale
+   Reste stehen und schoben die Stat-Box auf allen Viewports nach rechts.) */
+@media (min-width: 768px) {
+  .dash-wa { width: 36px; height: 36px; margin-left: 14px; }
+  .dash-wa svg { width: 20px; height: 20px; }
+}
 
 /* ===================== Tipp-Optimizer (Admin) ===================== */
 .to-actions { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; margin: 10px 0; }

@@ -13,6 +13,8 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from extensions import db
+
 import minute_boost
 from models import Competition, Match, Team
 import sync
@@ -124,7 +126,7 @@ def test_goal_boost_writes_sorted_events(app, db, goal_env):
     with app.app_context():
         res = minute_boost.boost_goal_scorers_from_apifootball()
         assert res["updated"] == 1 and calls["n"] == 1
-        dbm = Match.query.get(m.id)
+        dbm = db.session.get(Match, m.id)
         rows = json.loads(dbm.events)
         assert [r["min"] for r in rows] == [23, 45, 70]
         assert rows[0]["player"] == "Harry Kane" and rows[0]["assist"] == "Jamal Musiala"
@@ -151,7 +153,7 @@ def test_goal_boost_skips_without_token_and_keeps_foreign_events(app, db, goal_e
     with app.app_context():
         res = minute_boost.boost_goal_scorers_from_apifootball()
         assert res["updated"] == 0 and calls["n"] == 0   # nicht einmal als Kandidat gelistet
-        assert json.loads(Match.query.get(m.id).events)[0]["type"] == "card"
+        assert json.loads(db.session.get(Match, m.id).events)[0]["type"] == "card"
 
 
 def test_goal_boost_ignores_not_finished(app, db, goal_env):

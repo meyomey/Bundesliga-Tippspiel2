@@ -19,9 +19,9 @@ Alembic wird in diesem Projekt **nicht** eingeführt. Das Schema wird stattdesse
   (`alembic upgrade head` auf der Konsole) ist auf dem Produktiv-Host nicht ausführbar.
   Migrationen müssen beim App-Start oder über eine Admin-Oberfläche laufen —
   genau das leisten die internen Mechanismen bereits.
-- **Vendor-Packaging:** Neue Pakete müssen doppelt gepflegt werden
-  (`requirements.txt` **und** `requirements_py39.txt`) und über `build_vendor.bat`
-  in `vendor/` paketiert + per FTP nachgezogen. Alembic + SQLAlchemy-Abhängigkeiten
+- **Vendor-Packaging:** Neue Pakete müssen in `requirements.txt` gepflegt
+  (die alte `requirements_py39.txt` wurde mit (126) gelöscht) und über
+  `build_vendor.bat` in `vendor/` paketiert + per FTP nachgezogen. Alembic + SQLAlchemy-Abhängigkeiten
   wären dauerhafter Deploy-Ballast für einen Nutzen, der produktiv nicht abrufbar ist.
 - **Single Source of Truth:** Ein zweites Migrationssystem neben `SchemaMigration`
   riskiert Drift (Doppel-Ausführung, widersprüchliche Versionstände).

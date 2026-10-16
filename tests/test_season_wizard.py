@@ -80,7 +80,7 @@ def test_new_season_keeps_competition_name_season_free(client, db, admin_user, c
         'do_delete_schedule': '1',
     }, follow_redirects=True)
     assert resp.status_code == 200
-    fresh = Competition.query.get(competition.id)
+    fresh = db.session.get(Competition, competition.id)
     assert fresh.name == 'Bundesliga'
     assert fresh.season == '2026/27'
 

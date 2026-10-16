@@ -1,4 +1,4 @@
-GITHUB-UPLOAD-PAKET - fuer GitHub Desktop (Stand 2026-10-13)
+GITHUB-UPLOAD-PAKET - fuer GitHub Desktop (Stand 2026-10-16)
 ====================================================
 
 Dieses Paket enthaelt die Dateien, die auf GitHub fehlen bzw. sich
@@ -14,7 +14,7 @@ DANACH in GitHub Desktop:
 DIE CI LAEUFT DANN AUTOMATISCH:
     github.com/meyomey/Bundesliga-Tippspiel2 > Actions > "Tests & Lint"
     - Flake8-Gate (Syntaxfehler/undefinierte Namen)
-    - pytest auf Python 3.9-3.13 (3.9 = Netcup-Zielversion)
+    - pytest auf Python 3.11-3.13 (3.11 = Netcup-Produktion)
 
 Quelle:  Commit 12cb7f6 (2026-09-20 12:42) + lokale Aenderungen
 Teststand: 281/281 Tests gruen, Coverage 79 %

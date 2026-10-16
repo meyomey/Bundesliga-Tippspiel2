@@ -68,8 +68,16 @@ def send_email(subject, recipients, body, html=None):
 
 def send_password_reset(user):
     token = generate_reset_token(user.id)
-    from flask import url_for
-    reset_url = url_for("auth.password_reset", token=token, _external=True)
+    # (126) Basis-URL wie in send_kickoff_reminder/sieger_text aus den
+    # Settings (public_base_url) bzw. PUBLIC_BASE_URL — nicht mehr aus dem
+    # Host-Header der Anfrage (vorher nur innerhalb eines Request-Kontexts
+    # funktionierend und Host-abhaengig = Host-Header-Injektionsflaeche).
+    # Pfad fest verdrahtet mit @auth_bp.route("/passwort-zuruecksetzen/<token>")
+    # — der Mail-Test (test_mail_whatsapp_pwa) wacht ueber die Verdrahtung;
+    # flask-url_for waere im nackten App-Kontext (Cron) nicht aufrufbar.
+    base = get_setting("public_base_url",
+                       current_app.config.get("PUBLIC_BASE_URL", "")).rstrip("/")
+    reset_url = base + "/passwort-zuruecksetzen/" + token
     send_email(
         "Passwort zurücksetzen – Wulmstörper Tipprunde",
         [user.email],

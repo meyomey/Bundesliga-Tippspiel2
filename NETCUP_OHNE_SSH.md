@@ -80,9 +80,9 @@ Netcup führt Cronjobs im **chroot ohne Python** aus — deshalb rufen die Aufga
 Jeder Lauf schreibt einen Heartbeat — Status und „Jetzt Backup erstellen"-Button finden sich im Admin-Wartungscenter („Cron & Backup"); dort stehen auch die fertigen wget-Befehle. Details: `DEPLOY_NETCUP.md` → Schritt 8.
 
 ### Welche Python-Version?
-Auf dem Netcup-Webhosting ist in Plesk aktuell **nur Python 3.9** auswählbar — das ist die feste Rahmenbedingung, wähle also **Python 3.9**. Die Vendor-Pakete dafür baust du mit `build_vendor.bat` Option **[1] Python 3.9** (nutzt `requirements_py39.txt`).
+Netcup hat am 13.10.2026 von Python 3.9.2 auf **Python 3.11.2** umgestellt — in Plesk **Python 3.11** wählen. Die Vendor-Pakete dafür baust du mit `build_vendor.bat` Option **[1] Python 3.11** (oder fertigt: `05_Vendor_Python311_*.zip`).
 
-Python 3.9 ist seit Okt. 2025 offiziell EOL (keine Security-Patches mehr vom Python-Team) — für diese private Tipprunde akzeptiert: die CI testet 3.9 als Zielversion, alle Pins in `requirements.txt` bleiben 3.9-kompatibel, und app-seitige Härtung (Security-Gate, Rate-Limiting, CSRF) federt das ab. Falls Netcup künftig neuere Versionen anbietet: `build_vendor.bat` Option [2]/[3] und die CI-Matrix (3.10–3.13) sind bereits vorbereitet.
+Die alte Python-3.9-Pflege (`requirements_py39.txt`, IGNORE-Advisory-Liste im CI-Audit) wurde mit **(126)** abgebaut: alle Security-Bumps (Pillow 12.3.0, bleach 6.4.0, pytest 9.0.3, urllib3 ≥ 2.7) brauchen ≥ 3.10 und sind jetzt drin. Die CI testet 3.11–3.13.
 
 ### "ImportError" trotz vendor/?
 Falls eines der Pakete (z.B. Pillow) **C-Extensions** braucht und auf

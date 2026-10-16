@@ -7,6 +7,8 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from extensions import db
+
 import scheduler
 from models import Match, SeasonArchive, User
 
@@ -135,7 +137,7 @@ def test_season_archive_job_archiviert_nach_letztem_spieltag(app, db, competitio
     assert len(tgram) == 1 and "2025/26" in tgram[0][1]
     # Flag in der DB (get_setting ist hier gemonkt – direkt prüfen):
     from models import Setting
-    s = Setting.query.get("season_archived")
+    s = db.session.get(Setting, "season_archived")
     assert s is not None and s.value == "true"
 
 
