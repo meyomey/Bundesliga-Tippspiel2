@@ -30,7 +30,7 @@ APScheduler==3.10.4
 # pywebpush==2.0.0
 
 # Optional - fuer PostgreSQL/MySQL statt SQLite:
-psycopg2-binary==2.9.12
+psycopg2-binary==2.9.13
 # PyMySQL==1.1.1
 
 # =====================================================
