@@ -76,28 +76,30 @@ def test_perfect_day_nur_vollstaendige_spieltage(app, db, competition, teams, us
 
 
 def test_matchday_winner_badge_scoped_wie_profil(app, db, competition, teams, user):
-    """MatchdayWinner-Zeilen aus ANDERER Saison/Wettbewerb zählen nicht;
-    die aktuelle Saison im aktiven Wettbewerb schon."""
+    """(128) Badge zählt WIE DAS PROFIL: aktiver Wettbewerb, saison-
+    übergreifend. Zeilen aus ANDEREM Wettbewerb zählen für beide nicht;
+    Altsaison im aktiven Wettbewerb für beide (Nutzer-Fund: Badge zeigte
+    🏆, Profil zählte 0 — der (74)-Saisonfilter war die Lücke)."""
     from badges import _user_qualifies
+    from main_profile_routes import _compute_profile_stats
     app.config["COMPETITION"] = competition.code
     comp2 = Competition(name="Testliga 2", code="TEST2", season="2025/26")
     db.session.add(comp2)
     db.session.commit()
     b = _badge(db, "mdw_t1", "Spieltagssieger T", "matchday_winner", 1)
     assert _user_qualifies(user, b) is False  # noch keine Zeile
-    # Zeile aus anderer Saison (z. B. alte Saison)
-    db.session.add(MatchdayWinner(competition_id=competition.id, matchday=1,
-                                  user_id=user.id, points=10, season="2024/25"))
-    # Zeile aus anderem Wettbewerb (aktuelle Saison)
+    # Zeile aus ANDEREM Wettbewerb (aktuelle Saison): zählt für beide nicht
     db.session.add(MatchdayWinner(competition_id=comp2.id, matchday=1,
                                   user_id=user.id, points=10, season="2026/27"))
     db.session.commit()
-    assert _user_qualifies(user, b) is False  # alt: True (2 Zeilen gezählt)
-    # Korrekte Zeile: aktive Saison + aktiver Wettbewerb
-    db.session.add(MatchdayWinner(competition_id=competition.id, matchday=2,
-                                  user_id=user.id, points=10, season="2026/27"))
+    assert _user_qualifies(user, b) is False
+    assert _compute_profile_stats(user)["md_wins"] == 0
+    # Alte Saison im AKTIVEN Wettbewerb: zählt jetzt — wie im Profil
+    db.session.add(MatchdayWinner(competition_id=competition.id, matchday=1,
+                                  user_id=user.id, points=10, season="2024/25"))
     db.session.commit()
     assert _user_qualifies(user, b) is True
+    assert _compute_profile_stats(user)["md_wins"] == 1
 
 
 def test_revalidate_widerruft_nicht_mehr_verdiente_badges(db, competition, teams, user):

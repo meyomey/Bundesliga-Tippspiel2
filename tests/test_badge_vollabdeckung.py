@@ -282,21 +282,50 @@ def test_trigger_perfect_day_fremder_wettbewerb_zaehlt_nicht(
     assert _user_qualifies(user, b) is False
 
 
-def test_trigger_matchday_winner_saison_scope(db, competition, teams, user, seeded):
+def test_trigger_matchday_winner_gleiche_quelle_wie_profil(
+        app, db, competition, teams, user, seeded, monkeypatch):
+    """(128) Badge und Profil-Statistik zaehlen aus EINER Quelle: aktiver
+    Wettbewerb (inkl. globaler Altdaten), saisonuebergreifend. Der (74)-
+    Saisonfilter war kein "Wie das Profil" — genau seine Luecke liess das
+    Badge stehen, waehrend das Profil 0 Spieltagsiege zaehlte."""
     from badges import _user_qualifies
-    from scoring import set_setting
+    from main_profile_routes import _compute_profile_stats
+    monkeypatch.setitem(app.config, "COMPETITION", competition.code)
     b = badge_by_code("md_winner_1")
-    set_setting("current_season", "2025/26")
     db.session.add(MatchdayWinner(competition_id=competition.id, matchday=1,
                                   user_id=user.id, points=10, exact_count=2,
                                   season="2024/25"))     # ALTE Saison
     db.session.commit()
-    assert _user_qualifies(user, b) is False
+    assert _user_qualifies(user, b) is True
+    assert _compute_profile_stats(user)["md_wins"] == 1   # EINE Quelle
     db.session.add(MatchdayWinner(competition_id=competition.id, matchday=2,
                                   user_id=user.id, points=8, exact_count=1,
-                                  season="2025/26"))     # aktuelle Saison
+                                  season="2026/27"))     # aktuelle Saison
     db.session.commit()
     assert _user_qualifies(user, b) is True
+    assert _compute_profile_stats(user)["md_wins"] == 2
+
+
+def test_revalidate_badges_zieht_stale_md_winner_zurueck(
+        app, db, competition, teams, user, seeded, monkeypatch):
+    """(128) Nach Datenverlust (z. B. Saison-Reset) raeumt revalidate_badges
+    das nicht mehr verdiente Badge ab — der normale Save-Pfad widerruft
+    bewusst nichts (Nutzer-Fund: Badge 🏆 sichtbar, Profil zaehlte 0)."""
+    from badges import revalidate_badges, award_badge
+    from models import UserBadge
+    monkeypatch.setitem(app.config, "COMPETITION", competition.code)
+    b = badge_by_code("md_winner_1")
+    row = MatchdayWinner(competition_id=competition.id, matchday=1,
+                         user_id=user.id, points=10, exact_count=2,
+                         season="2026/27")
+    db.session.add(row)
+    db.session.commit()
+    award_badge(user, b)
+    assert UserBadge.query.filter_by(user_id=user.id, badge_id=b.id).first()
+    db.session.delete(row)          # wie beim Saison-Reset geloescht
+    db.session.commit()
+    revalidate_badges()
+    assert UserBadge.query.filter_by(user_id=user.id, badge_id=b.id).first() is None
 
 
 def test_trigger_md_winner_3_schwelle_inkl_geteilter_siege(

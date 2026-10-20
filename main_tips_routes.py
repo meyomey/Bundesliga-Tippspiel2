@@ -197,7 +197,7 @@ def _match_detail(match_id):
             from scoring import locked_joker_conflict, keep_single_joker
             conflict = locked_joker_conflict(current_user.id, match.matchday, match.competition_id, match_id)
             if conflict:
-                flash("Joker kann nicht mehr verschoben werden – das bisherige Joker-Spiel hat bereits begonnen.", "danger")
+                flash("Joker kann nicht mehr verschoben werden – das bisherige Joker-Spiel hat bereits begonnen oder ist beendet.", "danger")
                 return redirect(url_for("main.match_detail", match_id=match_id))
             existing = Prediction.query.join(Match).filter(
                 Prediction.user_id == current_user.id,
@@ -311,7 +311,7 @@ def _quick_tip(matchday=None):
                 from scoring import locked_joker_conflict
                 conflict = locked_joker_conflict(current_user.id, matchday, valid_joker_match.competition_id, joker_match_id)
                 if conflict:
-                    flash("Joker kann nicht mehr verschoben werden – das bisherige Joker-Spiel hat bereits begonnen.", "danger")
+                    flash("Joker kann nicht mehr verschoben werden – das bisherige Joker-Spiel hat bereits begonnen oder ist beendet.", "danger")
                     joker_match_id = None
 
         # Alte Joker für diesen Spieltag entfernen (wenn neuer Joker gesetzt wurde)

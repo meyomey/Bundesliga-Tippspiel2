@@ -584,7 +584,11 @@ def test_smartphone_anpassungen_der_optimizer_seite():
     # den Spaltenköpfen (λ, EP, Sicherheit, Brier, …)
     assert "Abkürzungen" in tpl and "to-abbrev" in tpl
     assert "Expected Points" in tpl and "Beide Teams treffen" in tpl
-    assert "title=" in js and "Vom Modell erwartete Tore" in js
+    assert "title=" in js
+    # (130): λ/1X2-Tooltips wanderten mit den Fachdaten ins Spiel-Akkordeon;
+    # die verschlankte Tabelle erklaert Tipp/EP/Sicherheit per Tooltip.
+    assert "Modell-1X2" in js and "Optimaler Tipp weicht vom" in js
+    assert "Erwartungswert des Tipps in Punkten" in js
     assert ".to-abbrev-body dt" in css
     # Brier konkret erklärt (mit Beispiel) — Glossar + alle Brier-Anzeigen
     assert "Beispiel: Schreibt es 70 %" in tpl
@@ -814,20 +818,22 @@ def test_js_dateien_haben_valide_syntax():
 
 
 def test_abschnitte_anordnung_ergebnis_zuerst_eingabe_einklappbar():
-    """Seiten-Logik (Nutzerwunsch (70)): Ergebnis zuerst, die lange Quoten-
-    Eingabe einklappbar (automatisch offen ohne Quoten, geschlossen mit
-    Quoten), Hilfese/Erweitert ans Ende."""
+    """Seiten-Logik (Nutzerwunsch (130), ersetzt die (70)-Reihenfolge):
+    Einsteiger-Intro → Quoten-Eingabe (einklappbar) → Empfehlungen →
+    eingeklappte Experten-Karten → Hilfe/Erweitert. Der Workflow laeuft
+    von oben nach unten, Fachkarten stoeren den Einstieg nicht."""
     js = open("static/js/tip_optimizer.js", encoding="utf-8").read()
     tpl = open("templates/admin/tip_optimizer.html", encoding="utf-8").read()
     css = open("static/css/style.css", encoding="utf-8").read()
-    # Struktur: Ergebnis → Quoten-Fold → Modellgüte/Backtest → Hilfe/Erweitert
+    assert 'class="to-intro"' in tpl  # (130) 3-Schritte-Intro zuerst
     assert 'id="to-input-fold"' in tpl and 'id="to-fold-state"' in tpl
-    i_summary = tpl.index('id="to-summary-card"')
+    i_intro = tpl.index('class="to-intro"')
     i_fold = tpl.index('id="to-input-fold"')
-    i_model = tpl.index("Modellgüte – gespeicherte Vorhersagen")
+    i_summary = tpl.index('id="to-summary-card"')
+    i_expert = tpl.index('class="card to-expert"')
     i_help = tpl.index("So funktioniert’s")
     i_adv = tpl.index("card to-advanced")
-    assert i_summary < i_fold < i_model < i_help < i_adv
+    assert i_intro < i_fold < i_summary < i_expert < i_help < i_adv
     # Karten stehen IM Fold
     assert tpl.index('data-match-id="') > i_fold
     # JS: Auto-Regel (nur einmal), Live-Zähler, Aktionen öffnen den Fold

@@ -54,7 +54,7 @@ _STATE_FALLBACK = {"day": "", "count": 0, "last": 0.0}
 
 SQUAD_MAP_KEY = "topscorers_squad_map"
 ALIASES_KEY = "topscorers_squad_aliases"  # haendisch, Admin -> Einstellungen -> APIs
-_TSDB_URL = "https://www.thesportsdb.com/api/v1/json/3/searchplayers.php?p={q}"
+_TSDB_URL = "https://www.thesportsdb.com/api/v1/json/123/searchplayers.php?p={q}"
 _SQUAD_LOOKUP_BUDGET = 6
 _SQUAD_RENEW_DAYS = 7
 

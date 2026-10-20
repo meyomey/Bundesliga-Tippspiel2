@@ -207,16 +207,17 @@ def _user_qualifies(user, badge):
         return False
 
     if t == "matchday_winner":
-        # Wie das Profil: aktiver Wettbewerb + aktuelle Saison. Die alte
-        # Logikaenzählte ALLE Wettbewerbe/Saisons — dadurch konnte das
-        # Badge erscheinen, obwohl das Profil 0 Spieltagssiege zeigte ((74)).
-        from competition_helpers import get_active_competition
-        comp = get_active_competition()
-        season = get_setting("current_season", "2025/26")
-        q = MatchdayWinner.query.filter_by(user_id=user.id, season=season)
-        if comp:
-            q = q.filter(MatchdayWinner.competition_id == comp.id)
-        wins = q.count()
+        # (128) Zaehlt EXAKT wie die Profil-Statistik (_compute_profile_stats):
+        # aktiver Wettbewerb inkl. globaler Altdaten (competition_id NULL),
+        # saisonuebergreifend. Der (74)-Kommentar behauptete "Wie das
+        # Profil", fuegte aber einen Saison-Filter ein, den das Profil NICHT
+        # hat — genau diese Luecke liess Badges stehen, waehrend das Profil
+        # 0 zeigte. Stale Badges raeumt revalidate_badges() ab — jetzt auch
+        # automatisch nach dem Saison-Reset (routes_admin).
+        from competition_helpers import filter_competition_scoped
+        wins = filter_competition_scoped(
+            MatchdayWinner.query.filter_by(user_id=user.id), MatchdayWinner
+        ).count()
         return wins >= threshold
 
     return False

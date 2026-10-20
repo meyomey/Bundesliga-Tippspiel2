@@ -122,7 +122,12 @@ def _gate_write(cache_obj, state):
 _GOAL_GATE_KEY = "goal_boost:gate"
 _GOAL_STATE_FALLBACK = {"day": "", "count": 0, "last": 0.0}
 _GOAL_MIN_INTERVAL = 600       # fruehestens alle 10 Minuten ein Fetch
-_GOAL_DAILY_BUDGET = 8         # reicht: ein Spieltag-Abend benoetigt 1-2 Calls
+# (133) 1 Discovery + bis zu 9 Events-Nachladen pro Spieltag + Puffer; der
+# Minute-Boost (90, mit automatischer Drehzahlstreckung) bleibt unberuehrt.
+_GOAL_DAILY_BUDGET = 16
+# (133) Einzelspiel-Ereignisse (Tore/Karten/Wechsel) nachladen, wenn die
+# Listen-Query (/fixtures?last=9) die events[] nicht mitliefert.
+_GOAL_EVENTS_URL = "https://v3.football.api-sports.io/fixtures/events?fixture={fid}"
 _AF_LEAGUE_IDS = {"BL1": 181, "BL2": 79, "WC": 48, "ELC": 39, "FL1": 61, "SA": 135}
 _GOAL_FIXTURES_URL = "https://v3.football.api-sports.io/fixtures?league={league}&season={season}&last=9"
 
@@ -145,15 +150,17 @@ def _goal_events_writable(match):
     return all(isinstance(x, dict) and x.get("kind") == "gf" for x in parsed)
 
 
-def _parse_goal_rows(item):
-    """goals[] eines API-Football-Fixtures -> kompakte, sortierte Zeilen."""
-    # teams sitzt im API-Football-Response auf Top-Level (nicht im fixture)
-    home_id = ((item.get("teams") or {}).get("home") or {}).get("id")
+def _rows_from_events(events, home_id=None):
+    """API-Football events[] -> Zeilen im Seitenformat ((133): Tore + Karten +
+    Auswechslungen). Bewusst ignoriert: VAR, verschossene Elfmeter ("Missed
+    Penalty") und nicht erteilte Karten ("Missing ... Card")."""
     rows = []
-    for g in item.get("goals") or []:
-        if not isinstance(g, dict):
+    for ev in events or []:
+        if not isinstance(ev, dict):
             continue
-        time_obj = g.get("time") or {}
+        etype = (ev.get("type") or "").strip()
+        detail = (ev.get("detail") or "").strip()
+        time_obj = ev.get("time") or {}
         try:
             elapsed = int(time_obj.get("elapsed"))
         except (TypeError, ValueError):
@@ -164,29 +171,86 @@ def _parse_goal_rows(item):
             extra = int(time_obj.get("additional")) if time_obj.get("additional") else None
         except (TypeError, ValueError):
             extra = None
-        gtype = g.get("type") or "Goal"
-        rows.append({
-            "kind": "gf",
-            "min": elapsed,
-            "extra": extra,
-            "team": "home" if (g.get("team") or {}).get("id") == home_id else "away",
-            "player": ((g.get("player") or {}).get("name") or "").strip() or None,
-            "assist": ((g.get("assist") or {}).get("name") or "").strip() or None,
-            "penalty": gtype == "Penalty",
-            "own_goal": gtype == "Own Goal",
-        })
-    rows.sort(key=lambda r: (r["min"], r["extra"] or 0))
+        team = "home" if ((ev.get("team") or {}).get("id") == home_id) else "away"
+        player = ((ev.get("player") or {}).get("name") or "").strip() or None
+        assist = ((ev.get("assist") or {}).get("name") or "").strip() or None
+        if etype == "Var":
+            continue
+        # (133) Toleranz: echte v3-Shape ist type="Goal" + detail=...; aeltere
+        # Feeds/Doku-Varianten tragen "Penalty"/"Own Goal" direkt im type.
+        if etype == "Goal" or etype in ("Penalty", "Own Goal"):
+            if detail == "Missed Penalty" or etype == "Missed Penalty":
+                continue  # verschossener Elfmeter: kein Tor (wie im OLB-Pfad)
+            rows.append({
+                "kind": "gf", "min": elapsed, "extra": extra, "team": team,
+                "player": player, "assist": assist,
+                "penalty": detail == "Penalty" or etype == "Penalty",
+                "own_goal": detail == "Own Goal" or etype == "Own Goal",
+                "src": "af",
+            })
+        elif etype == "Card":
+            d = detail.lower()
+            if "missing" in d or "missed" in d:
+                continue  # nicht erteilte Karte: kein Ereignis
+            if "second" in d or "->" in detail:
+                label = "yellow_red"
+            elif "red" in d:
+                label = "rot"
+            elif "yellow" in d:
+                label = "gelb"
+            else:
+                continue
+            rows.append({"kind": "olb", "type": "card", "card": label,
+                         "min": elapsed, "extra": extra, "team": team,
+                         "player": player, "src": "af"})
+        elif etype == "Subst":
+            rows.append({"kind": "sub", "min": elapsed, "extra": extra,
+                         "team": team, "player": player, "assist": assist,
+                         "src": "af"})
+    rows.sort(key=lambda r: (r["min"], r["extra"] or 0,
+                             0 if r["kind"] == "gf" else 1))
     return rows
 
 
-def boost_goal_scorers_from_apifootball(now=None):
-    """Torschuetzen-Listen fuer frisch beendete Spiele in Match.events ablegen.
+def _parse_goal_rows(item):
+    """events[] eines API-Football-Fixtures -> kompakte, sortierte Zeilen.
 
-    Quelle: GET /fixtures?league=..&season=..&last=9 (API-Football, Free-Plan) -
-    das goals[]-Array enthaelt Schuetze, Minute (+Nachspielzeit), Elfmeter- und
-    Eigentor-Marker. Aufgerufen im Live-Ketten-Hook: nur wenn es frisch
-    beendete Spiele OHNE Goals-Daten gibt, max. alle 10 Minuten, max. 8/Tag.
-    Ohne Token: kein Request, kein Effekt.
+    (133) Bugfix: die Ereignisse (time/player/assist/type) stecken in
+    `events[]` - `goals` im Fixtures-Response ist nur das Score-Objekt
+    {home, away}; der alte Code iterierte daher nie echte Ereignisse und
+    speicherte deshalb nie Torschuetzen. Eine Listen-`goals`-Form bleibt
+    als Fallback zulaessig.
+    """
+    evs = item.get("events")
+    if not isinstance(evs, list):
+        goals = item.get("goals")
+        evs = goals if isinstance(goals, list) else []
+    home_id = ((item.get("teams") or {}).get("home") or {}).get("id")
+    return _rows_from_events(evs, home_id)
+
+
+def _store_event_rows(m, rows):
+    """Schreibt nur bei echtem Inhalt und nur bei Aenderung (kein Dauer-
+    Ueberschreiben fremder oder eigener bestehender Zeilen)."""
+    if not rows:
+        return False
+    new_json = json.dumps(rows, ensure_ascii=False)
+    if new_json == (m.events or ""):
+        return False
+    m.events = new_json
+    return True
+
+
+def boost_goal_scorers_from_apifootball(now=None):
+    """Ereignis-Listen (Tore/Karten/Wechsel) fuer frisch beendete Spiele.
+
+    Quelle: GET /fixtures?league=..&season=..&last=9 (API-Football, Free-Plan);
+    liefert die Abfrage events[] nicht mit, wird pro Spiel einmal
+    /fixtures/events?fixture=<id> nachgeladen ((133), eigener Budget-Waechter).
+    Tore: Schuetze, Vorlage, Minute (+Nachspielzeit), Elfmeter-/Eigentor-
+    Marker. Karten: Gelb/Gelb-Rot/Rot. Auswechslungen: rein/raus. Aufgerufen
+    im Live-Ketten-Hook: nur wenn es frisch beendete Spiele OHNE Ereignis-
+    Daten gibt, max. alle 10 Minuten. Ohne Token: kein Request, kein Effekt.
     """
     now = now or datetime.now(timezone.utc)
     token = apifootball_token()
@@ -259,6 +323,7 @@ def boost_goal_scorers_from_apifootball(now=None):
         return {"ok": True, "updated": 0, "api_errors": True}
 
     updated = 0
+    pending = []  # (fixture-id, Match, home-id): Events einzeln nachladen
     for item in payload.get("response") or []:
         fix = item.get("fixture") or {}
         status_short = ((fix.get("status") or {}).get("short") or "").upper()
@@ -274,15 +339,50 @@ def boost_goal_scorers_from_apifootball(now=None):
         m = matches[0]
         rows = _parse_goal_rows(item)
         if not rows:
+            # (133) Listen-Query lieferte keine events[] -> merken
+            if fix.get("id"):
+                pending.append((fix.get("id"), m,
+                                ((item.get("teams") or {}).get("home") or {}).get("id")))
             continue
-        new_json = json.dumps(rows, ensure_ascii=False)
-        if new_json != (m.events or ""):
-            m.events = new_json
+        if _store_event_rows(m, rows):
+            updated += 1
+
+    # (133) Nachladen: /fixtures/events?fixture=<id> je Spiel, Budget gilt.
+    for fid, m, home_id in pending:
+        if int(state.get("count", 0)) >= _GOAL_DAILY_BUDGET:
+            break
+        state = {"day": day, "count": int(state.get("count", 0)) + 1,
+                 "last": _time.time()}
+        _GOAL_STATE_FALLBACK.update(state)
+        if cache_obj is not None:
+            cache_obj.set(_GOAL_GATE_KEY, state, ttl=26 * 3600)
+        try:
+            r2 = requests.get(_GOAL_EVENTS_URL.format(fid=fid),
+                              headers={"x-apisports-key": token}, timeout=8)
+        except Exception as e:
+            record_apifootball_activity("goals", False, f"Netzwerk (Events): {e}")
+            continue
+        if r2.status_code != 200:
+            record_apifootball_activity("goals", False, f"HTTP {r2.status_code} (Events)")
+            continue
+        try:
+            p2 = r2.json()
+        except Exception:
+            record_apifootball_activity("goals", False, "Antwort kein JSON (Events)")
+            continue
+        if p2.get("errors"):
+            _etx = af_errors_text(p2)
+            plan_block_mark("goals", _etx)
+            record_apifootball_activity("goals", False, "API (Events): " + _etx)
+            continue
+        if _store_event_rows(m, _rows_from_events(p2.get("response"), home_id)):
             updated += 1
     if updated:
         db.session.commit()
-        current_app.logger.info(f"goal-boost: Torschuetzen fuer {updated} Spiele gespeichert")
-    record_apifootball_activity("goals", True, f"{updated} Spiele mit Torschuetzen")
+        current_app.logger.info(f"goal-boost: Ereignisse fuer {updated} Spiele "
+                                f"gespeichert (Tore/Karten/Wechsel)")
+    record_apifootball_activity("goals", True,
+                                f"{updated} Spiele mit Ereignissen (Tore/Karten/Wechsel)")
     return {"ok": True, "updated": updated}
 
 

@@ -1049,6 +1049,12 @@ def new_season():
                     Match.query.filter(Match.id.in_(match_ids)).delete(synchronize_session=False)
                 db.session.commit()
                 flash("🗑️ Spielplan, Tipps, Kommentare und Spieltagsieger gelöscht.", "success")
+                # (128) Stale Badges sofort abräumen: gelöschte Sieger-Zeilen
+                # können verliehene Badges unmöglich gemacht haben — der
+                # normale Save-Pfad (check_and_award_badges) widerruft
+                # bewusst nichts.
+                from badges import revalidate_badges
+                revalidate_badges()
 
             if do_delete_specials:
                 sp_q = filter_competition_scoped(SpecialPrediction.query, SpecialPrediction, include_global=False)

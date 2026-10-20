@@ -5,6 +5,7 @@ Wichtigste Eigenschaften: ohne Token komplett inaktiv; 90s-/Budget-Drosselung
 verbindliche Pause; FT raeumt die Uhr. Die Uhr-Semantik (feed=ohne "≈",
 Struktur=mit "≈") bleibt unveraendert.
 """
+import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -133,3 +134,178 @@ def test_foreign_or_ambiguous_payload_is_ignored(boost_env):
     calls["payload"] = {"response": [], "errors": {"rate limit": "reached"}}
     minute_boost._STATE_FALLBACK["last"] = 0.0
     assert minute_boost.boost_minutes_from_apifootball().get("api_errors") is True
+
+
+# --------------------------- (133) Goal-Boost 2.0: Tore/Karten/Wechsel ----
+# Vor (133) las der Parser `item["goals"]` (nur das Score-Objekt {home,away})
+# statt `events[]` - der Boost hat deshalb NIE etwas gespeichert. Jetzt:
+# Tore (mit Vorlage) + Karten + Auswechslungen, Events-Nachladen je Spiel.
+
+
+@pytest.fixture
+def goal_env(db, app, monkeypatch):
+    """Wie boost_env, aber: Spiel beendet + fake_get mit URL-Dispatch."""
+    comp = Competition.query.filter_by(code="BL1").first()
+    if not comp:
+        comp = Competition(code="BL1", name="Bundesliga", season="2026",
+                           matchdays=34, teams_count=18, is_active=True)
+        db.session.add(comp)
+        db.session.commit()
+    bay = Team(name="FC Bayern München", short_name="FCB", logo="x.png")
+    bvb = Team(name="Borussia Dortmund", short_name="BVB", logo="x.png")
+    db.session.add_all([bay, bvb])
+    db.session.commit()
+    m = Match(competition_id=comp.id, matchday=7, home_team_id=bay.id,
+              away_team_id=bvb.id,
+              kickoff=datetime.now(timezone.utc) - timedelta(hours=2),
+              status="finished", home_score=2, away_score=1)
+    db.session.add(m)
+    db.session.commit()
+
+    calls = {"urls": [], "discovery": None, "events": None}
+
+    def fake_get(url, headers=None, timeout=None, **kw):
+        calls["urls"].append(url)
+        if "/fixtures/events" in url:
+            return _Resp(calls["events"] or {"response": [], "errors": {}})
+        return _Resp(calls["discovery"] or {"response": [], "errors": {}})
+
+    monkeypatch.setattr(minute_boost.requests, "get", fake_get)
+    monkeypatch.setitem(app.config, "COMPETITION", "BL1")
+    from scoring import set_setting
+    set_setting("apifootball_token", "TESTKEY")
+    minute_boost._GOAL_STATE_FALLBACK.update({"day": "", "count": 0, "last": 0.0})
+    cache_obj = minute_boost._gate_cache()
+    if cache_obj is not None:
+        # Full-Suite: fruehere Tests (test_match_info) hinterlassen Gate-State
+        # im Cache -> sonst Drossel-Fehlschlag (< 600 s).
+        cache_obj.set(minute_boost._GOAL_GATE_KEY,
+                      {"day": "", "count": 0, "last": 0.0}, ttl=3600)
+    yield m, calls
+    minute_boost._GOAL_STATE_FALLBACK.update({"day": "", "count": 0, "last": 0.0})
+
+
+def _ft_item(m, mid=4711, with_events=True):
+    item = {"fixture": {"id": mid, "date": m.kickoff.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
+                        "status": {"short": "FT"}},
+            "league": {"id": 181},
+            "teams": {"home": {"id": 10, "name": "Bayern München"},
+                      "away": {"id": 11, "name": "Borussia Dortmund"}},
+            "goals": {"home": 2, "away": 1}}
+    if with_events:
+        item["events"] = [
+            {"time": {"elapsed": 12, "additional": None},
+             "team": {"id": 10}, "player": {"name": "M. Musiala"},
+             "assist": {"name": "H. Kane"}, "type": "Goal", "detail": "Normal Goal"},
+            {"time": {"elapsed": 39, "additional": None},
+             "team": {"id": 10}, "player": {"name": "H. Kane"},
+             "assist": {"name": None}, "type": "Goal", "detail": "Penalty"},
+            {"time": {"elapsed": 45, "additional": None},
+             "team": {"id": 10}, "player": {"name": "H. Kane"},
+             "assist": {"name": None}, "type": "Goal", "detail": "Missed Penalty"},
+            {"time": {"elapsed": 55, "additional": None},
+             "team": {"id": 10}, "player": {"name": "E. Can"},
+             "assist": {"name": None}, "type": "Card", "detail": "Yellow Card"},
+            {"time": {"elapsed": 70, "additional": None},
+             "team": {"id": 11}, "player": {"name": "N. Schlotterbeck"},
+             "assist": {"name": None}, "type": "Card", "detail": "Second Yellow card"},
+            {"time": {"elapsed": 80, "additional": None},
+             "team": {"id": 11}, "player": {"name": "E. Can"},
+             "assist": {"name": None}, "type": "Card", "detail": "Red Card"},
+            {"time": {"elapsed": 60, "additional": None},
+             "team": {"id": 10}, "player": {"name": "X. Yz"},
+             "assist": {"name": None}, "type": "Var", "detail": "Goal cancelled"},
+            {"time": {"elapsed": 75, "additional": 2},
+             "team": {"id": 10}, "player": {"name": "T. Müller"},
+             "assist": {"name": "J. Musiala"}, "type": "Subst",
+             "detail": "Substitution 2"},
+            {"time": {"elapsed": 90, "additional": None},
+             "team": {"id": 11}, "player": {"name": "N. Schlotterbeck"},
+             "assist": {"name": None}, "type": "Goal", "detail": "Own Goal"},
+        ]
+    return item
+
+
+def test_goal_boost_liest_events_inkl_karten_wechsel_133(goal_env):
+    m, calls = goal_env
+    calls["discovery"] = {"response": [_ft_item(m)], "errors": {}}
+    r = minute_boost.boost_goal_scorers_from_apifootball()
+    assert r["updated"] == 1
+    rows = json.loads(m.events)
+    gf = [x for x in rows if x["kind"] == "gf"]
+    cards = [x for x in rows if x.get("type") == "card"]
+    subs = [x for x in rows if x["kind"] == "sub"]
+    assert len(gf) == 3 and len(cards) == 3 and len(subs) == 1
+    assert not any(x.get("player") == "X. Yz" for x in rows)      # VAR raus
+    assert not any(x.get("min") == 45 for x in gf)                # verschossener Elfer raus
+    assert gf[0]["player"] == "M. Musiala" and gf[0]["assist"] == "H. Kane"
+    assert gf[1]["penalty"] is True and gf[2]["own_goal"] is True
+    assert gf[2]["team"] == "away"
+    assert {c["card"] for c in cards} == {"gelb", "yellow_red", "rot"}
+    assert cards[0]["team"] == "home" and cards[1]["team"] == "away"
+    assert subs[0]["player"] == "T. Müller" and subs[0]["assist"] == "J. Musiala"
+    assert subs[0]["extra"] == 2 and subs[0]["team"] == "home"
+    # zweiter Lauf: Events-JSON vorhanden -> Gate sperrt, kein zweiter Request
+    r2 = minute_boost.boost_goal_scorers_from_apifootball()
+    assert r2["updated"] == 0 and len(calls["urls"]) == 1
+
+
+def test_goal_boost_ladt_events_nach_133(goal_env):
+    """Liste-Query ohne events[] -> einmal /fixtures/events je Spiel."""
+    m, calls = goal_env
+    calls["discovery"] = {"response": [_ft_item(m, with_events=False)], "errors": {}}
+    calls["events"] = {"response": [
+        {"time": {"elapsed": 5, "additional": None}, "team": {"id": 10},
+         "player": {"name": "L. Goretzka"}, "assist": {"name": None},
+         "type": "Goal", "detail": "Normal Goal"}], "errors": {}}
+    r = minute_boost.boost_goal_scorers_from_apifootball()
+    assert r["updated"] == 1
+    assert any("/fixtures/events?fixture=4711" in u for u in calls["urls"])
+    assert len(calls["urls"]) == 2
+    rows = json.loads(m.events)
+    assert rows[0]["player"] == "L. Goretzka" and rows[0]["team"] == "home"
+
+
+def test_goal_boost_ohne_token_inaktiv_133(goal_env):
+    from scoring import set_setting
+    set_setting("apifootball_token", "")
+    m, calls = goal_env
+    calls["discovery"] = {"response": [_ft_item(m)], "errors": {}}
+    r = minute_boost.boost_goal_scorers_from_apifootball()
+    assert r["skipped"] == "no-token" and calls["urls"] == []
+
+
+def test_goal_boost_events_fehler_laesst_match_offen_133(goal_env, monkeypatch):
+    """HTTP-Fehler beim Nachladen: kein Crash, Match bleibt nachladbar."""
+    m, calls = goal_env
+    calls["discovery"] = {"response": [_ft_item(m, with_events=False)], "errors": {}}
+
+    def fake_403(url, headers=None, timeout=None, **kw):
+        calls["urls"].append(url)
+        if "/fixtures/events" in url:
+            return _Resp({"response": [], "errors": {}}, status=403)
+        return _Resp(calls["discovery"])
+
+    monkeypatch.setattr(minute_boost.requests, "get", fake_403)
+    r = minute_boost.boost_goal_scorers_from_apifootball()
+    assert r["updated"] == 0 and m.events in (None, "")
+
+
+def test_match_detail_ereignis_sektionen_133():
+    """Template zeigt Auswechslungen + beide Ereignis-Quellen."""
+    t = open("templates/match_detail.html", encoding="utf-8").read()
+    assert "🔄 Auswechslungen" in t and "sub_rows" in t
+    assert "rein ⇄ raus" in t
+    assert "API-Football / OpenLigaDB" in t
+
+
+def test_af_goal_boost_laeuft_im_cron_takt_136():
+    """(136) Der API-Football-Ereignis-Boost (Karten/Wechsel) haengt nicht nur
+    am Live-Center-Polling, sondern auch am Cron-Sync - sonst bekommen ferlige
+    Spiele ohne Center-Besuch nie Karten/Auswechslungen."""
+    src = open("sync_openligadb.py", encoding="utf-8").read()
+    assert "boost_goal_scorers_from_apifootball()" in src
+    assert "AF-Events:" in src
+    # Der Polling-Pfad bleibt unberuehrt (schnelle Fuellung bei offener Seite)
+    poll = open("sync_football_data.py", encoding="utf-8").read()
+    assert "boost_goal_scorers_from_apifootball" in poll

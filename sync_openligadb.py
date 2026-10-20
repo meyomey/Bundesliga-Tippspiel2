@@ -128,6 +128,53 @@ def _olb_event_rows(md):
     return rows
 
 
+def _olb_goal_rows(md):
+    """goals[] -> gf-Zeilen ((134): Torschuetzen key-frei, auch live).
+
+    Der BL1-Feed pflegt Torschuetzen ausschliesslich im goals-Array
+    (matchMinute, goalGetterName, isPenalty, isOwnGoal, scoringTeamId) -
+    matchEvents bleibt praktisch leer. Seite: zuerst scoringTeamId,
+    Rueckfall die Score-Delta-Kette (scoreTeam1/2 ist kumulativ).
+    """
+    rows = []
+    t1 = _olb_get(_olb_get(md, "team1", "Team1", default={}) or {}, "teamId", "TeamID")
+    t2 = _olb_get(_olb_get(md, "team2", "Team2", default={}) or {}, "teamId", "TeamID")
+    prev1 = prev2 = 0
+    for g in (_olb_get(md, "goals", "Goals", default=[]) or []):
+        if not isinstance(g, dict):
+            continue
+        try:
+            minute = int(g.get("matchMinute") or g.get("minute") or 0)
+        except (TypeError, ValueError):
+            minute = 0
+        if minute < 1:
+            continue
+        s1, s2 = g.get("scoreTeam1"), g.get("scoreTeam2")
+        side = None
+        stid = g.get("scoringTeamId")
+        if stid is not None and t1 is not None and str(stid) == str(t1):
+            side = "home"
+        elif stid is not None and t2 is not None and str(stid) == str(t2):
+            side = "away"
+        if side is None and isinstance(s1, int) and isinstance(s2, int):
+            if s1 > prev1:
+                side = "home"
+            elif s2 > prev2:
+                side = "away"
+        if isinstance(s1, int) and isinstance(s2, int):
+            prev1, prev2 = s1, s2
+        if side is None:
+            continue
+        rows.append({"kind": "gf", "min": minute, "team": side,
+                     "player": (str(g.get("goalGetterName") or "").strip() or None),
+                     "assist": None,
+                     "penalty": bool(g.get("isPenalty")),
+                     "own_goal": bool(g.get("isOwnGoal")),
+                     "src": "olb"})
+    rows.sort(key=lambda r: (r["min"], 0))
+    return rows
+
+
 def _apply_olb_events(md, match):
     """Ergaenzt OLB-Ereignisse ins events-JSON - ueberschreibt und verdoppelt nie.
 
@@ -136,9 +183,10 @@ def _apply_olb_events(md, match):
     nur dazu, wenn dieselbe Kombination noch nicht steht. Gibt Anzahl neu
     geschriebener Zeilen zurueck (0 = alles unveraendert).
     """
-    if not _olb_is_finished(md):
+    # (134) auch laufende Spiele: goals[] liefert Torschuetzen bereits live
+    if not _olb_is_finished(md) and getattr(match, "status", "") != "live":
         return 0
-    rows = _olb_event_rows(md)
+    rows = _olb_event_rows(md) + _olb_goal_rows(md)
     if not rows:
         return 0
     import json
@@ -475,6 +523,85 @@ _OLB_BOOST_TTL_SECONDS = 20
 _olb_boost_last_fetch = {"ts": 0.0}
 
 
+_OLB_EVENTS_CACHE_KEY = "olb_events_boost:last_fetch"
+_olb_events_last_fetch = {"ts": 0.0}
+
+
+def boost_events_from_openligadb(matchday=None):
+    """(134) Torschuetzen key-frei nachziehen (OLB goals[]/matchEvents).
+
+    Fuer laufende + frisch beendete Spiele (Fenster 2 Tage) ins events-JSON
+    mergen - dieselbe Merge-Logik wie im OLB-Sync (_apply_olb_events), also
+    kein Ueberschreiben des API-Football-Goal-Boosts, keine Duplikate.
+    Laeuft im Cron-Tick im fd-Pfad neben dem Goal-Boost; eigener Throttle
+    (20 s, wie der Live-Boost). Ohne Key von football-data.org greift der
+    Weg ueber den OLB-Fallback-Sync, der die Events ebenfalls mergt.
+    """
+    from competition_helpers import filter_matches_for_active_competition
+    now = datetime.now(timezone.utc)
+    cand_q = Match.query.filter(
+        Match.kickoff >= now - timedelta(days=2),
+        Match.status.in_(("live", "finished")),
+    )
+    cand_q = filter_matches_for_active_competition(cand_q)
+    if matchday:
+        cand_q = cand_q.filter(Match.matchday == matchday)
+    candidates = cand_q.all()
+    if not candidates:
+        return {"ok": True, "updated": 0}
+
+    import time as _time
+    try:
+        from cache import cache as _cache
+        if _cache.enabled:
+            if _cache.get(_OLB_EVENTS_CACHE_KEY):
+                return {"ok": True, "updated": 0, "throttled": True}
+            _cache.set(_OLB_EVENTS_CACHE_KEY, 1, ttl=_OLB_BOOST_TTL_SECONDS)
+        else:
+            raise RuntimeError("cache inaktiv")
+    except Exception:
+        if _time.monotonic() - _olb_events_last_fetch["ts"] < _OLB_BOOST_TTL_SECONDS:
+            return {"ok": True, "updated": 0, "throttled": True}
+        _olb_events_last_fetch["ts"] = _time.monotonic()
+
+    season = current_sync_season_code()
+    matchdays = sorted({m.matchday for m in candidates if m.matchday})
+    urls = [f"https://api.openligadb.de/getmatchdata/bl1/{season}/{md}" for md in matchdays] or \
+           [f"https://api.openligadb.de/getmatchdata/bl1/{season}"]
+
+    updated = 0
+    for url in urls:
+        try:
+            r = requests.get(url, timeout=8)
+            if r.status_code != 200:
+                continue
+            payload = r.json()
+        except Exception:
+            continue
+        for md in payload if isinstance(payload, list) else []:
+            home_short = _OLB_TEAM_MAP.get(_olb_team_name(_olb_get(md, "team1", "Team1")) or "")
+            away_short = _OLB_TEAM_MAP.get(_olb_team_name(_olb_get(md, "team2", "Team2")) or "")
+            if not home_short or not away_short:
+                continue
+            match = next((c for c in candidates
+                          if c.home_team.short_name == home_short
+                          and c.away_team.short_name == away_short), None)
+            if match is None:
+                continue
+            if _apply_olb_events(md, match):
+                updated += 1
+    try:  # (139) Admin-Protokoll ("Versuche je Quelle")
+        from datasource_activity import record
+        record("olb-events", True,
+               f"{updated} Spiele mit Torschuetzen ergaenzt"
+               if updated else "keine Aenderungen")
+    except Exception:
+        pass
+    if updated:
+        db.session.commit()
+    return {"ok": True, "updated": updated}
+
+
 def boost_live_from_openligadb(matchday=None):
     """Frische Tore fuer laufende/begonnene Spiele von OpenLigaDB holen.
 
@@ -673,6 +800,36 @@ def sync_results():
                 res_fd["msg"] += f" · OLB-Live: {lb_n} Update(s)"
         except Exception as e:
             current_app.logger.debug(f"OLB-Live-Boost im Cron-Sync uebersprungen: {e}")
+        # (136) API-Football-Ereignisse (Karten/Wechsel/Vorlagen) jetzt auch
+        # im Cron-Takt - vorher nur bedarfsgesteuert im Live-Center-Polling,
+        # weshalb ferlige Spiele ohne Center-Besuch nie Karten/Wechsel bekamen.
+        try:
+            from minute_boost import boost_goal_scorers_from_apifootball
+            gb_cron = boost_goal_scorers_from_apifootball() or {}
+            gb_n = int(gb_cron.get("updated") or 0)
+            if gb_n:
+                res_fd["msg"] += f" · AF-Events: {gb_n}"
+        except Exception as e:
+            current_app.logger.debug(f"AF-Event-Boost im Cron-Sync uebersprungen: {e}")
+        # (134) OLB-Ereignis-Nachzug: Torschuetzen key-frei aus goals[] (auch
+        # live). Fuer Karten/Wechsel/Vorlagen bleibt API-Football die Goldquelle.
+        try:
+            eb = boost_events_from_openligadb()
+            ev_n = int((eb or {}).get("updated") or 0)
+            if ev_n:
+                res_fd["msg"] += f" · OLB-Events: {ev_n}"
+        except Exception as e:
+            current_app.logger.debug(f"OLB-Event-Boost im Cron-Sync uebersprungen: {e}")
+        # (138) TheSportsDB-Timeline: Karten/Auswechslungen key-frei (API-
+        # Football Free darf die Saison nicht; OLB pflegt keine Karten).
+        try:
+            from tsdb_events import boost_events_from_thesportsdb
+            tb = boost_events_from_thesportsdb()
+            tb_n = int((tb or {}).get("updated") or 0)
+            if tb_n:
+                res_fd["msg"] += f" · TSDB-Events: {tb_n}"
+        except Exception as e:
+            current_app.logger.debug(f"TSDB-Event-Boost im Cron-Sync uebersprungen: {e}")
         current_app.logger.info(f"✅ Sync via football-data.org: {res_fd.get('msg')}")
         store_sync_result(res_fd)
         return res_fd

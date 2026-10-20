@@ -24,7 +24,7 @@
 })(typeof window !== "undefined" ? window : globalThis, function () {
   "use strict";
 
-  var NMAX = 11;
+  var NMAX = 12;  // (131): 12 Tore = >= 99,4 % Abdeckung bis lambda 6
 
   function fact(k) { var f = 1; for (var i = 2; i <= k; i++) f *= i; return f; }
   function poissonVec(l) {
@@ -112,8 +112,13 @@
         e += (ex.btts == null ? 0.05 : 0.015) * Math.pow(lh + la - gp, 2);
       // Weicher Anker an die Teamstaerken aus der Saisondaten-DB (prior =
       // {lh, la, w}): die Quoten bleiben das Hauptsignal, die Form stützt.
-      if (prior && prior.lh != null)
-        e += (prior.w || 0.25) * (Math.pow(lh - prior.lh, 2) + Math.pow(la - prior.la, 2));
+      // (131) w explizit numerisch lesen: `prior.w || 0.25` behandelte
+      // w = 0 ("Anker aus") fälschlich wie w = 0.25.
+      if (prior && prior.lh != null) {
+        var pw = (typeof prior.w === "number") ? prior.w : 0.25;
+        if (pw > 0)
+          e += pw * (Math.pow(lh - prior.lh, 2) + Math.pow(la - prior.la, 2));
+      }
       return e;
     }
     var bl = 0, bh = 0, bv = Infinity;

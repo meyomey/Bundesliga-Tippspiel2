@@ -255,3 +255,56 @@
     }
   });
 })();
+
+// ============= (139) LIVE-STAND-POLL =============
+// Laufende Spiele aktualisieren den grossen Stand im Detail/Popup alle 30 s
+// aus /api/matches/<ST> (read-only, triggert KEIN Sync-Polling). Nach dem
+// Abpfiff laedt die Seite einmal neu, damit der Endstand-Zweig (mit Punkte-
+// auswertung) erscheint.
+(function () {
+  "use strict";
+  const area = document.getElementById('swipeArea');
+  if (!area || area.dataset.status !== 'live' || !area.dataset.matchday) return;
+  const mid = String(area.dataset.matchId);
+  const url = '/api/matches/' + area.dataset.matchday;
+  let reloading = false;
+
+  function upsert(h, a) {
+    let score = document.getElementById('tuLiveScore');
+    if (!score) {
+      const center = area.querySelector('.tu-center');
+      if (!center) return;
+      score = document.createElement('div');
+      score.id = 'tuLiveScore';
+      score.className = 'tu-result-score tu-live-score';
+      const note = document.createElement('small');
+      note.id = 'tuLiveNote';
+      note.className = 'muted tu-live-note';
+      note.innerHTML = '<span class="live-dot"></span> Live-Stand';
+      center.insertBefore(note, center.firstChild);
+      center.insertBefore(score, note);
+    }
+    score.textContent = h + ' : ' + a;
+  }
+
+  function poll() {
+    fetch(url, { headers: { 'Accept': 'application/json' } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (rows) {
+        if (!Array.isArray(rows)) return;
+        const m = rows.find(function (x) { return String(x.id) === mid; });
+        if (!m) return;
+        if (m.status === 'finished') {
+          if (!reloading) { reloading = true; location.reload(); }
+          return;
+        }
+        if (m.status === 'live' && m.home_score != null && m.away_score != null) {
+          upsert(m.home_score, m.away_score);
+        }
+      })
+      .catch(function () { /* still: naechster Tick */ });
+  }
+
+  poll();
+  setInterval(poll, 30000);
+})();

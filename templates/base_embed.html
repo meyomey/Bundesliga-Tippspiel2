@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+{# (132) Minimale Shell fuer die Einbettung der Spieldetails im Popup:
+   keine Navigation, kein Footer, keine PWA-Scripts — nur Styles + Content. #}
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}Wulmstörper Tipprunde{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.min.css', v=asset_version) }}" />
+  {% block extra_css %}{% endblock %}
+</head>
+<body class="embed-mode">
+  <div class="embed-wrap">
+    {% block content %}{% endblock %}
+  </div>
+{% block scripts %}{% endblock %}
+</body>
+</html>

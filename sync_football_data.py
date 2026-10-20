@@ -469,6 +469,7 @@ def fetch_live_match_updates(matchday=None):
     except Exception as e:
         current_app.logger.debug(f"Goal-Boost uebersprungen: {e}")
 
+
     if err or not data:
         return {"ok": bool(boost_updates or minute_updates or goal_updates),
                 "msg": (err or ""), "updated": boost_updates, "live": 0,

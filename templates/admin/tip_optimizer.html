@@ -5,6 +5,12 @@
 <a href="{{ url_for('admin.dashboard') }}" class="back-link">← Admin</a>
 <h1>🎯 Tipp-Optimizer <small class="muted">Spieltag {{ md }}</small></h1>
 
+<div class="to-intro">
+  <div class="to-intro-step"><b>1 · Quoten eintragen.</b> Pro Spiel die 1X2-Quoten der Buchmacher in die Karten unten schreiben – oder „⬇ Quoten online laden“ drücken.</div>
+  <div class="to-intro-step"><b>2 · Empfehlung lesen.</b> Der Optimizer rechnet daraus pro Spiel den <b>Optimalen Tipp</b> (dem Ergebnis mit den meisten erwarteten Punkten) plus Joker-Tipp.</div>
+  <div class="to-intro-step"><b>3 · Optional speichern.</b> Mit „💾 Vorhersage speichern“ wird der Lauf gemessen – die Karten unten zeigen später, wie gut das Modell tatsächlich war.</div>
+</div>
+
 <div class="to-actions">
   <form method="get" action="{{ url_for('admin.tip_optimizer') }}" class="to-md-form">
     <label class="muted">Spieltag
@@ -24,21 +30,9 @@
 </div>
 
 {% if matches %}
-<div class="card" id="to-summary-card">
-  <h2>Optimierte Tipps</h2>
-  <div class="to-chips-row" id="to-chips"></div>
-  <div class="to-tblwrap" id="to-results"></div>
-  <div id="to-details"></div>
-  <div class="muted" id="to-total" style="margin-top:10px"></div>
-  <div class="muted" id="to-joker" style="margin-top:10px"></div>
-  <div class="btnrow" style="margin-top:10px">
-    <button type="button" id="to-btn-snapshot" class="btn-ghost btn-sm" title="Speichert die aktuellen Modell-Ausgaben (Tipp, EP, Wahrscheinlichkeiten, Quoten) je Spiel in der DB. Nach Spieltags-Ende rechnet die Modellgüte-Karte unten die Erwartungen gegen die Ergebnisse ab.">💾 Vorhersage speichern (Modellgüte)</button>
-    <span id="to-snap-msg" style="font-size:13px; align-self:center;"></span>
-  </div>
-</div>
-
 <details class="card to-input-fold" id="to-input-fold" open>
-  <summary>✏️ Quoten eintragen <span id="to-fold-state" class="muted"></span></summary>
+  <summary>✏️ Schritt 1: Quoten eintragen <span id="to-fold-state" class="muted"></span></summary>
+  <div class="muted" style="margin:8px 0 0;font-size:13px">Nur die drei 1X2-Felder sind Pflicht – alles andere (Ü2,5, BTTS, Adjuster) ist optional und verfeinert das Modell.</div>
   <div class="to-cards" style="margin-top:10px">
   {% for m in matches %}
   <div class="card to-card" data-idx="{{ loop.index0 }}" data-match-id="{{ m.id }}" data-h="{{ m.home_team.name }}" data-a="{{ m.away_team.name }}"
@@ -76,8 +70,25 @@
 </div>
 </details>
 
-<div class="card">
-  <h2>📈 Modellgüte – gespeicherte Vorhersagen</h2>
+<div class="card" id="to-summary-card">
+  <h2>🎯 Schritt 2: Deine Empfehlungen</h2>
+  <p class="muted" id="to-results-hint" style="margin:0">Sobald oben Quoten stehen, erscheinen hier automatisch die Empfehlungen pro Spiel – mit Sicherheitseinschätzung und Joker-Tipp.</p>
+  <div class="to-chips-row" id="to-chips"></div>
+  <div class="to-tblwrap" id="to-results"></div>
+  <div id="to-details"></div>
+  <div class="muted" id="to-total" style="margin-top:10px"></div>
+  <div class="muted" id="to-joker" style="margin-top:10px"></div>
+  <div class="btnrow" style="margin-top:10px">
+    <button type="button" id="to-btn-apply" class="btn-primary btn-sm" title="Speichert die optimalen Tipps für alle noch nicht begonnenen Spiele dieses Spieltags als deine Tipps. Vorhandene Tipps werden dabei überschrieben; der Joker wandert auf das Spiel mit der höchsten Erwartung. Bereits begonnene Spiele bleiben unberührt.">✅ Empfehlungen als meine Tipps übernehmen</button>
+    <span id="to-apply-msg" style="font-size:13px; align-self:center;"></span>
+    <button type="button" id="to-btn-snapshot" class="btn-ghost btn-sm" title="Speichert die aktuellen Modell-Ausgaben (Tipp, EP, Wahrscheinlichkeiten, Quoten) je Spiel in der DB. Nach Spieltags-Ende rechnet die Modellgüte-Karte unten die Erwartungen gegen die Ergebnisse ab.">💾 Schritt 3: Vorhersage speichern (Modellgüte)</button>
+    <span id="to-snap-msg" style="font-size:13px; align-self:center;"></span>
+  </div>
+</div>
+
+<details class="card to-expert">
+  <summary>📈 Wie gut ist das Modell bisher? <span class="muted">Modellgüte</span>{% if not model_stats %} <span class="muted">· noch keine Daten</span>{% endif %}</summary>
+  <h2 class="to-expert-h">📈 Modellgüte – gespeicherte Vorhersagen</h2>
   {% if model_stats %}
   <div class="to-statgrid">
     <div class="to-stat"><span>EP erwartet / Spiel</span><b>{{ '%.2f' % model_stats.ep_exp }}</b></div>
@@ -87,7 +98,7 @@
     <div class="to-stat"><span title="Zuverlässigkeit der 1X2-Prozentzahlen: 0 = perfekt, ~0,67 = Zufallstipp. Das Modell ist gut, wenn sein Wert deutlich unter „Brier Zufall“ liegt.">Brier 1X2 (kleiner = besser)</span><b>{{ '%.3f' % model_stats.brier }}</b></div>
     <div class="to-stat"><span title="Referenz: der Brier eines Zufallstippers. Das Modell ist besser, wenn sein Brier (Zeile oben) deutlich darunter liegt.">Brier Zufall</span><b>{{ '%.3f' % model_stats.brier_zufall }}</b></div>
   </div>
-  <p class="muted" style="margin:0 0 8px">Abrechnung der gespeicherten Vorhersagen gegen die Endstände – seither {{ model_stats.since }}, {{ model_stats.runs }} Lauf/Läufe, {{ model_stats.n }} Spiel/Spiele.</p>
+  <p class="muted" style="margin:0 0 8px">Kurz gesagt: Liegt „Punkte real“ über „EP erwartet“, spielt das Modell besser als es sich selbst zutraut. Der Brier-Vergleich zeigt, ob die Prozentzahlen zuverlässig sind. Abrechnung der gespeicherten Vorhersagen gegen die Endstände – seither {{ model_stats.since }}, {{ model_stats.runs }} Lauf/Läufe, {{ model_stats.n }} Spiel/Spiele.</p>
   <div class="to-tblwrap">
     <table class="to-tblwide">
       <thead><tr><th title="Spieltag">ST</th><th title="Lokale Zeit (vom UTC-Zeitstempel umgerechnet)">Gespeichert (UTC)</th><th>Spiele</th><th title="Erwartungswert je Spiel (4/3/2-Regel)">EP erwartet</th><th title="Tatsächlich erzielte Punkte je Spiel">Punkte real</th><th title="Vom Modell erwartete Wahrscheinlichkeit von ≥ 2 Punkten">P(≥2 P) erwartet</th><th title="Realisierte Trefferquote: Anteil der Tipps mit ≥ 2 Punkten">P(≥2 P) real</th><th title="Qualität der 1X2-Prognose: 0 = perfekt, ~0,67 = Zufall, kleiner ist besser">Brier</th></tr></thead>
@@ -103,10 +114,11 @@
   {% else %}
   <p class="muted" style="margin:0">Noch keine bewertbaren Vorhersagen. Nach dem Tipp-Abgleich „💾 Vorhersage speichern“ drücken – abgerechnet wird automatisch, wenn der gespeicherte Spieltag beendet ist. (Nur Admin-Sicht.)</p>
   {% endif %}
-</div>
+</details>
 
-<div class="card">
-  <h2>🎚 Kalibrierung &amp; Trend</h2>
+<details class="card to-expert">
+  <summary>🎚 Hält das Modell, was es verspricht? <span class="muted">Kalibrierung</span>{% if not kalib %} <span class="muted">· noch keine Daten</span>{% endif %}</summary>
+  <h2 class="to-expert-h">🎚 Kalibrierung &amp; Trend</h2>
   {% if kalib %}
   <p class="muted" style="margin-top:0">Geplante vs. realisierte Wahrscheinlichkeiten aus den gespeicherten Vorhersagen ({{ kalib.mds }} abgerechnete Spieltage, jeweils der letzte Lauf je Spieltag, {{ kalib.n }} Spiele{% if kalib.small %} — <b>kleine Stichprobe</b>, nur Richtwerte{% endif %}).</p>
   <div class="to-statgrid">
@@ -152,10 +164,11 @@
   {% else %}
   <p class="muted" style="margin:0">Noch keine abgerechneten Spieltage mit gespeicherten Vorhersagen — Karte füllt sich automatisch: „💾 Vorhersage speichern“ drücken, nach Spieltags-Ende erscheinen Kalibrierung (Prognose-% gegen reale Ergebnisse) und EP-Trend hier. (Nur Admin-Sicht.)</p>
   {% endif %}
-</div>
+</details>
 
-<div class="card">
-  <h2>🤖 Optimizer als Mitspieler</h2>
+<details class="card to-expert">
+  <summary>🤖 Wo hätte der Optimizer in der Rangfolge gestanden? <span class="muted">Mitspieler-Vergleich</span>{% if not mitspieler %} <span class="muted">· noch keine Daten</span>{% endif %}</summary>
+  <h2 class="to-expert-h">🤖 Optimizer als Mitspieler</h2>
   {% if mitspieler %}
   <p class="muted" style="margin-top:0">Wo hätte der Optimizer in der <b>realen Spieltags-Rangfolge</b> platziert — gerechnet mit den zuletzt gespeicherten Vorhersagen je abgerechnetem Spieltag (Mitspieler inkl. Bots, wie beim Spieltagsieger; nur Admin-Sicht).</p>
   <div class="to-statgrid">
@@ -187,10 +200,11 @@
   {% else %}
   <p class="muted" style="margin:0">Noch nichts bewertbar: Sobald ein Spieltag mit gespeicherter Vorhersage („💾 Vorhersage speichern“) komplett abgerechnet ist, erscheint hier, auf welchem Platz der Optimizer in der realen Rangfolge gelandet wäre. (Nur Admin-Sicht.)</p>
   {% endif %}
-</div>
+</details>
 
-<div class="card">
-  <h2>📊 Quoten-Bewegung</h2>
+<details class="card to-expert">
+  <summary>📊 Wie haben sich die Quoten bewegt? <span class="muted">Markt-Trend</span>{% if not odds_move %} <span class="muted">· noch keine Daten</span>{% endif %}</summary>
+  <h2 class="to-expert-h">📊 Quoten-Bewegung</h2>
   {% if odds_move %}
   <p class="muted" style="margin-top:0">Erster vs. letzter gespeicherter Stand je Spiel – jeder „⬇ Quoten online laden“-Abruf legt einen Zeitstempel-Stand an (0 €, eigene abgerufene Werte; manuelle Eingaben bleiben in Ruhe).
   Insgesamt {{ odds_move.total }} Stände, zuletzt <span data-ts-utc="{{ odds_move.until_iso }}">{{ odds_move.until }}</span> Uhr (lokale Zeit). <span class="muted">↓ = Quote gesunken (Favorisierung gestiegen), ↑ = gestiegen.</span></p>
@@ -211,23 +225,24 @@
   {% else %}
   <p class="muted" style="margin:0">Noch keine Quoten-Historie. Jeder „⬇ Quoten online laden“-Abruf speichert die befüllten Werte mit Zeitstempel – ab dem zweiten Abruf desselben Spieltags erscheint die Bewegung hier.</p>
   {% endif %}
-</div>
+</details>
 
-<div class="card">
-  <h2>🔬 Modellgüte – Walk-Forward-Backtest</h2>
+<details class="card to-expert">
+  <summary>🔬 Backtest: Modell nur mit alten Daten testen <span class="muted">für Fortgeschrittene</span></summary>
+  <h2 class="to-expert-h">🔬 Walk-Forward-Backtest</h2>
   <p class="muted" style="margin-top:0">Fittet das Modell (Teamstärken + Dixon-Coles + Torsumme) je abgelaufenen Spieltag aus allen <b>bisherigen</b> Spielen und bewertet es blind auf den Spieltag.
   Ohne Odds-Anker (historische Quoten gibt es von keiner Gratis-Quelle) – also die <b>Modell-Grundlage als Untergrenze</b> der echten Tipp-Qualität. Laufzeit ~1–3 s, reine DB-Auswertung (keine Kosten).</p>
   <div class="btnrow">
     <button type="button" id="to-btn-backtest" class="btn-primary btn-sm">Backtest ausführen</button>
   </div>
   <div id="to-backtest" class="to-backtest"></div>
-</div>
+</details>
 {% else %}
 <div class="card"><p class="muted" style="margin:0">Keine Spiele für Spieltag {{ md }} in der Datenbank – erst Admin → API Sync starten (oder einen anderen Spieltag wählen).</p></div>
 {% endif %}
 
 <details class="card to-info">
-  <summary>ℹ️ So funktioniert’s</summary>
+  <summary>ℹ️ So funktioniert’s (Hintergrund &amp; Begriffe)</summary>
   <div class="to-info-body">
   <strong>Einfach nutzen:</strong> Pro Spiel die 1X2-Quoten eintragen (Schnelleingabe: <code>2.30 3.80 2.80 [Ü2,5] [BTTS] [Ü3,5]</code> + Enter).
   Die Engine (Dixon-Coles-Poisson, empirische BL-Korrekturfaktoren) entfernt die Buchmachermarge, passt die Torverteilung an und wählt den Tipp mit dem

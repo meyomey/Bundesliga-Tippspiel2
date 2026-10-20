@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "base_embed.html" if request.args.get("embed") == "1" else "base.html" %}
 {% block title %}{{ match.home_team.short_name }} vs. {{ match.away_team.short_name }}{% endblock %}
 
 {% macro form_strip(form_list) %}
@@ -88,6 +88,8 @@
      data-prev="{{ url_for('main.match_detail', match_id=prev_id) if prev_id else '' }}"
      data-next="{{ url_for('main.match_detail', match_id=next_id) if next_id else '' }}"
      data-match-id="{{ match.id }}"
+     data-status="{{ match.status }}"
+     data-matchday="{{ match.matchday }}"
      data-can-tip="{{ '1' if match.is_open() else '0' }}">
 
   <!-- Topline: Datum, Status, Wetter kompakt -->
@@ -217,6 +219,13 @@
           </div>
         </form>
       {% else %}
+        {# (137) Live-Spiele: aktuellen Stand grosseilig zeigen, nicht nur
+           den eigenen Tipp (dienst via OLB-Boost in der DB, Stand bei
+           Oeffnung). Ohne Feed-Score bleibt alles wie bisher. #}
+        {% if match.status == 'live' and match.home_score is not none and match.away_score is not none %}
+          <div class="tu-result-score tu-live-score" id="tuLiveScore">{{ match.home_score }} : {{ match.away_score }}</div>
+          <small class="muted tu-live-note" id="tuLiveNote"><span class="live-dot"></span> Live-Stand</small>
+        {% endif %}
         {% if pred %}
           <div class="tu-result-score small">{{ pred.home_tip }} : {{ pred.away_tip }}{% if pred.joker %}<span class="joker">⚡</span>{% endif %}</div>
           <small class="muted">Dein Tipp</small>
@@ -255,9 +264,12 @@
 <!-- ============ TORSCHUETZEN (Goal-Boost, falls Daten vorhanden) ============ -->
 {% set goal_rows = [] %}
 {% set card_rows = [] %}
+{% set sub_rows = [] %}
 {% for row in (match.events | fromjson) %}
   {% if row.kind == 'gf' %}{% set _ = goal_rows.append(row) %}{% endif %}
   {% if row.type == 'card' %}{% set _ = card_rows.append(row) %}{% endif %}
+  {# (133) Auswechslungen: player = raus, assist = rein (neutral per ⇄) #}
+  {% if row.kind == 'sub' %}{% set _ = sub_rows.append(row) %}{% endif %}
 {% endfor %}
 {% if goal_rows %}
 <section class="card tu-goals-card">
@@ -286,7 +298,23 @@
     </li>
     {% endfor %}
   </ul>
-  <p class="muted small ts-foot">Quelle: OpenLigaDB (kostenlose Spielereignisse) – listet nur, was dort erfasst ist.</p>
+  <p class="muted small ts-foot">Quelle: TheSportsDB / API-Football / OpenLigaDB (kostenlose Spielereignisse) – listet nur, was dort erfasst ist.</p>
+</section>
+{% endif %}
+{% if sub_rows %}
+<section class="card tu-goals-card">
+  <h2>🔄 Auswechslungen</h2>
+  <p class="muted small">rein ⇄ raus</p>
+  <ul class="tu-goals">
+    {% for s in sub_rows %}
+    <li>
+      <span class="tg-time">{{ s.min }}'{% if s.extra %}+{{ s.extra }}{% endif %}</span>
+      <span class="tg-side {{ 'tg-home' if s.team == 'home' else 'tg-away' }}">{{ match.home_team.short_name if s.team == 'home' else match.away_team.short_name }}</span>
+      <span class="tg-player">{{ s.assist or '?' }} <small>⇄ {{ s.player or '?' }}</small></span>
+    </li>
+    {% endfor %}
+  </ul>
+  <p class="muted small ts-foot">Quelle: TheSportsDB / API-Football (kostenlose Spielereignisse) – listet nur, was dort erfasst ist.</p>
 </section>
 {% endif %}
 

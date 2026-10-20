@@ -163,3 +163,37 @@ def test_admin_dashboard_kein_doppeltes_saisonlabel(client, db, admin_user, comp
     assert resp.status_code == 200
     assert 'Bundesliga 2026 · Saison 2026'.encode('utf-8') not in resp.data
     assert 'Bundesliga 2026'.encode('utf-8') in resp.data
+
+
+def test_new_season_raeumt_stale_badges_weg(client, app, db, admin_user, user,
+                                            competition, teams, monkeypatch):
+    """(128) Der Saison-Reset revalidiert die Badges direkt mit: ein
+    verliehenes Spieltagsieger-Badge ueberlebt den Loeschvorgang seiner
+    Grundlage nicht mehr (vorher: Badge blieb, Profil zeigte 0)."""
+    from models import MatchdayWinner, UserBadge
+    from badges import award_badge, seed_badges
+    from badges import Badge
+    monkeypatch.setitem(app.config, "COMPETITION", competition.code)
+    seed_badges()
+    badge = Badge.query.filter_by(code="md_winner_1").first()
+    assert badge is not None
+    row = MatchdayWinner(competition_id=competition.id, matchday=1,
+                         user_id=user.id, points=10, exact_count=2,
+                         season='2025/26')
+    db.session.add(row)
+    db.session.commit()
+    award_badge(user, badge)
+    assert UserBadge.query.filter_by(user_id=user.id, badge_id=badge.id).first()
+
+    _login_admin(client, admin_user)
+    resp = client.post('/admin/new-season', data={
+        'new_season_label': '2026/27',
+        'old_season_label': '2025/26',
+        'confirm_text': 'SAISON STARTEN',
+        'backup_ack': '1',
+        'risk_ack': '1',
+        'do_delete_schedule': '1',
+    }, follow_redirects=True)
+    assert resp.status_code == 200
+    assert MatchdayWinner.query.filter_by(user_id=user.id).count() == 0
+    assert UserBadge.query.filter_by(user_id=user.id, badge_id=badge.id).first() is None

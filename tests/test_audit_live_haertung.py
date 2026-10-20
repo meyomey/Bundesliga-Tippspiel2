@@ -25,8 +25,11 @@ def test_olb_live_steht_in_der_quellenliste():
 def test_alle_bekannten_kinds_gelistet(app, db):
     """Vertrags-Test: jedes protokollierte Kind hat eine Admin-Zeile."""
     keys = {k for k, _label in SOURCES}
+    # (139) + tsdb_events (Karten/Wechsel key-frei) + olb-events (Torschützen-
+    # Nachzug) - beides Cron-Boosts, die nach echtem HTTP-Kontakt protokollieren.
     assert keys == {"football-data", "openligadb", "olb-live", "minute",
-                    "goals", "torjaeger", "the_odds_api"}
+                    "goals", "tsdb_events", "olb-events", "torjaeger",
+                    "the_odds_api"}
 
 
 def test_olb_live_erscheint_in_source_activity(app, db):

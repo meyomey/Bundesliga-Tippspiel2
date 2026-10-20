@@ -138,6 +138,11 @@
   opacity: 0.78;
   pointer-events: none;
 }
+/* (135) Der 📊-Details-Link bleibt auch bei gestarteten/ferligen Spielen
+   klickbar - pointer-events:none der Karte gilt nur fuer die Eingaben. */
+.qt-match-card.closed .qt-details-link {
+  pointer-events: auto;
+}
 .qt-match-card.has-tip {
   border-left: 4px solid var(--primary);
 }

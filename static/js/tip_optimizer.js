@@ -208,7 +208,7 @@
       var fairBox = card.querySelector(".to-fair");
       if (!(mm.o1 && mm.ox && mm.o2)) {
         if (fairBox) fairBox.textContent = "1X2-Quoten unvollständig – Spiel wird nicht berechnet.";
-        rows.push("<tr><td><b>" + esc(h) + "</b> – " + esc(a) + "</td><td colspan=\"9\" class=\"muted\">—</td></tr>");
+        rows.push("<tr><td><b>" + esc(h) + "</b> – " + esc(a) + "</td><td colspan=\"3\" class=\"muted\">—</td></tr>");
         lastTips.push(null);
         lastFull.push(null);
         return;
@@ -222,8 +222,11 @@
       var prior = priorFor(h, a);
       var fit = fitLambdas(target, ex, R, prior, GOAL_PRIOR);
       var lh = fit[0], la = fit[1];
-      if (mm.adjH) lh = Math.max(0.05, lh * (1 + mm.adjH / 100));
-      if (mm.adjA) la = Math.max(0.05, la * (1 + mm.adjA / 100));
+      // (131) Obergrenze 6,0 = Fit-Intervall der Engine: darueber wuerde
+      // die Tor-Matrix ab ca. 98 % Abdeckung ranten und die Verteilung
+      // verfaelschen (Adjuster bis ±40 % haette sonst lambda bis 8,4 erlaubt).
+      if (mm.adjH) lh = Math.min(6, Math.max(0.05, lh * (1 + mm.adjH / 100)));
+      if (mm.adjA) la = Math.min(6, Math.max(0.05, la * (1 + mm.adjA / 100)));
       var M = buildMatrix(lh, la, R.r0, R.rD, R.r1);
       var A = analyse(M);
       // Vergleichs-Run mit der anderen Margen-Methode (S. 4 des
@@ -232,8 +235,8 @@
       var tAlt = deMargin(mm.o1, mm.ox, mm.o2, altMethod);
       var fAlt = fitLambdas(tAlt, ex, R, prior, GOAL_PRIOR);
       var lhAlt = fAlt[0], laAlt = fAlt[1];
-      if (mm.adjH) lhAlt = Math.max(0.05, lhAlt * (1 + mm.adjH / 100));
-      if (mm.adjA) laAlt = Math.max(0.05, laAlt * (1 + mm.adjA / 100));
+      if (mm.adjH) lhAlt = Math.min(6, Math.max(0.05, lhAlt * (1 + mm.adjH / 100)));
+      if (mm.adjA) laAlt = Math.min(6, Math.max(0.05, laAlt * (1 + mm.adjA / 100)));
       var AAlt = analyse(buildMatrix(lhAlt, laAlt, R.r0, R.rD, R.r1));
       if (AAlt.best[0] !== A.best[0] || AAlt.best[1] !== A.best[1]) methodDiffs++;
       totalEp += A.epBest; count++;
@@ -256,12 +259,9 @@
 
       rows.push("<tr>" +
         "<td><b>" + esc(h) + "</b> – " + esc(a) + "</td>" +
-        "<td class=\"to-lam\">" + fmt(lh) + "</td><td class=\"to-lam\">" + fmt(la) + "</td>" +
-        "<td>" + pct(A.st.p1) + "</td><td>" + pct(A.st.px) + "</td><td>" + pct(A.st.p2) + "</td>" +
-        "<td>" + ml[0] + ":" + ml[1] + " <span class=\"muted\">(" + pct(A.topScores[0].p) + ")</span></td>" +
-        "<td class=\"to-tw\">" + bh + ":" + bh2 + (diff ? " <span class=\"to-warn\" title=\"Optimaler Tipp weicht vom wahrscheinlichsten Einzel-Ergebnis ab\">⚠</span>" : "") + "</td>" +
+        "<td class=\"to-tw\"><b>" + bh + ":" + bh2 + "</b>" + (diff ? " <span class=\"to-warn\" title=\"Optimaler Tipp weicht vom wahrscheinlichsten Einzel-Ergebnis ab – kann unter der 4/3/2-Regel trotzdem mehr Punkte bringen\">⚠</span>" : "") + (knapp ? " <span class=\"to-badge to-knapp\" title=\"Zweitbeste Wahl liegt unter 0,03 EP Abstand – fast gleichgute Alternative\">knapp</span>" : "") + "</td>" +
         "<td><b>" + fmt(A.epBest) + "</b></td>" +
-        "<td><span class=\"to-badge " + conf[1] + "\">" + conf[0] + "</span>" + (knapp ? " <span class=\"to-badge to-knapp\" title=\"Zweitbeste Wahl liegt unter 0,03 EP Abstand – Tipp instabil\">knapp</span>" : "") + "</td>" +
+        "<td><span class=\"to-badge " + conf[1] + "\">" + conf[0] + "</span></td>" +
         "</tr>");
 
       var tt = A.topTips.map(function (x, i) { return (i + 1) + ". <b>" + x.t[0] + ":" + x.t[1] + "</b> – " + fmt(x.ep) + " EP"; }).join(" · ");
@@ -271,6 +271,8 @@
         "<div class=\"to-row\">λ Heim <b>" + fmt(lh) + "</b> · λ Gast <b>" + fmt(la) + "</b>" +
         (mm.adjH || mm.adjA ? " <span class=\"to-warn\">(Adjuster aktiv: Heim " + (mm.adjH > 0 ? "+" : "") + (mm.adjH || 0) + " %, Gast " + (mm.adjA > 0 ? "+" : "") + (mm.adjA || 0) + " % – Markt-Fit war " + fmt(fit[0]) + "/" + fmt(fit[1]) + ")</span>" : "") +
         (prior ? " <span class=\"muted\" title=\"Weicher Anker an die Teamstärken aus den fertigen Spielen der Saison in der App-Datenbank (Quoten bleiben das Hauptsignal)\">Saisondaten-Prior λ " + fmt(prior.lh) + "/" + fmt(prior.la) + " → Fit " + fmt(fit[0]) + "/" + fmt(fit[1]) + "</span>" : "") +
+        " · Modell-1X2 <b>" + pct(A.st.p1) + " / " + pct(A.st.px) + " / " + pct(A.st.p2) + "</b>" +
+        " · wahrscheinlichstes Ergebnis <b>" + ml[0] + ":" + ml[1] + "</b> (" + pct(A.topScores[0].p) + ")" +
         " &nbsp;|&nbsp; fair 1X2 (" + (METHOD === "power" ? "Power-Methode, k=" + fmt(target[3]) : "proportional") + "): <b>" + pct(target[0]) + " / " + pct(target[1]) + " / " + pct(target[2]) + "</b>" +
         (ex.ou25 != null ? " &nbsp;|&nbsp; fair Ü2,5: <b>" + pct(ex.ou25) + "</b>" : "") +
         (ex.btts != null ? " &nbsp;|&nbsp; fair BTTS: <b>" + pct(ex.btts) + "</b>" : "") +
@@ -300,12 +302,14 @@
     });
 
     var results = $("#to-results");
-    if (results) results.innerHTML = "<table><thead><tr><th>Spiel</th><th title=\"Vom Modell erwartete Tore (Heim) – λ ist der Poisson-Mittelwert\">λ H</th><th title=\"Vom Modell erwartete Tore (Auswärts) – λ ist der Poisson-Mittelwert\">λ G</th><th title=\"Quote: Heim-Sieg\">1</th><th title=\"Quote: Remis\">X</th><th title=\"Quote: Gast-Sieg\">2</th>" +
-      "<th>Wahrsch. Ergebnis</th><th title=\"Tipp mit dem höchsten erwarteten Punktwert (EP) nach der 4/3/2-Regel\">Optimaler Tipp</th><th title=\"Erwartungswert des Tipps in Punkten: exakt 4, gleicher Torsaldo 3, richtiges 1X2 2, sonst 0\">EP</th><th title=\"Wahrscheinlichkeit (P), dass der Tipp mindestens 2 Punkte bringt: ≥70 % hoch, ≥40 % mittel, darunter niedrig\">Sicherheit</th></tr></thead>" +
+    if (results) results.innerHTML = "<table><thead><tr><th>Spiel</th><th title=\"Tipp mit dem höchsten erwarteten Punktwert (EP) nach der 4/3/2-Regel: exakter Endstand 4 Punkte, gleicher Torsaldo 3, richtiges 1X2 2, sonst 0\">Optimaler Tipp</th>" +
+      "<th title=\"Erwartungswert des Tipps in Punkten (je höher, desto lohnender)\">EP</th><th title=\"Wahrscheinlichkeit (P), dass der Tipp mindestens 2 Punkte bringt: ≥70 % hoch, ≥40 % mittel, darunter niedrig\">Sicherheit</th></tr></thead>" +
       "<tbody>" + rows.join("") + "</tbody></table>" +
-      "<div class=\"muted to-legend\">⚠ = optimaler Tipp ≠ wahrscheinlichstes Einzel-Ergebnis · „knapp“ = Zweitwahl unter 0,03 EP Abstand (Tipp instabil) · Sicherheit = P(≥ 2 Punkte mit dem Tipp): ≥70 % hoch, ≥40 % mittel, darunter niedrig</div>";
+      "<div class=\"muted to-legend\">⚠ = Tipp weicht vom wahrscheinlichsten Ergebnis ab (kann trotzdem mehr Punkte bringen) · „knapp“ = fast gleichgute Alternative · Sicherheit = Chance auf mindestens 2 Punkte (≥70 % hoch, ≥40 % mittel, sonst niedrig) · Technik-Details (λ, faire Quoten, Top-3) stecken im Akkordeon je Spiel</div>";
     var det = $("#to-details");
     if (det) det.innerHTML = details.join("");
+    var hint = $("#to-results-hint");
+    if (hint) hint.style.display = count ? "none" : "";
     var total = $("#to-total");
     if (total) total.innerHTML = count
       ? "Modell-Erwartung für Spieltag " + CFG.md + ": <b>" + fmt(totalEp) + " P</b> (" + count + " Spiele, Maximum " + (count * 4) + ")"
@@ -476,6 +480,62 @@
       ex.hidden = !ex.hidden;
       t.setAttribute("aria-expanded", ex.hidden ? "false" : "true");
       t.textContent = ex.hidden ? "⚙ Optionen (BTTS · Ü3,5 · Adjuster) ▸" : "⚙ Optionen (BTTS · Ü3,5 · Adjuster) ▾";
+      return;
+    }
+    if (t.id === "to-btn-apply") {
+      // (143) Empfehlungen als echte Tipps speichern: fuer alle offenen
+      // Spiele dieses Spieltags POST /api/tip/<id> (Server prueft Anstoss/
+      // Joker-Regeln selbst). Joker = Spiel mit hoechster EP unter den
+      // gespeicherten. Bereits begonnene Spiele werden uebersprungen.
+      var am = $("#to-apply-msg");
+      function applyMsg(txt, color) { if (am) { am.textContent = txt; am.style.color = color || ""; } }
+      var abtn = t;
+      var open = [];
+      var kicks = {}, names = {};
+      cards.forEach(function (c) {
+        var mid = parseInt(c.getAttribute("data-match-id") || "0", 10);
+        if (!mid) return;
+        var iso = c.getAttribute("data-kick");
+        kicks[mid] = iso ? new Date(iso).getTime() : 0;
+        names[mid] = (c.getAttribute("data-h") || "") + " – " + (c.getAttribute("data-a") || "");
+      });
+      lastFull.filter(Boolean).forEach(function (it) {
+        if (it.match_id && kicks[it.match_id] && kicks[it.match_id] > Date.now()) open.push(it);
+      });
+      if (!open.length) { applyMsg("Keine offenen Spiele – Tipps sind bereits gesperrt oder Quoten fehlen.", "var(--warning)"); return; }
+      var jokerIt = open[0];
+      for (var ji = 1; ji < open.length; ji++) if (open[ji].ep > jokerIt.ep) jokerIt = open[ji];
+      var jokerMid = jokerIt.match_id;
+      var jokerName = names[jokerMid] || ("Spiel " + jokerMid);
+      var ok = 0, fails = [], done = 0;
+      abtn.disabled = true;
+      applyMsg("Speichere 0/" + open.length + " …");
+      open.forEach(function (it) {
+        fetch("/api/tip/" + it.match_id, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": document.querySelector('meta[name="csrf-token"]')?.content || ""
+          },
+          body: JSON.stringify({ home_tip: it.tip_h, away_tip: it.tip_a, joker: it.match_id === jokerMid })
+        })
+          .then(function (r) { return r.json().catch(function () { return { ok: false, error: "HTTP " + r.status }; }); })
+          .then(function (d) {
+            if (d && d.ok) ok++; else fails.push((d && d.error) || ("HTTP-Fehler Spiel " + it.match_id));
+          })
+          .catch(function (e) { fails.push("Netzwerk: " + e.message); })
+          .finally(function () {
+            done++;
+            applyMsg("Speichere " + done + "/" + open.length + " …");
+            if (done === open.length) {
+              abtn.disabled = false;
+              var txt = "✅ " + ok + "/" + open.length + " Tipps übernommen";
+              if (ok) txt += " · 🃏 Joker: " + jokerName;
+              if (fails.length) txt += " · " + fails.length + " Fehler: " + fails.slice(0, 2).join(" | ");
+              applyMsg(txt, fails.length ? "var(--warning)" : "#4ade80");
+            }
+          });
+      });
       return;
     }
     if (t.id === "to-btn-snapshot") {

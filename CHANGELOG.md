@@ -36,6 +36,147 @@
 
 
 
+## [3.1.113] - 2026-10-20
+
+### ✅ Optimizer → Tipps: Empfehlungen per Knopfdruck übernehmen ((143) — Nutzerwunsch)
+
+- **Neu im Ergebnis-Block (Primär-Aktion):** „✅ Empfehlungen als meine Tipps übernehmen“ — speichert für alle **noch nicht begonnenen** Spiele des Spieltags den optimalen Tipp per `/api/tip` als die eigenen Tipps (Fortschritt „x/y …“, Ergebnis-Meldung mit Stückzahl und Fehlern, Doppelklick-Schutz).
+- **Joker-Logik:** der Joker wandelt automatisch auf das offene Spiel mit der **höchsten Erwartung** (identisch zum Joker-Vorschlag) — der Server-seitige Verschiebe-Schutz ((129)) greift unverändert; begonnene/ferlige Spiele werden sauber übersprungen (Anstoß-Check serverseitig, Offen-Filter zusätzlich clientseitig).
+- Bewusst **kein Auto-Modus**: Tipps überschreiben ist eine bewusste Handlung (Knopfdruck mit Klarbenennung); der Modellgüte-Snapshot („Schritt 3“) bleibt separat darunter.
+- **+1 UX-Wächter** (Button-Reihenfolge, API-/CSRF-/Joker-/Offen-Filter-Vertrag). Suite **796/796**, Hartgate 0, Node 3/3.
+
+## [3.1.112] - 2026-10-18
+
+### 🩹 Leerer Kopfbereich im Detail-Popup entfernt ((142) — Nutzer-Screenshot)
+
+- **Ursache:** die globale Kompensation für die fixe Navbar (`body { padding-top: var(--header-h) !important }`) reserviert auf jeder Seite den Topbar-Streifen — im Embed-Popup gibt es aber **keine Navbar**, der Streifen war schlicht toter Raum. Zusätzlich polsterte die mobile `match-detail-page`-Regel unten 72 px.
+- **Fix (Muster wie „Tippübersicht Querformat"):** `body.embed-mode` setzt `padding-top: 0`, `body.embed-mode.match-detail-page` zusätzlich `padding-bottom: 0` — das Popup beginnt direkt mit der Spielkarten-Reihe und endet am Inhalt.
+- **+1 Regressionstest**. Suite **795/795**, Hartgate 0, Node 3/3.
+
+## [3.1.111] - 2026-10-18
+
+### 🔴 Live-Stand im Detail jetzt rot — einheitlich mit der Live-Seite ((141) — Nutzerwunsch)
+
+- Der große Live-Stand im Spieldetail/Popup erscheint in `var(--danger)` (#ef4444) — exakt derselbe Ton wie `.lm-score` auf der Live-Seite bei laufendem Spiel. Serverblock **und** JS-Fallback-Block tragen die Klasse `tu-live-score`.
+- Nach dem Abpfiff wechselt die Ansicht (Reload nach FT-Erkennung) zurück in den Endstand-Zweig mit der gewohnten Primärfarbe — Rot signalisiert also genau „läuft gerade“.
+- **+1 Test** (Klasse an beiden Blöcken, CSS-Regel exakt 1×, Endstand bleibt Primär). Suite **794/794**, Hartgate 0, Node 3/3.
+
+## [3.1.110] - 2026-10-18
+
+### 🩹 Regression: „Live-Stand“ doppelt im Detail ((140) — Nutzer-Screenshot)
+
+- **Ursache:** der (137)-Serverblock renderte „0 : 1 · Live-Stand“ **ohne IDs**, der (139)-Poll-JS suchte `#tuLiveScore`, fand nichts und baute einen eigenen Block → zwei identische Blöcke (Screenshot Gladbach-Hoffenheim: „Live-Stand“ zweimal übereinander).
+- **Fix:** Serverblock trägt jetzt dieselben IDs (`#tuLiveScore`/`#tuLiveNote`); der Poll reused ihn und erzeugt nur noch, wenn wirklich kein Block da ist (Fallback-Fall ohne Feed-Score). JS unverändert.
+- **+1 Regressionstest** (IDs genau 1×, Upsert-reuse zuerst). Suite **793/793**, Hartgate 0, Node 3/3.
+
+## [3.1.109] - 2026-10-18
+
+### 🔴➡️🟢 Live-Poll im Detail + Admin-Protokoll komplett + Quellen-Fußnoten ((139) — „Geht noch was?")
+
+- **Popup/Detail aktualisiert sich jetzt selbst:** laufende Spiele pollen alle 30 s den Stand aus dem vorhandenen, read-only-Endpoint `/api/matches/<ST>` (kein Sync-Trigger, kein neuer Serverweg) und heben den großen Live-Stand an — auch wenn der Block beim Öffnen noch fehlte (JS baut ihn). Nach dem Abpfiff lädt die Seite einmal neu, damit der Endstand-Zweig mit Punkteauswertung erscheint.
+- **Admin → API Sync komplett:** die zwei neuen Cron-Boosts schreiben jetzt ins (111)-Protokoll und erscheinen als eigene Zeilen — „TheSportsDB · Ereignisse (Karten/Wechsel)" und „OpenLigaDB · Ereignis-Nachzug (Torschützen key-frei)"; Vertrags-Test erweitert ((106/111)-Muster: protokollierte Kinder ohne SOURCES-Zeile waren die historische Lücke).
+- **Quellen-Fußnoten ehrlich:** Karten- und Auswechslungs-Sektion nennen jetzt TheSportsDB / API-Football (bzw. inkl. OpenLigaDB) — „listet nur, was dort erfasst ist".
+- **+3 Tests**, Suite **792/792**, Hartgate 0, Node 3/3. `match_detail.js` ist jetzt auch in der GitHub-Upload-Liste (war bisher nur Runtime — gleiche Lücken-Familie wie (135)).
+
+## [3.1.108] - 2026-10-18
+
+### 🟨🔄 Karten & Auswechslungen key-frei — TheSportsDB-Timeline erschlossen ((138) — Screenshot-Diagnose)
+
+- **Wurzelbefund (Nutzer-Screenshot aus Admin → API Sync):** `API-Football · Torschützen: ⚠️ „Free plans do not have access to this season, try from 2022 to 2024."` — der 0-€-Key darf die **Saison 2026 nicht abrufen**; Karten/Wechsel kamen daher nie und können über diesen Weg auch künftig nicht kommen. Live-Minute funktioniert weiter (anderer Endpoint).
+- **Neue Goldquelle:** TheSportsDB-Timeline (Test-Key „123", 0 €) liefert für die laufende Saison **Tore mit Vorlage, Karten (Gelb/Gelb-Rot/Rot) und Auswechslungen** — live gegen ST 6 nachgeprüft (Schalke-Mainz 2508383: Amiri 42'/Sano 45' Gelb, Džeko ⇄ Hwang 60' …). Zwischenstand: der alte Key „3" ist **permanent abgeschaltet** (Nebenschauplatz-Fix: Torjäger-Vereins-Lookup läuft jetzt über „123").
+- **Neu `tsdb_events.py`:** je Spieltag ein `eventsround`-Call + je Spiel ein `lookuptimeline`-Call; Match-Pairing via Spieltag + Anstoß ±45 Min + Namens-Token-Overlap (nicht eindeutig → raus); Merge-only (stehende Zeilen bleiben, **leere Vorlagen einer gf-Zeile** werden aus der reicheren Timeline nachgefüllt, keine Duplikate); eigener Throttle (10 Min) + Tagesbudget (30 Calls); UA-Header gegen die WAF. Hook im Cron-Sync („· TSDB-Events: N").
+- **+6 Tests** (Parser mit echten Live-Payloads, VAR/Missed-Ausschlüsse, Merge-Idempotenz, key-freier Lauf, Pairing-Schärfe, Hook + Key-Fix). Suite **789/789**, Hartgate 0, Node 3/3.
+
+## [3.1.107] - 2026-10-18
+
+### 🔴 Live-Stand im Spieldetail ((137) — Nutzerwunsch „Details zeigt nur Dein Tipp, kein Live-Ergebnis")
+
+- **Display-Gap geschlossen:** die Mitte der Detail-Seite (heute auch im Popup) hatte drei Zweige — *fertig* (Ergebnis + Tipp), *offen* (Tippformular), *sonst* (= **live**) zeigte nur „Dein Tipp 2:1". Laufende Spiele zeigen jetzt den **aktuellen Stand groß** (z. B. „0 : 1", Label „● Live-Stand") über dem eigenen Tipp — der Stand kommt aus derselben DB wie das Live-Center (OLB-Live-Boost).
+- **Fallback sauber:** solange der Boost für das Spiel noch keinen Score geschrieben hat, erscheint kein Platzhalter — die Darstellung bleibt exakt wie bisher (kein „None : …").
+- **+4 Tests** (Live mit/ohne Score, fertig unverändert, CSS-Wächter). Suite **783/783**, Hartgate 0, Node 3/3.
+
+## [3.1.106] - 2026-10-18
+
+### 📋 Ereignis-Matrix klargestellt + Karten/Wechsel im Cron-Takt ((136) — Nutzerwunsch)
+
+- **Antwort auf „nur Torschützen — richtig?": Ja.** OpenLigaDB (key-frei) pflegt Torschützen im goals-Array, aber **nirgendwo Karten oder Auswechslungen** (matchEvents bleibt leer, Live-Probe ST 6). Karten/Auswechslungen/Vorlagen kommen ausschließlich aus dem optionalen API-Football-Key (0 € Free-Plan, gleicher Key wie die Optimizer-Quoten). Ohne Key: Torschützen-only — korrekt so.
+- **Lücke gefunden und geschlossen:** der API-Football-Ereignis-Boost hing ausschließlich am **Live-Center-Polling** (bedarfsgesteuert) — ferlige Spiele bekamen ohne Center-Besuch nie Karten/Wechsel, auch nicht mit Key. Der Boost läuft jetzt zusätzlich im **Cron-Sync-Takt** ((106)-Muster, Budget-/Drossel-Wächter greifen unverändert, Polling-Pfad bleibt für schnelle Live-Füllungen).
+- **+1 Wächter** (Cron-Verkabelung, Polling unberührt). Suite **779/779**, Hartgate 0, Node 3/3.
+
+## [3.1.105] - 2026-10-18
+
+### 🔗 Schnelltipp: Details auch bei gestarteten/ferligen Spielen + CSS-Deliverable-Lücke ((135) — Nutzerwunsch)
+
+- **Ursache des click-toten 📊-Details-Links:** `.qt-match-card.closed { pointer-events: none }` klemmte die **ganze Karte** — genau die bereits gestarteten/ferligen Spiele (`is_open() = false`), wo der Link der einzige Sinnmacher ist. Neu: der Link ist explizit entklemmt (`.closed .qt-details-link { pointer-events: auto }`), die Eingaben bleiben gesperrt (sind ohnehin `disabled`).
+- **Konsistenz zum (132)-Popup:** der Details-Link im Schnelltipp öffnet jetzt ebenfalls das Modal (kein Seitenwechsel, ESC/Backdrop schließt, Strg-Klick öffnet weiter im Tab) — `match_popup.js` ist auf der Schnelltipp-Seite eingebunden.
+- **Deliverable-Lücke geschlossen:** `quick_tip.css`, `tip_overview.css` und `admin_bots.css` standen nur im Runtime-Zip, **nicht im GitHub-Upload** — frische Clones hätten ungestylte Schnelltipp-/Übersichtsseiten gehabt (der Smoke-Test prüft nur den Link-Tag, nicht die Datei). Alle drei sind jetzt in `GITHUB_UPLOAD_FILES` + Deliverable-Wächter.
+- **+2 Tests** (Popup-Verkabelung + CSS-Entklemmung; Build-Listen-Vollständigkeit). Suite **778/778**, Hartgate 0, Node 3/3.
+
+## [3.1.104] - 2026-10-18
+
+### 🎯 Torschützen key-frei: OLB-goals-Quelle erschlossen ((134) — Nutzerkorrektur ST6/ST7)
+
+- **Korrektur des Audits:** ST 7 findet erst nächstes Wochenende — die erste Probe ging auf den falschen Spieltag. Die ST-6-Probe (live während des Spieltags) zeigt das differenzierte Bild: `matchEvents` ist auch für **fertige** Spiele leer (Karten/Wechsel brauchen weiter den API-Football-Key), **aber das `goals`-Array liefert Torschützen** (`matchMinute`, `goalGetterName`, `isPenalty`/`isOwnGoal`, `scoringTeamId`) — **auch live im laufenden Spiel**.
+- **Neu:** Parser `_olb_goal_rows` (Seite via scoringTeamId, Rückfall Score-Delta-Kette; Eigentor-/Elfmeter-Flags; Zeilen ohne Minute bewusst raus), Merge in die bewährte `_apply_olb_events`-Logik (kein Überschreiben des API-Football-Goal-Boosts, keine Duplikate) und eigener **Cron-Tick-Boost** `boost_events_from_openligadb` (Fenster 2 Tage, live + fertig; eigener 20-s-Throttle; sitzt bewusst im Sync-Takt, nicht im Live-Polling).
+- **Ergebnis:** Torschützen funktionieren jetzt **komplett ohne Key** (0 €), inkl. laufender Spiele — Vorlagen/Karten/Auswechslungen bleiben beim Key-Upgrade (API-Football) als Goldquelle. Spielte ohne Events: Union-Dortmund 0:0 (legitim leer).
+- **+5 Tests** (Parser mit dem realen ST-6-Feed-Format, Merge/Dedupe gegen AF-Zeilen, Live-Freigabe, Boost inkl. Throttle, Hook-Platzierung im Cron-Pfad statt Polling). Suite **776/776**, Hartgate 0, Node 3/3.
+
+## [3.1.103] - 2026-10-18
+
+### ⚽ Ereignis-Datenreparatur: Torschützen, Karten & Auswechslungen ((133) — Nutzerwunsch „sehe ich nirgendwo")
+
+- **Diagnose (zwei Todesursachen + ein Nie-Feature):** ① die OpenLigaDB-Ereignis-Quelle liefert für die Bundesliga 2026/27 **nichts** (Live-Probe Spieltag 7: 0 Spiele mit matchEvents, 0 Tore im goals-Array) — die Sektionen konnten nur erscheinen, wenn dort jemand erfasst. ② der Goal-Boost (API-Football) hatte einen **Schreib-Bug**: der Parser las `item["goals"]` (nur das Score-Objekt `{home, away}`) statt `events[]` und speicherte deshalb **still nie etwas** — der Admin-Status zeigte fälschlich „gesund". ③ Auswechslungen waren in der ganzen Pipeline nie vorgesehen.
+- **Goal-Boost 2.0:** liest jetzt `events[]` (mit Toleranz für ältere Feed-Varianten) und parst **Tore** (Schütze, Vorlage, Minute + Nachspielzeit, Elfmeter/Eigentor; verschossene Elfmeter und VAR bleiben bewusst draußen), **Karten** (Gelb/Gelb-Rot/Rot; nicht erteilte Karten draußen) und **Auswechslungen** (rein ⇄ raus). Liefert die Sammel-Query die Events nicht mit, wird pro frisch beendetem Spiel einmal `/fixtures/events` nachgeladen (Eigenbudget 8→16, Minute-Boost unberührt).
+- **UI:** neue Sektion „🔄 Auswechslungen" (rein ⇄ raus) auf der Spieldetail-Seite — damit auch im (132)-Popup; Quellenzeile der Karten-Sektion nennt jetzt beide Lieferanten.
+- **Voraussetzung unverändert:** optionaler API-Football-Key (Admin → Einstellungen, 0 € Free-Plan). Ohne Key bleiben die Sektionen leer (ℹ️, kein Warn-Noise).
+- **Tests:** +5 (volle Ereignis-Pipeline inkl. VAR/Missed-Penalty-Ausschlüsse, Nachladen, ohne Token, HTTP-Fehler-Resilienz, Template-Wächter); Alt-Test-Formate bleiben via Toleranz gültig. Suite **771/771**, Hartgate 0, Node 3/3.
+
+## [3.1.102] - 2026-10-18
+
+### 🔍 Spieldetail-Popup: Torschützen, Karten & H2H ohne Seitenwechsel ((132) — Nutzerwunsch, Variante In-App)
+
+- **Fund vorab:** die App hat die Spieldetails längst selbst im Haus (0 €): `/match/<id>` zeigt LIVE-Status, **Torschützen, Karten & Platzverweise** (OpenLigaDB-Events), aktuelle Form und Direkten Vergleich. Das fussball.de-Widget ( extern, Wettbewerbs-Spielplan, Datenschutz-Impressum-Erweiterung) hätte datenlich weniger geliefert — Nutzer entschied sich für die In-App-Variante.
+- **Neu:** Klick auf eine **Spielzeile im Dashboard** oder eine **Spielerkarte im Live-Center** öffnet die Detail-Seite als **Modal** (aufgeräumt ohne Navigation, Mobil als Bottom-Sheet, Desktop 720px zentriert). Schließen per ✕, Backdrop-Klick oder ESC; Strg/Rechts-Klick öffnet weiterhin im Tab. Die Delegation überlebt die Live-SSE-Rerenders.
+- **Technik:** neue Embed-Shell (`base_embed.html` + `?embed=1`) ohne Nav/Footer/PWA-Scripts; `match_popup.js` inkludiert nur auf Dashboard + Live-Center; alle Daten weiterhin 0 €.
+- **+4 Tests** (Embed-Shell ohne Navigation, Includes auf beiden Seiten, JS-Vertrag, Shell-Minimalität). Suite **766/766**, Hartgate 0, Node-Tests grün.
+
+## [3.1.101] - 2026-10-18
+
+### 🧮 Rechenlogik-Audit Tipp-Optimizer: Kern bestätigt, 2 Schärfen eingebaut ((131) — Nutzerwunsch)
+
+- **Audit-Ergebnis (quantitativ verifiziert):** Dixon-Coles-Matrix wird nach der Korrektur sauber renormalisiert (summiert exakt zu 1) ✅, EP-Definition ist exakt (vollständige Erwartung über die gesamte Score-Matrix, Brute-Force-argmax konsistent) ✅, Power-Entmargenierung korrekt (Bisektion auf Σ(1/q)^k = 1, hebt Favoriten / drückt Longshots wie in der Literatur) ✅, Fit über zweistufiges Gitter mit weichen Constraints robust ✅. Reproduzierbarkeit: 1X2-Abweichung des Fits ≤ ~3,6 %-Punkte — davon ist der Großteil der beabsichtigte Torsummen-Prior (3,2), keine Rechenungenauigkeit.
+- **Schärfe ① — Adjuster-Klemme:** der ±40 %-Adjuster konnte λ rechnerisch bis 8,4 treiben; die Tor-Matrix (bis Tor 11) verlor dort **14 % der Wahrscheinlichkeitsmasse** (Verzerrung der Verteilung). Jetzt klemmt der Adjuster λ auf das Fit-Intervall **max. 6,0** (alle 4 Stellen), und die Matrix reicht bis Tor 12 (Abdeckung bei λ=6: 97,99 % → **99,12 %**).
+- **Schärfe ② — `prior.w = 0`-Bug:** `prior.w || 0.25` behandelte „Anker aus“ (w = 0) fälschlich wie w = 0,25 (nachgewiesen: Anker zog den Fit auf λ 4,66 statt ankerfrei 1,79). Jetzt explizite Zahlenprüfung — w = 0 bedeutet wirklich kein Anker (Produktion unberührt, die UI sendet immer 0,15).
+- **+1 Engine-Testbereich** (Tail-Abdeckung ≥ 99 % bis λ 6, w=0-Semantik, λ=6-Stabilität) + Wächter für die Klemme. Suite **762/762**, Hartgate 0, Node 3/3 (Engine 10/10).
+
+## [3.1.100] - 2026-10-18
+
+### 🎯 Tipp-Optimizer für Einsteiger überarbeitet: 3-Schritte-Flow, schlankes Ergebnis, Experten-Karten eingeklappt ((130) — Nutzerwunsch)
+
+- **Workflow von oben nach unten:** neues 3-Schritte-Intro (① Quoten eintragen → ② Empfehlung lesen → ③ optional speichern), dann die Quoten-Eingabe (jetzt mit „nur 1X2 ist Pflicht“-Hinweis), dann die Empfehlungen — vorher hing der (leere) Ergebnisblock über der Eingabe.
+- **Ergebnistabelle radikal verschlankt:** jetzt nur noch **Spiel · Optimaler Tipp · EP · Sicherheit** (vorher 10 Spalten mit λ, Rohwahrscheinlichkeiten …). Die Fachdaten (λ Heim/Gast, Modell-1X2, wahrscheinlichstes Ergebnis) stehen weiterhin je Spiel im aufklappbaren Akkordeon. Legende in Einsteiger-Sprache; ein Hinweis verschwindet automatisch, sobald Empfehlungen stehen.
+- **5 Experten-Karten standardmäßig eingeklappt** mit Klartext-Fragen als Titel: „Wie gut ist das Modell bisher?“, „Hält das Modell, was es verspricht?“, „Wo hätte der Optimizer in der Rangfolge gestanden?“, „Wie haben sich die Quoten bewegt?“, „Backtest“ — jeweils mit „· noch keine Daten“-Marker wenn leer. Inhalt unverändert, nur nicht mehr als Wand aus offenen Tabellen.
+- **Der JS-DOM-Vertrag bleibt intakt:** alle to-*-Hooks, die `tip_optimizer.js` ansieht, existieren weiter (Wächter-Test); die Engine (`to_engine.js`) ist unberührt — Node-Engine-Tests 9/9 unverändert grün. Die zwei (70)-Struktur-Wächter dokumentieren jetzt die neue Reihenfolge.
+- **+4 Tests** (Intro/Reihenfolge, Experten-Karten, Tabellen-Vertrag, DOM-Vertrag). Suite **761/761**, Hartgate 0, Node-Tests grün.
+
+## [3.1.99] - 2026-10-18
+
+### 💬 Joker-Sperre: Meldung präzisiert ((129) — Nutzerwunsch)
+
+- Die Fehlermeldung beim Joker-Verschieben heißt jetzt **„Joker kann nicht mehr verschoben werden – das bisherige Joker-Spiel hat bereits begonnen oder ist beendet."** — sie deckt damit beide Fälle ab, die die Sperre wirklich behandelt (laufend UND beendet; `is_open()` umfasst beides).
+- Text only, an allen 3 Stellen (Tipp-Formular, Spieltags-Joker, API) — Logik unverändert.
+- Suite **757/757**, Hartgate 0, Node-Tests grün.
+
+## [3.1.98] - 2026-10-18
+
+### 🏅 Badge-/Statistik-Widerspruch behoben: „Spieltagsieger"-Badge und Profil zählen aus EINER Quelle ((128) — Nutzer-Fund)
+
+- **Fund:** bei meyomey zeigte das Profil **🏆 Spieltagsieger**, aber „Deine Statistik" zählte **Spieltagsiege 0**. Ursache: der (74)-Fix behauptete im Kommentar „zählt wie das Profil", fügte aber einen **Saison-Filter** ein, den die Profil-Statistik nicht hat — Badge-Kriterium und Statistik konnten auseinanderlaufen (z. B. nach einem Saison-Reset, der die Sieger-Zeilen löscht: das Badge blieb, das Profil zählte korrekt 0).
+- **Fix ① — eine Quelle:** das Badge-Kriterium zählt jetzt exakt wie das Profil (aktiver Wettbewerb inkl. globaler Altdaten, **saisonübergreifend** via `filter_competition_scoped`). Badge und „Spieltagsiege" können nie wieder auseinanderlaufen.
+- **Fix ② — Selbstheilung:** der **Saisonwechsel-Assistent** revalidiert nach dem Löschen der Sieger-Zeilen jetzt automatisch alle Badges (`revalidate_badges`, inkl. Widerruf) — verliehene Badges überleben den Reset ihrer Grundlage nicht mehr ins Leere. Der normale Save-Pfad widerruft bewusst weiterhin nichts (kein Hin-und-her).
+- **Einmalige Korrektur für Bestandsfälle:** einmal **Admin → Wartung → „badges"** auslösen — der Widerspruch (z. B. meyomeys 🏆) wird damit auf den korrigierten Stand gebracht.
+- **+2 Tests** (Parität Badge↔Profil, Stale-Widerruf per Revalidierung, Reset-Route räumt mit; (74)-Tests auf die neue Semantik umgestellt). Suite **757/757**, Hartgate 0, Node-Tests grün.
+
 ## [3.1.97] - 2026-10-16
 
 ### 🤖 Dependabot aktiviert: wöchentliche Update-Vorschläge für pip + GitHub-Actions ((127) — Audit-Folge)

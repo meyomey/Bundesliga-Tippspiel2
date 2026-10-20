@@ -247,7 +247,7 @@ def api_save_tip(match_id):
         if conflict:
             return jsonify({
                 "ok": False,
-                "error": "Joker kann nicht mehr verschoben werden – das bisherige Joker-Spiel hat bereits begonnen.",
+                "error": "Joker kann nicht mehr verschoben werden – das bisherige Joker-Spiel hat bereits begonnen oder ist beendet.",
             }), 400
         existing = Prediction.query.join(Match).filter(
             Prediction.user_id == current_user.id,

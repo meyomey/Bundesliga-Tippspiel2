@@ -109,6 +109,11 @@ GITHUB_UPLOAD_FILES = [
     "templates/admin/maintenance.html",
     "templates/admin/dashboard.html",
     "static/css/style.css",
+    # 18.10.2026 (135): Seiten-CSS waren nur im Runtime-Zip - GitHub-Upload
+    # ergaenzt (frische Clones hatten ungestylten Schnelltipp/uebrige Seiten)
+    "static/css/quick_tip.css",
+    "static/css/tip_overview.css",
+    "static/css/admin_bots.css",
     "tests/test_cron_backup.py",
     # 02.09.2026: Mehr-Seite - Schnellzugriff-Chip "Spiele & Tipps"
     "templates/more.html",
@@ -253,6 +258,18 @@ GITHUB_UPLOAD_FILES = [
     "static/js/tip_optimizer.js",
     "templates/admin/tip_optimizer.html",
     "tests/test_tip_optimizer.py",
+    "tests/test_tip_optimizer_ux.py",
+    # 18.10.2026 (132): Spieldetail-Popup (Dashboard/Live -> Modal-Embed)
+    "templates/base_embed.html",
+    "static/js/match_popup.js",
+    "tests/test_match_popup.py",
+    # 18.10.2026 (137): Live-Stand im Spieldetail
+    "tests/test_live_stand_detail.py",
+    # 18.10.2026 (139): Live-Stand-Poll im Detail + TSDB/OLB-Events im Admin-Protokoll
+    "static/js/match_detail.js",
+    # 18.10.2026 (138): TheSportsDB-Ereignis-Boost (Karten/Wechsel key-frei)
+    "tsdb_events.py",
+    "tests/test_tsdb_events.py",
     # 15.09.2026 (57): Tipp-Optimizer - Modell-Fit aus den Saisondaten der DB
     # + Engine in to_engine.js (getestet in der CI, Job "JS-Engine-Tests")
     "tip_optimizer_model.py",

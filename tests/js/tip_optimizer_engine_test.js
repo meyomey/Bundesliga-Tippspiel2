@@ -110,4 +110,25 @@ for (let k = 1; k < A.topScores.length; k++)
 const Mext = E.buildMatrix(6.0, 0.15, 1, 1, 1);
 assert.ok(isFinite(sumMatrix(Mext)) && Math.abs(sumMatrix(Mext) - 1) < 1e-9, "extreme λ OK");
 
-console.log("ENGINE-TESTS OK (9 Bereiche, alle Assertions bestanden)");
+// ---- Bereich 10: Rechenlogik-Audit (131) ----
+// Tail-Abdeckung: bis lambda 6 muessen >= 99 % der Masse in NMAX passen
+// (Adjuster klemmt dort; vorher NMAX=11 -> 98,0 %, bei Extremfällen 85 %).
+for (const lam of [1.5, 3, 4.5, 6]) {
+  const cov = E.poissonVec(lam).reduce((a, b) => a + b, 0);
+  assert.ok(cov > 0.99, "Abdeckung lambda " + lam + " >= 99 % (" + cov.toFixed(4) + ")");
+}
+// prior.w = 0 bedeutet "Anker AUS" (nicht 0.25): der Fit ohne Anker muss
+// identisch sein mit w = 0 — der alte `|| 0.25`-Zugriff machte w = 0 zu 0.25.
+const T = E.deMargin(2.10, 3.50, 3.40, "power");
+const RHO = { r0: 1, rD: 1.09, r1: 0.97 };
+const ohne = E.fitLambdas(T, { ou25: null, btts: null, ou35: null }, RHO, null, 3.2);
+const mit_w0 = E.fitLambdas(T, { ou25: null, btts: null, ou35: null }, RHO, { lh: 5, la: 0.2, w: 0 }, 3.2);
+const mit_w025 = E.fitLambdas(T, { ou25: null, btts: null, ou35: null }, RHO, { lh: 5, la: 0.2, w: 0.25 }, 3.2);
+assert.deepStrictEqual(mit_w0, ohne, "prior.w = 0 zaehlt als Anker aus");
+assert.notDeepStrictEqual(mit_w025, ohne, "prior.w = 0.25 ankert weiterhin");
+// Adjuster-Obergrenze lebt in der UI-Schicht (tip_optimizer.js klemmt auf 6):
+// hier stellen wir nur sicher, dass die Engine selbst mit lambda 6 stabil bleibt.
+const M6 = E.buildMatrix(6, 3, 1, 1.09, 0.97);
+assert.ok(Math.abs(sumMatrix(M6) - 1) < 1e-9, "Matrix bei lambda 6 summiert zu 1");
+
+console.log("ENGINE-TESTS OK (10 Bereiche, alle Assertions bestanden)");
