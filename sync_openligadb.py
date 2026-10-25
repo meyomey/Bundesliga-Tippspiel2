@@ -187,8 +187,6 @@ def _apply_olb_events(md, match):
     if not _olb_is_finished(md) and getattr(match, "status", "") != "live":
         return 0
     rows = _olb_event_rows(md) + _olb_goal_rows(md)
-    if not rows:
-        return 0
     import json
     try:
         existing = json.loads(match.events or "[]")
@@ -196,13 +194,25 @@ def _apply_olb_events(md, match):
         existing = []
     if not isinstance(existing, list):
         existing = []
+    try:  # (147) Cross-Source-Doppeltore heilen + beim Neu-Merge beachten
+        from tsdb_events import collapse_duplicate_goals, gf_conflict
+        existing, healed = collapse_duplicate_goals(existing)
+    except Exception:
+        healed = False
+        def gf_conflict(a, b):
+            return False
+    if not rows and not healed:
+        return 0
     gf_marks = {(int(r.get("min") or 0), r.get("team"))
                 for r in existing if isinstance(r, dict) and r.get("kind") == "gf"}
     card_marks = {(int(r.get("min") or 0), r.get("team"), str(r.get("card") or ""))
                   for r in existing if isinstance(r, dict) and r.get("type") == "card"}
-    added = 0
+    added = 1 if healed else 0
     for r in rows:
         if r["kind"] == "gf":
+            if any(gf_conflict(ex, r) for ex in existing
+                   if isinstance(ex, dict) and ex.get("kind") == "gf"):
+                continue  # (147) andere Quelle hat dieses Tor schon (±1 Min)
             if (r["min"], r["team"]) in gf_marks:
                 continue
             gf_marks.add((r["min"], r["team"]))

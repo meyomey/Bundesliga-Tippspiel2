@@ -148,6 +148,69 @@ def rows_from_timeline(timeline):
     return rows
 
 
+_SRC_PRIORITY = {"af": 0, "tsdb": 1, "olb": 2}
+
+
+def _last_token(name):
+    import re
+    parts = re.findall(r"[A-Za-z\u00c4\u00e4\u00d6\u00f6\u00dc\u00fc\u00df]+", str(name or ""))
+    return parts[-1].lower() if parts else ""
+
+
+def gf_conflict(a, b):
+    """(147) True = zwei gf-Zeilen meinen dasselbe Tor: NUR Zeilen
+    unterschiedlicher Quelle, gleiche Seite, gleiche Elfmeter-/Eigentor-
+    Flags, gleicher Spielernachname und Minute +-1 (Quellen zaehlen
+    Nachspielzeit teils anders). Gleichsource-Zeilen (echte Tore in
+    aufeinanderfolgenden Minuten) kollidieren bewusst nie."""
+    if (a.get("src") or "") == (b.get("src") or ""):
+        return False
+    if a.get("team") != b.get("team"):
+        return False
+    try:
+        if abs(int(a.get("min") or 0) - int(b.get("min") or 0)) > 1:
+            return False
+    except (TypeError, ValueError):
+        return False
+    if bool(a.get("penalty")) != bool(b.get("penalty")):
+        return False
+    if bool(a.get("own_goal")) != bool(b.get("own_goal")):
+        return False
+    ta, tb = _last_token(a.get("player")), _last_token(b.get("player"))
+    return bool(ta and tb and ta == tb)
+
+
+def collapse_duplicate_goals(rows):
+    """(147) Cross-Source-Doppeltore aus einem bestehenden events-JSON
+    entfernen (Selbstheilung versehener Spiele): pro Konfliktcluster
+    gewinnt die hoechstpriorisierte Quelle (af > tsdb > olb), fehlende
+    Vorlagen werden aus den verdraengten Zeilen uebernommen.
+    Rueckgabe: (aufgeraeumte Liste, healed?)."""
+    def prio(r):
+        return _SRC_PRIORITY.get(r.get("src") or "", 3)
+
+    gf = [r for r in rows if isinstance(r, dict) and r.get("kind") == "gf"]
+    rest = [r for r in rows if not (isinstance(r, dict) and r.get("kind") == "gf")]
+    kept, healed = [], False
+    for r in gf:
+        twin = next((k for k in kept if gf_conflict(k, r)), None)
+        if twin is None:
+            kept.append(r)
+            continue
+        healed = True
+        if prio(r) < prio(twin):
+            repl = dict(r)
+            if not (repl.get("assist") or "").strip() and (twin.get("assist") or "").strip():
+                repl["assist"] = twin["assist"]
+            kept[kept.index(twin)] = repl
+        elif not (twin.get("assist") or "").strip() and (r.get("assist") or "").strip():
+            twin["assist"] = r["assist"]
+    kept.extend(rest)
+    kept.sort(key=lambda x: (int(x.get("min") or 0),
+                             0 if isinstance(x, dict) and x.get("kind") == "gf" else 1))
+    return kept, healed
+
+
 def _merge_rows(m, rows):
     """Merge-only in Match.events; Ruecklauf: Anzahl veraenderter Spiele (0/1).
 
@@ -161,16 +224,25 @@ def _merge_rows(m, rows):
         existing = []
     if not isinstance(existing, list):
         existing = []
+    existing, healed = collapse_duplicate_goals(existing)  # (147) Selbstheilung
     gf_marks = {(int(r.get("min") or 0), r.get("team"))
                 for r in existing if isinstance(r, dict) and r.get("kind") == "gf"}
     card_marks = {(int(r.get("min") or 0), r.get("team"), str(r.get("card") or ""))
                   for r in existing if isinstance(r, dict) and r.get("type") == "card"}
     sub_marks = {(int(r.get("min") or 0), r.get("team"), str(r.get("player") or ""))
                  for r in existing if isinstance(r, dict) and r.get("kind") == "sub"}
-    changed = False
+    changed = healed
     for r in rows:
         if r["kind"] == "gf":
             key = (r["min"], r["team"])
+            twin = next((ex for ex in existing
+                         if isinstance(ex, dict) and ex.get("kind") == "gf"
+                         and gf_conflict(ex, r)), None)  # (147)
+            if twin is not None:
+                if not (twin.get("assist") or "").strip() and (r.get("assist") or "").strip():
+                    twin["assist"] = r["assist"]
+                    changed = True
+                continue
             if key in gf_marks:
                 for ex in existing:
                     if (isinstance(ex, dict) and ex.get("kind") == "gf"

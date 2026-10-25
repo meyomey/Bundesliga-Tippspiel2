@@ -263,6 +263,8 @@ GITHUB_UPLOAD_FILES = [
     "templates/base_embed.html",
     "static/js/match_popup.js",
     "tests/test_match_popup.py",
+    # 20.10.2026 (144): Bundesliga-Livetabelle (laufende Spiele eingerechnet)
+    "tests/test_livetabelle.py",
     # 18.10.2026 (137): Live-Stand im Spieldetail
     "tests/test_live_stand_detail.py",
     # 18.10.2026 (139): Live-Stand-Poll im Detail + TSDB/OLB-Events im Admin-Protokoll
@@ -292,6 +294,36 @@ GITHUB_UPLOAD_FILES = [
     # 20.09.2026 (75): Badge-Vollabdeckung - 22 Tests ueber alle 13 Badge-
     # Definitionen + Winner-Recompute + Vergabe-/Widerrufs-Mechanik
     "tests/test_badge_vollabdeckung.py",
+    # 24.10.2026 (151): 23 Testdateien, die in frueheren Runden NIE in die
+    # Liste kamen (gleiche Luecken-Klasse wie (104)) - GitHub/CI lief mit
+    # 30 Tests weniger als lokal. Nachtragen fuer volle Paritaet:
+    "tests/test_admin_activity.py",
+    "tests/test_admin_open_tips.py",
+    "tests/test_admin_smoke_package3.py",
+    "tests/test_audit_diffs.py",
+    "tests/test_avatars_live_push.py",
+    "tests/test_awards.py",
+    "tests/test_build_listen_css_135.py",
+    "tests/test_cache.py",
+    "tests/test_cache_monitor_routes.py",
+    "tests/test_export_pdf.py",
+    "tests/test_fairness_integrity_fixes.py",
+    "tests/test_maintenance.py",
+    "tests/test_match_results_service.py",
+    "tests/test_matchday_preview_recap.py",
+    "tests/test_models.py",
+    "tests/test_schema_migrations.py",
+    "tests/test_security.py",
+    "tests/test_split_facades.py",
+    "tests/test_stats_extended.py",
+    "tests/test_sync_backup_export.py",
+    "tests/test_sync_promoted_teams.py",
+    "tests/test_sync_status_monotonic.py",
+    "tests/test_telegram_bot.py",
+    # 24.10.2026 (160): templates/matchday_winners.html war NIE in der
+    # Liste (seit Anbeginn unveraendert, deshalb nie aufgefallen) - mit
+    # der (160)-Aenderung nachreichen.
+    "templates/matchday_winners.html",
 ]
 
 # (83) Duplikat-Schutz: Reihenfolge bewahren, Doppelnaennungen automatisch

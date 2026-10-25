@@ -65,8 +65,11 @@ def lage(db, competition, teams, user):
         Prediction(user_id=u2.id, match_id=m2.id, home_tip=1, away_tip=1, points=0),
         Prediction(user_id=u3.id, match_id=m1.id, home_tip=0, away_tip=2, points=0),
     ])
+    # (159) absichtlich FALSCH hinterlegte Alt-Zeile (falscher User, falsche
+    # Punkte - wie ein Teilstand-Sieger): sieger_text MUSS neu rechnen und
+    # den echten Sieger ansagen, nicht die Stale-Zeile einfrieren.
     db.session.add(MatchdayWinner(competition_id=competition.id, matchday=5,
-                                  user_id=user.id, points=13, exact_count=2,
+                                  user_id=u2.id, points=13, exact_count=0,
                                   is_shared=False, season="2026/27"))
     # user mit WhatsApp, u2 ohne, u3 als Bot mit WA-Konfig
     user.whatsapp_phone = "+491701111111"
@@ -82,9 +85,11 @@ def test_text_enthaelt_sieger_und_top3(app, db, lage):
     from matchday_announce import sieger_text
     text = sieger_text(5, lage["comp"].id)
     assert text and "Spieltag 5 ist durch" in text
-    assert "Spieltagssieger: meyomey" in text or "Spieltagssieger:" in text
-    assert lage["user"].username in text
-    assert "13 Pkt." in text
+    # (159) Heilung: die falsche Alt-Zeile (u2, 13 Pkt.) wurde neu
+    # berechnet - echter Sieger ist `user` mit 3+3=6 Punkten.
+    assert f"Spieltagssieger: {lage['user'].username}" in text
+    assert "6 Pkt." in text
+    assert "13 Pkt." not in text
     assert "Top 3 der Gesamtrangliste" in text
     assert "1. " in text
 

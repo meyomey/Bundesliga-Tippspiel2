@@ -127,7 +127,10 @@
           <div class="live-lb-row {{ 'me' if r.user.id == current_user.id }} {{ 'top1' if r.rank == 1 }}"
                data-user-id="{{ r.user.id }}"
                data-rank="{{ r.rank }}"
-               data-points="{{ r.points }}">
+               data-points="{{ r.points }}"
+               {# (154) Final-Stand (ohne laufende Spiele) als Delta-Basis #}
+               data-base-rank="{{ base_lb.get(r.user.id, {}).get('rank', r.rank) }}"
+               data-base-points="{{ base_lb.get(r.user.id, {}).get('points', r.points) }}">
             <div class="lb-rank">
               <span class="rank-num-big">{{ r.rank }}</span>
               <span class="rank-change" data-change=""></span>

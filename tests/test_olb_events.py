@@ -301,3 +301,42 @@ def test_fd_pfad_bindet_olb_event_boost_ein_134():
     assert "def boost_events_from_openligadb" in src2
     assert "_olb_goal_rows" in src2
     assert "boost_events_from_openligadb()" in src2
+
+
+def test_apply_olb_skippt_cross_source_tor_147():
+    """(147) OLB-Rows kollidieren mit stehenden TSDB-Zeilen (±1 Min,
+    gleicher Nachname) nicht mehr — das Füllkrug-Doppeltor."""
+    md = _md([], finished=True)
+    md["team1"]["teamId"] = 7
+    md["goals"] = [
+        {"scoreTeam1": 1, "scoreTeam2": 0, "matchMinute": 7,
+         "goalGetterName": "N. Füllkrug", "scoringTeamId": 7,
+         "isPenalty": True, "isOwnGoal": False},
+    ]
+    match = SimpleNamespace(events=json.dumps([
+        {"kind": "gf", "min": 6, "team": "home", "player": "Niclas Füllkrug",
+         "assist": None, "penalty": True, "own_goal": False, "src": "tsdb"}]))
+    assert so._apply_olb_events(md, match) == 0
+    rows = json.loads(match.events)
+    assert len([r for r in rows if r["kind"] == "gf"]) == 1
+    assert rows[0]["src"] == "tsdb"                  # TSDB-Zeile bleibt allein
+
+
+def test_apply_olb_heilt_versuchte_spiele_147():
+    """(147) Bereits doppelt erfasste Spiele kollabieren beim naechsten Lauf."""
+    md = _md([], finished=True)
+    md["team1"]["teamId"] = 7
+    md["goals"] = []                                  # nichts Neues nötig
+    match = SimpleNamespace(events=json.dumps([
+        {"kind": "gf", "min": 7, "team": "home", "player": "N. Füllkrug",
+         "assist": None, "penalty": True, "own_goal": False, "src": "olb"},
+        {"kind": "gf", "min": 6, "team": "home", "player": "Niclas Füllkrug",
+         "assist": None, "penalty": True, "own_goal": False, "src": "tsdb"},
+        {"kind": "gf", "min": 25, "team": "home", "player": "N. Füllkrug",
+         "assist": None, "penalty": True, "own_goal": False, "src": "olb"},
+        {"kind": "gf", "min": 24, "team": "home", "player": "Niclas Füllkrug",
+         "assist": None, "penalty": True, "own_goal": False, "src": "tsdb"},
+    ]))
+    assert so._apply_olb_events(md, match) == 1       # healed -> gezaehlt
+    rows = json.loads(match.events)
+    assert len([r for r in rows if r["kind"] == "gf"]) == 2

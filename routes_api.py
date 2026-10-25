@@ -11,10 +11,12 @@ from flask_login import login_required, current_user
 from extensions import db, limiter
 from models import Match, Prediction, User, Competition
 from scoring import (
-    get_setting, get_live_leaderboard, calculate_points,
+    get_setting, get_leaderboard, get_live_leaderboard,
+    calculate_points,
     recalculate_all_points, locked_joker_conflict, keep_single_joker,
 )
 from sync import fetch_live_standings, fetch_live_match_updates
+from stats_live import compute_live_standings
 from stats import get_current_matchday
 from badges import check_and_award_badges
 from competition_helpers import get_active_competition, active_match_query, filter_matches_for_active_competition
@@ -193,6 +195,44 @@ def api_leaderboard():
     ])
 
 
+@api_bp.route("/standings/computed")
+@login_required
+@limiter.limit("120/minute")  # (111)
+def api_computed_standings():
+    """(144) Lokal berechnete Tabelle (laufende Spiele eingerechnet).
+
+    Speist den Auto-Refresh der Liga-Tabelle waehrend des Spieltags -
+    dieselben Zeilen wie /live/standings plus in_play-Markierung.
+    """
+    rows = compute_live_standings()
+    try:  # (148) Platz-Verschiebung vs. letzter vollstaendiger Spieltag
+        from stats_live import prev_rank_map
+        prev = prev_rank_map()
+    except Exception:
+        prev = {}
+    return jsonify({
+        "ok": True,
+        "source": "lokal (Livetabelle)",
+        "fetched_at": datetime.now(timezone.utc).isoformat() + "Z",
+        "table": [
+            {
+                "rank": r["rank"],
+                "team_name": r["team"].name,
+                "team_short": r["team"].short_name,
+                "team_logo": r["team"].logo,
+                "played": r["played"], "won": r["won"], "drawn": r["drawn"], "lost": r["lost"],
+                "goals_for": r["goals_for"], "goals_against": r["goals_against"],
+                "goal_diff": r["goal_diff"], "points": r["points"],
+                "form": r.get("form", ""),
+                "in_play": bool(r.get("in_play")),
+                "rank_delta": (prev.get(r["team"].id) - r["rank"])
+                if r["team"].id in prev else None,
+            }
+            for r in rows
+        ],
+    })
+
+
 @api_bp.route("/live/standings")
 @login_required
 @limiter.limit("120/minute")  # (111)
@@ -334,6 +374,12 @@ def api_live_center():
         d["user_pred"] = user_preds.get(m.id)
         center_matches.append(d)
 
+    # (156) Final-Basis (Punkte-Tabelle OHNE laufende Spiele) in JEDER
+    # Antwort mitliefern: die Deltas (▲▼/+n) vergleichen gegen diesen
+    # Stand - unabhaengig davon, welchen Zustand der Browser schon hat.
+    base_map = {b["user"].id: {"rank": b["rank"], "points": b["points"]}
+                for b in get_leaderboard()}
+
     return jsonify({
         "ok": True,
         "fetched_at": now.isoformat() + "Z",
@@ -346,6 +392,8 @@ def api_live_center():
                 "points": r["points"], "exact": r["exact"],
                 "diff": r["diff"], "tendency": r["tendency"],
                 "wrong": r["wrong"],
+                "base_rank": base_map.get(r["user"].id, {}).get("rank"),
+                "base_points": base_map.get(r["user"].id, {}).get("points"),
                 "is_me": r["user"].id == current_user.id,
             }
             for r in rows

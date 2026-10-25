@@ -6,95 +6,163 @@
   <div>
     <h1>⚽ Bundesliga</h1>
     <p class="muted small">
-      {{ comp_label(active_competition_name, active_competition_season) }} · {% if source == 'football-data.org (live)' %}
-        🟢 Live von <strong>football-data.org</strong>
+      {{ comp_label(active_competition_name, active_competition_season) }} ·
+      {% if live_n %}
+        🔴 <strong>Livetabelle</strong> <span class="muted small">· laufende Spiele eingerechnet · auto-refresh alle 30s</span>
+      {% elif gesamt_source == 'football-data.org' %}
+        🟢 Tabelle von <strong>football-data.org</strong>
         <span class="muted small">· auto-refresh alle 60s</span>
       {% else %}
-        📊 Lokal berechnet aus eingetragenen Ergebnissen
+        📊 Gesamttabelle lokal berechnet
         {% if error_msg %}<span class="err">({{ error_msg }})</span>{% endif %}
       {% endif %}
     </p>
   </div>
   <div class="header-actions">
+    <a href="{{ url_for('main.top_scorers') }}" class="btn-ghost btn-sm"
+       title="Torschuetzenliste mit Vereinslogos (Admin: Vereinszuordnung)">🥇 Torjäger</a>
     <button id="refreshBtn" class="btn-ghost btn-sm">🔄 Aktualisieren</button>
   </div>
 </div>
 
-<div class="card flat">
-  <div class="scroll-x">
-    <table class="table bl-table" id="standingsTable">
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>Verein</th>
-          <th class="center">Sp</th>
-          <th class="center sun-col">S</th>
-          <th class="center sun-col">U</th>
-          <th class="center sun-col">N</th>
-          <th class="center optional-mobile">Tore</th>
-          <th class="center">±</th>
-          <th class="center sun-col">Form</th>
-          <th class="right">Pkt</th>
-        </tr>
-      </thead>
-      <tbody id="standingsBody">
-      {% for r in standings %}
-        <tr class="{{ 'cl' if r.rank <= 4 }} {{ 'el' if r.rank == 5 or r.rank == 6 }} {{ 'rel' if r.rank >= 16 }}">
-          <td class="rank-cell"><span class="rank-num">{{ r.rank }}</span></td>
-          <td>
-            <div class="user-cell bl-team-cell">
-              <img src="{{ r.team.logo }}" class="mini-logo" alt="" />
-              <span class="bl-team-text">
-                <strong class="bl-team-full">{{ r.team.name }}</strong>
-                <small class="bl-team-short hidden-desktop">{{ r.team.short_name }}</small>
-              </span>
-            </div>
-          </td>
-          <td class="center">{{ r.played }}</td>
-          <td class="center sun-col">{{ r.won }}</td>
-          <td class="center sun-col">{{ r.drawn }}</td>
-          <td class="center sun-col">{{ r.lost }}</td>
-          <td class="center optional-mobile">{{ r.goals_for }}:{{ r.goals_against }}</td>
-          <td class="center">{{ '+' if r.goal_diff > 0 }}{{ r.goal_diff }}</td>
-          <td class="center sun-col">
-            {% if r.form %}
-              <span class="form-stripe small">
-              {% for letter in r.form.split(',') %}
-                {% set l = letter|trim %}
-                {% if l in ['W','D','L'] %}
-                  {# (108) deutsche Kuerzel anzeigen (wie Spielplan/Schnelltipp/
-                     Spielbericht); Klasse form-W/D/L bleibt Style-Anker. #}
-                  <span class="form-dot form-{{ l }}">{{ {'W':'S','D':'U','L':'N'}.get(l, l) }}</span>
-                {% endif %}
-              {% endfor %}
-              </span>
-            {% endif %}
-          </td>
-          <td class="right pts-num">{{ r.points }}</td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </div>
+{# (146) Tabs: Livetabelle (laufende Spiele eingerechnet) + Gesamttabelle
+   (nur fertige Spiele - football-data.org, sonst lokal). (161) Topscorer
+   wieder ENTFERNT - doppelt zur Torjaeger-Seite (dort auch die Admin-
+   Zuordnung); Link oben im Header. #}
+<div class="tab-row" id="standingsTabs" data-default-tab="{{ default_tab }}">
+  <button type="button" class="tab-btn" data-tab="live" {% if default_tab == 'live' %}data-active{% endif %}>🔴 Livetabelle</button>
+  <button type="button" class="tab-btn" data-tab="gesamt" {% if default_tab == 'gesamt' %}data-active{% endif %}>📋 Gesamttabelle</button>
 </div>
 
+<section id="tab-live" {% if default_tab != 'live' %}hidden{% endif %}>
+<div class="card flat">
+  <div class="scroll-x">
+  <table class="table bl-table bl-live">
+    <thead>
+      <tr>
+        <th>#</th><th aria-label="Verschiebung zum letzten Spieltag"></th><th>Verein</th><th class="center">Sp</th>
+        <th class="center sun-col">S</th><th class="center sun-col">U</th><th class="center sun-col">N</th>
+        <th class="center optional-mobile">Tore</th><th class="center">±</th>
+        <th class="center sun-col">Form</th><th class="right">Pkt</th>
+      </tr>
+    </thead>
+    <tbody id="standingsBody">
+    {% for r in live_rows %}
+      <tr class="{{ 'cl' if r.rank <= 4 }} {{ 'el' if r.rank == 5 or r.rank == 6 }} {{ 'rel' if r.rank >= 16 }}">
+        <td class="rank-cell"><span class="rank-num">{{ r.rank }}</span></td>
+        <td class="rk-delta">{% if r.rank_delta %}<span class="{{ 'rk-up' if r.rank_delta > 0 else 'rk-down' }}" title="Platz {{ r.rank + r.rank_delta }} vor dem Spieltag">{{ '▲' if r.rank_delta > 0 else '▼' }}{{ r.rank_delta | abs }}</span>{% else %}<span class="rk-same" title="Unverändert zum letzten Spieltag">—</span>{% endif %}</td>
+        <td>
+          <div class="user-cell bl-team-cell">
+            <img src="{{ r.team.logo }}" class="mini-logo" alt="" />
+            <span class="bl-team-text">
+              <strong class="bl-team-full">{{ r.team.name }}{% if r.in_play %} <span class="live-dot" title="Spielt gerade"></span>{% endif %}</strong>
+              <small class="bl-team-short hidden-desktop">{{ r.team.short_name }}</small>
+            </span>
+          </div>
+        </td>
+        <td class="center">{{ r.played }}</td>
+        <td class="center sun-col">{{ r.won }}</td>
+        <td class="center sun-col">{{ r.drawn }}</td>
+        <td class="center sun-col">{{ r.lost }}</td>
+        <td class="center optional-mobile">{{ r.goals_for }}:{{ r.goals_against }}</td>
+        <td class="center">{{ '+' if r.goal_diff > 0 }}{{ r.goal_diff }}</td>
+        <td class="center sun-col"></td>
+        <td class="right pts-num">{{ r.points }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
 <div class="legend">
   <span><span class="legend-box cl"></span> Champions League</span>
   <span><span class="legend-box el"></span> Europa League</span>
   <span><span class="legend-box rel"></span> Abstieg</span>
-  {{ comp_label(active_competition_name, active_competition_season) }} · {% if source == 'football-data.org (live)' %}
   <span style="margin-left:auto"><span class="live-dot"></span> Live-Daten · letzter Refresh: <span id="lastRefresh">jetzt</span></span>
-  {% endif %}
 </div>
+</section>
+
+<section id="tab-gesamt" {% if default_tab != 'gesamt' %}hidden{% endif %}>
+<div class="card flat">
+  <div class="scroll-x">
+  <table class="table bl-table bl-gesamt">
+    <thead>
+      <tr>
+        <th>#</th><th>Verein</th><th class="center">Sp</th>
+        <th class="center sun-col">S</th><th class="center sun-col">U</th><th class="center sun-col">N</th>
+        <th class="center optional-mobile">Tore</th><th class="center">±</th>
+        <th class="center sun-col">Form</th><th class="right">Pkt</th>
+      </tr>
+    </thead>
+    <tbody id="gesamtBody">
+    {% for r in gesamt_rows %}
+      <tr class="{{ 'cl' if r.rank <= 4 }} {{ 'el' if r.rank == 5 or r.rank == 6 }} {{ 'rel' if r.rank >= 16 }}">
+        <td class="rank-cell"><span class="rank-num">{{ r.rank }}</span></td>
+        <td>
+          <div class="user-cell bl-team-cell">
+            <img src="{{ r.team.logo }}" class="mini-logo" alt="" />
+            <span class="bl-team-text">
+              <strong class="bl-team-full">{{ r.team.name }}</strong>
+              <small class="bl-team-short hidden-desktop">{{ r.team.short_name }}</small>
+            </span>
+          </div>
+        </td>
+        <td class="center">{{ r.played }}</td>
+        <td class="center sun-col">{{ r.won }}</td>
+        <td class="center sun-col">{{ r.drawn }}</td>
+        <td class="center sun-col">{{ r.lost }}</td>
+        <td class="center optional-mobile">{{ r.goals_for }}:{{ r.goals_against }}</td>
+        <td class="center">{{ '+' if r.goal_diff > 0 }}{{ r.goal_diff }}</td>
+        <td class="center sun-col">
+          {% if r.form %}
+            <span class="form-stripe small">
+            {% for letter in r.form.split(',') %}
+              {% set l = letter|trim %}
+              {% if l in ['W','D','L'] %}
+                <span class="form-dot form-{{ l }}">{{ {'W':'S','D':'U','L':'N'}.get(l, l) }}</span>
+              {% endif %}
+            {% endfor %}
+            </span>
+          {% endif %}
+        </td>
+        <td class="right pts-num">{{ r.points }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+<div class="legend">
+  <span><span class="legend-box cl"></span> Champions League</span>
+  <span><span class="legend-box el"></span> Europa League</span>
+  <span><span class="legend-box rel"></span> Abstieg</span>
+  <span class="muted small" style="margin-left:auto">Gesamttabelle · Quelle: {{ gesamt_source }}{% if live_n %} · ohne laufende Spiele{% endif %}</span>
+</div>
+</section>
 
 {% endblock %}
 
 {% block scripts %}
-{% if source == 'football-data.org (live)' %}
 <script>
 (function() {
-  const POLL_INTERVAL = 60_000; // 60s
+  // ---------- (146) Tabs ----------
+  const tabRow = document.getElementById('standingsTabs');
+  const sections = { live: document.getElementById('tab-live'),
+                     gesamt: document.getElementById('tab-gesamt') };
+  tabRow.addEventListener('click', (e) => {
+    const btn = e.target.closest('.tab-btn[data-tab]');
+    if (!btn) return;
+    tabRow.querySelectorAll('.tab-btn').forEach(b => b.removeAttribute('data-active'));
+    btn.setAttribute('data-active', '');
+    Object.entries(sections).forEach(([key, sec]) => {
+      if (sec) sec.hidden = (key !== btn.dataset.tab);
+    });
+  });
+
+  // ---------- (144) Poll: Livetabelle (30s) + Gesamt (60s, still) ----------
+  const POLL_INTERVAL = 30000;
   const tbody = document.getElementById('standingsBody');
+  const gesamtBody = document.getElementById('gesamtBody');
   const refreshLabel = document.getElementById('lastRefresh');
   const btn = document.getElementById('refreshBtn');
 
@@ -104,7 +172,6 @@
     if (s < 3600) return Math.floor(s/60) + 'min';
     return Math.floor(s/3600) + 'h';
   }
-
   let lastFetchAt = Date.now();
   setInterval(() => {
     if (refreshLabel) refreshLabel.textContent = 'vor ' + relTime(lastFetchAt);
@@ -112,16 +179,22 @@
 
   function rowHtml(r) {
     const cls = r.rank <= 4 ? 'cl' : (r.rank <= 6 ? 'el' : (r.rank >= 16 ? 'rel' : ''));
-    const FORM_DE = { W: 'S', D: 'U', L: 'N' };  // (108) Kuerzel deutsch
+    const livePill = r.in_play ? ' <span class="live-dot" title="Spielt gerade"></span>' : '';
+    const FORM_DE = { W: 'S', D: 'U', L: 'N' };
     const form = (r.form || '').split(',').map(l => l.trim())
       .filter(l => ['W','D','L'].includes(l))
       .map(l => `<span class="form-dot form-${l}">${FORM_DE[l] || l}</span>`).join('');
+    // (148) Platzverschiebung: ▲n/▼n vs. letzter vollstaendiger Spieltag
+    const delta = r.rank_delta
+      ? `<span class="${r.rank_delta > 0 ? 'rk-up' : 'rk-down'}" title="Platz ${r.rank + r.rank_delta} vor dem Spieltag">${r.rank_delta > 0 ? '▲' : '▼'}${Math.abs(r.rank_delta)}</span>`
+      : '<span class="rk-same" title="Unverändert zum letzten Spieltag">—</span>';
     return `<tr class="${cls}">
       <td class="rank-cell"><span class="rank-num">${r.rank}</span></td>
+      <td class="rk-delta">${r.rank_delta == null ? '' : delta}</td>
       <td><div class="user-cell bl-team-cell">
         <img src="${r.team_logo}" class="mini-logo" alt="" />
         <span class="bl-team-text">
-          <strong class="bl-team-full">${r.team_name}</strong>
+          <strong class="bl-team-full">${r.team_name}${livePill}</strong>
           <small class="bl-team-short hidden-desktop">${r.team_short}</small>
         </span>
       </div></td>
@@ -136,18 +209,22 @@
     </tr>`;
   }
 
+  async function fetchJson(url) {
+    const r = await fetch(url, { credentials: 'same-origin' });
+    const data = await r.json();
+    return data.ok && Array.isArray(data.table) ? data.table : null;
+  }
   async function refresh() {
     if (btn) { btn.disabled = true; btn.textContent = '⏳ Lade...'; }
     try {
-      const r = await fetch('/api/live/standings', { credentials: 'same-origin' });
-      const data = await r.json();
-      if (data.ok && Array.isArray(data.table)) {
-        tbody.innerHTML = data.table.map(rowHtml).join('');
-        lastFetchAt = Date.now();
-      }
-    } catch(e) {
-      console.error('Live-Refresh fehlgeschlagen:', e);
-    } finally {
+      const table = await fetchJson('/api/standings/computed');
+      if (table && tbody) { tbody.innerHTML = table.map(rowHtml).join(''); lastFetchAt = Date.now(); }
+    } catch(e) { /* still */ }
+    try {
+      const fdTable = await fetchJson('/api/live/standings');
+      if (fdTable && gesamtBody) gesamtBody.innerHTML = fdTable.map(rowHtml).join('');
+    } catch(e) { /* fd down: serverseitige Zeilen bleiben */ }
+    finally {
       if (btn) { btn.disabled = false; btn.textContent = '🔄 Aktualisieren'; }
     }
   }
@@ -156,5 +233,4 @@
   setInterval(refresh, POLL_INTERVAL);
 })();
 </script>
-{% endif %}
 {% endblock %}

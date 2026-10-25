@@ -350,7 +350,11 @@ def run_repair_tasks(task: str) -> dict:
         return {"ok": True, "message": "Sondertipps neu ausgewertet"}
     if task == "matchday_winners":
         recompute_matchday_winners()
-        return {"ok": True, "message": "Spieltagsieger neu berechnet"}
+        # (159) Badges direkt mit heilen: ein falscher Teilstand-Sieger
+        # konnte den "Spieltagsieger"-Badge verliehen haben.
+        from badges import revalidate_badges
+        revalidate_badges()
+        return {"ok": True, "message": "Spieltagsieger neu berechnet + Badges geprueft"}
     if task == "archive_bots":
         return remove_bots_from_season_archive()
     raise ValueError(f"Unbekannte Wartungsaufgabe: {task}")

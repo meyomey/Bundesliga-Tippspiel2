@@ -25,10 +25,18 @@
       <tr class="{{ 'ts-leader' if loop.first }}">
         <td class="ts-rank">{{ loop.index }}</td>
         <td class="ts-player">
-          {% if e.logo %}<img class="ts-photo" src="{{ e.logo }}" alt="" loading="lazy" width="22" height="22">{% endif %}
+          {# (161) nur EIN Vereinslogo (klein, neben dem Namen) - das grosse
+             Logo daneben zeigte dasselbe Bild nochmal #}
           <span class="ts-names">
             <strong>{{ e.name }}</strong>
-            {% if e.team %}<small>{{ e.team }}</small>{% endif %}
+            {# (149) Verein komplett ausschreiben, Logo wenn Platz (mobil kurz) #}
+            {% if e.team or e.team_name %}
+            <small class="ts-club">
+              {% if e.logo %}<img class="ts-club-logo" src="{{ e.logo }}" alt="" loading="lazy" width="16" height="16">{% endif %}
+              <span class="hidden-mobile">{{ e.team_name or e.team }}</span>
+              <span class="hidden-desktop">{{ e.team }}</span>
+            </small>
+            {% endif %}
           </span>
           {% if squad_teams %}
           <form method="post" action="{{ url_for('main.top_scorers_club') }}" style="margin:3px 0 0">

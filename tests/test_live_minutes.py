@@ -241,3 +241,12 @@ def test_livejs_und_template_ohne_blinde_stoppuhr():
     html = (root / 'templates' / 'live.html').read_text(encoding='utf-8')
     assert 'data-kickoff' not in html
     assert 'Halbzeit' in html
+
+
+def test_live_rangliste_hat_final_basis_attribute_154():
+    """(154) Die Live-Rangliste-Zeilen tragen den Final-Stand als
+    data-base-rank/-points (Delta-Basis fuer live.js)."""
+    tpl = open("templates/live.html", encoding="utf-8").read()
+    assert "data-base-rank=" in tpl
+    assert "data-base-points=" in tpl
+    assert "base_lb.get(r.user.id" in tpl

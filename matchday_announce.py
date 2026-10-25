@@ -50,15 +50,16 @@ def sieger_text(matchday, competition_id=None):
     q = MatchdayWinner.query.filter_by(matchday=matchday)
     if competition_id:
         q = q.filter_by(competition_id=competition_id)
+    # (159) IMMER frisch rechnen (statt nur bei fehlenden Zeilen): eine
+    # aeltere Teilstand-Zeile wuerde sonst unkorigiert angesagt und via
+    # Marker fuer immer eingefroren.
+    try:
+        recompute_matchday_winners()
+    except Exception:
+        pass
     winners = q.all()
     if not winners:
-        try:
-            recompute_matchday_winners()
-        except Exception:
-            pass
-        winners = q.all()
-        if not winners:
-            return None
+        return None
 
     users = {u.id: u for u in User.query.filter(
         User.id.in_([w.user_id for w in winners])).all()}

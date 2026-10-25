@@ -152,7 +152,7 @@ def _weather_code_to_label(code):
 
 
 # ==================================================== Live-Bundesliga-Tabelle -
-def compute_live_standings():
+def compute_live_standings(include_live=True):
     """Berechnet die aktuelle Tabelle des aktiven Wettbewerbs.
 
     Wichtig: Es werden nicht mehr pauschal alle Teams aus der Team-Tabelle
@@ -177,6 +177,7 @@ def compute_live_standings():
     table = {t.id: {
         "team": t, "played": 0, "won": 0, "drawn": 0, "lost": 0,
         "goals_for": 0, "goals_against": 0, "points": 0,
+        "in_play": False,  # (144) Team steht gerade auf dem Platz
     } for t in teams}
 
     finished_q = Match.query.filter_by(status="finished")
@@ -202,6 +203,35 @@ def compute_live_standings():
         else:
             a["won"] += 1; a["points"] += 3; h["lost"] += 1
 
+    # (144) Laufende Spiele einrechnen: der OLB-Live-Boost haelt die
+    # aktuellen Stände in der DB - die Tabelle kann damit waehrend des
+    # Spieltags sekundenscharf sein. Gezählt wird das laufende Spiel
+    # (wie in TV-Tabellen), betroffene Team-Zeilen werden markiert.
+    # (146) include_live=False = reine Gesamttabelle (nur fertige Spiele).
+    live_q = Match.query.filter_by(status="live") if include_live else Match.query.filter_by(status="__none__")
+    live_q = filter_matches_for_active_competition(live_q)
+    for m in live_q.all():
+        if m.home_score is None or m.away_score is None:
+            continue
+        h = table.get(m.home_team_id)
+        a = table.get(m.away_team_id)
+        if not h or not a:
+            continue
+        h["played"] += 1
+        a["played"] += 1
+        h["goals_for"] += m.home_score
+        h["goals_against"] += m.away_score
+        a["goals_for"] += m.away_score
+        a["goals_against"] += m.home_score
+        if m.home_score > m.away_score:
+            h["won"] += 1; h["points"] += 3; a["lost"] += 1
+        elif m.home_score == m.away_score:
+            h["drawn"] += 1; a["drawn"] += 1; h["points"] += 1; a["points"] += 1
+        else:
+            a["won"] += 1; a["points"] += 3; h["lost"] += 1
+        h["in_play"] = True
+        a["in_play"] = True
+
     for t in table.values():
         t["goal_diff"] = t["goals_for"] - t["goals_against"]
 
@@ -211,6 +241,64 @@ def compute_live_standings():
     for i, r in enumerate(rows, 1):
         r["rank"] = i
     return rows
+
+
+def prev_rank_map():
+    """(148) Referenz fuer Platz-Verschiebe-Pfeile in der Livetabelle.
+
+    Konvention wie bei der Tipprunden-Rangliste ((119)/(120)): laeuft ein
+    Spieltag, ist die Referenz der STAND NACH DEM LETZTEN VOLLSTAENDIGEN
+    SPIELTAG - Ergebnisse desselben (laufenden) Spieltags veraendern die
+    Referenz nicht, auch wenn sie schon abgeschlossen sind. Laeuft kein
+    Spiel, bleibt die Map leer -> keine Pfeile.
+    Rueckgabe: {team_id: platz_vor_dem_spieltag}.
+    """
+    first_live = (Match.query.filter_by(status="live")
+                  .with_entities(Match.matchday)
+                  .order_by(Match.matchday.asc()).first())
+    if not first_live or not first_live[0]:
+        return {}
+    ref_md = first_live[0]  # alles DAVOR ist Referenz
+    q = Match.query.filter(Match.status == "finished", Match.matchday < ref_md)
+    q = filter_matches_for_active_competition(q)
+    matches = q.all()
+    if not matches:
+        return {}
+    from models import Team
+    from extensions import db as _db
+    table = {}
+    for m in matches:
+        if m.home_score is None or m.away_score is None:
+            continue
+        for tid in (m.home_team_id, m.away_team_id):
+            if tid not in table:
+                table[tid] = {"played": 0, "won": 0, "drawn": 0, "lost": 0,
+                              "gf": 0, "ga": 0, "pts": 0, "name": ""}
+        h, a = table[m.home_team_id], table[m.away_team_id]
+        h["played"] += 1; a["played"] += 1
+        h["gf"] += m.home_score; h["ga"] += m.away_score
+        a["gf"] += m.away_score; a["ga"] += m.home_score
+        if m.home_score > m.away_score:
+            h["won"] += 1; h["pts"] += 3; a["lost"] += 1
+        elif m.home_score == m.away_score:
+            h["drawn"] += 1; a["drawn"] += 1; h["pts"] += 1; a["pts"] += 1
+        else:
+            a["won"] += 1; a["pts"] += 3; h["lost"] += 1
+    for tid, r in table.items():
+        team = _db.session.get(Team, tid)
+        r["name"] = team.name if team else ""
+    ordered = sorted(table.items(),
+                     key=lambda kv: (-kv[1]["pts"],
+                                     -(kv[1]["gf"] - kv[1]["ga"]),
+                                     -kv[1]["gf"], kv[1]["name"]))
+    return {tid: i for i, (tid, _r) in enumerate(ordered, 1)}
+
+
+def count_live_matches():
+    """(144) Anzahl laufender Spiele im aktiven Wettbewerb."""
+    from competition_helpers import filter_matches_for_active_competition
+    q = Match.query.filter_by(status="live")
+    return filter_matches_for_active_competition(q).count()
 
 
 def get_official_standings_positions():

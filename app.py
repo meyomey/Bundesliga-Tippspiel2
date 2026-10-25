@@ -422,8 +422,10 @@ def create_app(config_object=Config):
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         # (111) Live-Daten niemals cachen (Browser/Proxy): sonst koennen
         # Tore/Minuten/Tabellen veraltet ankommen, obwohl das Backend stimmt.
-        if request.path.startswith(("/api/live", "/api/leaderboard",
-                                    "/api/matches", "/api/tip-overview")):
+        # (150) Auch die HTML-Seiten selbst (Live-Center, Liga-Tabelle) und
+        # saemtliche API-Antworten: sonst zeigt der Browser beim Rueck-
+        # sprung (Menue -> Zurueck / Cache) den alten Punktestand an.
+        if request.path.startswith(("/api/", "/live", "/bundesliga-tabelle")):
             response.headers.setdefault("Cache-Control", "no-store")
         return response
 

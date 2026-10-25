@@ -168,3 +168,26 @@ def test_route_admin_abschluss(app, client, db, user, admin_user, live_match):
     pred = db.session.get(Prediction, Prediction.query.filter_by(
         user_id=user.id, match_id=live_match.id).first().id)
     assert pred.points == 4
+
+
+def test_remis_getippt_anderes_remis_ist_tendenz_2punkte_158():
+    """(158) Regel-Anker: Tipp 1:1 bei Ergebnis 0:0 = Richtige Tendenz
+    (gleiche Differenz 0, aber kein 'echter' Tordiff-Fall, da Unent-
+    schieden) -> die TENDENZ-Punktzahl (Konfig: 2), nie 3 oder 0.
+    Nutzer-Regelseite: 'Auch Tipp 1:1, Ergebnis 2:2 zählt als Tendenz.'"""
+    from types import SimpleNamespace
+    from scoring import calculate_points_for_score, classify_prediction_live
+
+    tipp = SimpleNamespace(home_tip=1, away_tip=1, joker=False)
+    # Live (laufendes Spiel, 0:0) UND Final-Zweig muessen identisch liegen:
+    assert classify_prediction_live(tipp, SimpleNamespace(
+        status="live", home_score=0, away_score=0)) == "tendency"
+    assert calculate_points_for_score(tipp, 0, 0) == 2
+
+    # Gegenprobe: echtes Remis exakt (1:1 bei 1:1) = 4, Torsieg-Diff bleibt
+    # Sieg-Statistik vorbehalten (Regelseite: 'nur bei Siegen').
+    assert calculate_points_for_score(SimpleNamespace(
+        home_tip=1, away_tip=1, joker=False), 1, 1) == 4
+    assert classify_prediction_live(SimpleNamespace(
+        home_tip=2, away_tip=0, joker=False), SimpleNamespace(
+        status="live", home_score=0, away_score=0)) == "wrong"

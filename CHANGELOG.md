@@ -36,6 +36,160 @@
 
 
 
+## [3.1.131] - 2026-10-25
+
+### 🥇 Torjäger/Topscorer: Doppelansicht aufgelöst — eine Seite, ein Logo, Admin-Zuordnung bleibt ((161) — Nutzerwunsch)
+
+- **Doppelansicht weg:** der 🥇-Topscorer-Tab in der Liga-Tabelle duplizierte die Torjäger-Seite (gleiche Liste, seit (149) sogar gleiches Aussehen). Der Tab ist **entfernt** — die Tabelle hat wieder zwei Tabs (🔴 Live / 📋 Gesamt), und die **Torjäger-Seite** (`/torjaeger`, weiter im „Mehr“-Menü) ist die eine Anlaufstelle. Neu: ein kompakter **„🥇 Torjäger“-Button im Tabellen-Header**, damit die Liste vom Spieltag aus mit einem Klick erreichbar bleibt.
+- **Doppeltes Logo behoben:** auf der Torjäger-Seite stand jedes Vereinslogo zweimal nebeneinander (groß 28 px „Foto“-Platz + klein 16 px neben dem Namen — beide zeigten dasselbe Bild). Jetzt nur noch **ein** Logo, kompakt neben dem ausgeschriebenen Vereinsnamen.
+- **Admin-Zuordnung unangetastet:** der Mannschafts-Picker (pro Spieler, überholt die automatische Suche) bleibt auf der Torjäger-Seite — sie ist jetzt die einzige Stelle mit Zuordnung, damit ist klar, wo das gepflegt wird.
+- Aufräumen: keine Torjäger-Datenabrufe mehr auf der Tabellen-Seite, CSS-Reste (`.ts-photo`, `.bl-ts`) entfernt. **Tests angepasst** (2 Tabs, kein Tab-Scorer, ein Logo, Link erhalten). Suite **833/833**, Hartgate 0, Node 3/3.
+
+## [3.1.130] - 2026-10-24
+
+### 👑 Hall of Fame: verständliche Reihenfolge — Siege, dann Punkte ((160) — Nutzer-Rückfrage „35 Pkt auf Platz 1, 38 Pkt auf Platz 2?")
+
+- **Erklärung der Verwirrung:** die Liste sortierte **nur nach Siegezahl** — die angezeigten Punkte (Summe aus den **gewonnenen** Spieltagen, nicht Saisonpunkte!) waren kein Sortierkriterium. Innerhalb gleicher Siegzahl entschied die Datenbank-Beliebigkeit: deshalb stand rudolfo13 (2×, 35 Pkt) vor Moorkicker (2×, 38 Pkt) und weiter unten 17 Pkt vor 18 Pkt. Fühler und Reihenfolge passten nicht zusammen.
+- **Fix:** deterministische Sortierung — **meiste Siege**, bei Gleichstand **mehr Punkte aus den Sieges-Spieltagen**, dann Name. Zusätzlich erklärt die Seite sich jetzt selbst: Untertitel „Meiste Siege · Gleichstand: mehr Punkte" + Tooltips an beiden Zahlen („Anzahl gewonnener Spieltage" / „Summe der Punkte aus den gewonnenen Spieltagen").
+- **+1 Test** am gerenderten HTML (38 vor 35 bei 2×, 18 vor 17 bei 1×, mehr Siege immer zuerst). Suite **833/833**, Hartgate 0, Node 3/3.
+
+## [3.1.129] - 2026-10-24
+
+### 🏆 Spieltagsieger falsch im Dashboard — Teilstand-Sieger abgeschafft ((159) — Nutzer-Meldung „schon wieder")
+
+- **Die Lücke:** `recompute_matchday_winners` schrieb Siegerzeilen auch für **nur teilweise** abgeschlossene Spieltage (z. B. ST 7 mit 5 fertigen + 1 laufendem Spiel). Solche „Zwischenstand-Sieger" konnten stehen bleiben, wenn ein späterer Neurechnungslauf still fehlschlug (`try/except`) — und der Badge „Spieltagsieger" zeigte sie im Dashboard. Genau die beobachtete Fehlanzeige.
+- **Dreifach-Fix:** ① recompute erzeugt Zeilen **nur noch für vollständig abgeschlossene Spieltage** und **entfernt Alt-Zeilen unvollständiger Spieltage** (Selbstheilung bei jedem Lauf). ② der Ansage-Pfad (`sieger_text`, Cron + Admin-Text) rechnet **immer frisch**, statt eine bestehende (evtl. Teilstand-)Zeile einzufrieren — eine Ansage kann den falschen Sieger nicht mehr konservieren. ③ die Wartungsaufgabe „Spieltagsieger neu berechnet" prüft jetzt **direkt mit die Badges** (Widerruf nicht mehr verdienter Awards inklusive).
+- **Für den aktuellen ST 7:** einmal **Admin → Wartung → „Spieltagsieger neu berechnen"** auslösen — das schreibt die Tabelle korrekt und räumt den Badge in demselben Lauf auf.
+- **+3 Tests** (keine Zeile bei Teilständen, Heilung einer Alt-Zeile, Ansage heilt eine absichtlich falsche Zeile). Suite **832/832**, Hartgate 0, Node 3/3.
+
+## [3.1.128] - 2026-10-24
+
+### 📐 Regel-Anker verankert: Remis getippt, anderes Remis gespielt = Tendenz = 2 Punkte ((158) — Nutzer-Klarstellung)
+
+- **Klarstellung (Nutzer mit Regelseite):** „Es gab schon immer 2 Punkte für z. B. einen 1:1-Tipp, wenn 0:0 gespielt wurde." — **Der Code tut exakt das, seit jeher:** die Punkteskala ist 4 (exakt) / 3 (Tordifferenz, nur bei Siegen) / **2 (Tendenz)**, und „Remis-vs-anderes-Remis" wird konsequent (Live- UND Final-Berechnung, identische Bedingung) als **Tendenz** klassifiziert → **2 Punkte**. Die „+1"-Einordnung aus (156) war ein Rechenfehler in der Doku, nicht im System; auch das „+2 ▲1" aus dem ersten Live-Screenshot war korrekt.
+- **Jetzt als Test verankert:** Tipp 1:1 bei 0:0 → `tendency` (live wie final) → 2 Punkte; Gegenproben: 1:1 bei 1:1 → 4, 2:0-Tipp bei 0:0 → falsch. Damit kann die Regel bei künftigen Refactorings nicht schleichend kippen.
+- **Kein Verhalten geändert** — nur Doku korrigiert + Regel-Anker-Test. Suite **830/830**, Hartgate 0, Node 3/3.
+
+## [3.1.127] - 2026-10-24
+
+### 🔴 Live-Rangliste: Server-Basis ist jetzt Chef — ±0-Falle entschärft ((157) — Nutzer-Screenshot „überall ±0")
+
+- **Befund:** serverseitig war die Kette korrekt (Basis = `p.points` nur von fertigen Spielen, laufende Spiele fließen nur in die Anzeige — die Totals im Screenshot *enthielten* die Live-Gewinne, die Basis nicht). Dennoch überall ±0 → der Vergleich lief im Browser noch einmal gegen den eigenen Stand. Die Fallback-Kette (`baseLb` → API → eigener Stand) konnte von einem alten Client-Zustand überstimmt werden.
+- **Fix:** die **mitgelieferte API-Basis (`base_rank`/`base_points`, in jeder 20-s-Antwort frisch) ist jetzt erste Wahl**; `baseLb` (Seitenladen) nur noch Fallback für alte APIs. Semantisch sogar sauberer: endet ein Spiel während des Zuschauens, wandern seine Punkte in die Basis — die Deltas fallen auf ±0 zurück, statt weiter „seit Seitenöffnung" anzuzeigen.
+- **+1 Guard** (`const base = apiBase || baseLb[...]` als verbindliche Reihenfolge). Suite **829/829**, Hartgate 0, Node 3/3.
+- **Deploy-Check für die Praxis:** Quelltext von `/live` muss `data-base-rank=` enthalten (→ (154)-Template aktiv) und `/api/live/center` muss `"base_points":` enthalten (→ (156)-API aktiv). Fehlt eins davon, liegt noch eine alte Datei auf dem Server.
+
+## [3.1.126] - 2026-10-24
+
+### 🔴 Live-Rangliste: Delta-Basis reist jetzt in jeder Antwort mit ((156) — Nutzer-Rückfrage „0:0 bringt Lara Punkte")
+
+- **Regel-Klärung:** ein 0:0-Stand bringt Punkte — „Remis getippt, anderes Remis" zählt als **Richtige Tendenz = 2 Punkte** (Punkteskala 4/3/2; die 3er-Stufe „Tordifferenz" gibt es nur bei Siegen). Die Diff-Ausnahme `(rh != ra or h != a)` steckt bewusst und identisch in Final- UND Live-Berechnung. Lara mit 1:1-Tipp beim laufenden 0:0 hat also **+2** gegenüber der Basis — genau wie auf der Regelseite („Auch Tipp 1:1, Ergebnis 2:2 zählt als Tendenz"). *(Korrektur noch am selben Tag, (158): die ursprüngliche Formulierung „Tendenz = 1 Punkt" hier war falsch — die Klassifizierung Tendenz stimmt, der Wert ist 2.)*
+- **Warum trotzdem nichts angezeigt wurde:** die Basis lag bislang (teils) beim Browser — hatte der Client einmal alte Hände (altes JS/DOM-Zustand), blieben die Deltas leer, obwohl die Berechnung serverseitig intakt war (per DOM-Test bewiesen).
+- **Fix:** `/api/live/center` liefert jetzt in **jeder** Antwort pro Zeile `base_rank`/`base_points` aus der Final-Tabelle (ohne laufende Spiele, gecached + bei Ergebnis-Schreibung invalidiert); live.js fällt dafür auf diese mitgelieferte Basis zurück, wenn die beim Laden vorbelegte Basis den User nicht kennt. Damit sind die Deltas immun gegen jeden veralteten Client-Zustand.
+- **+1 Test** (API-Payload enthält Live-Wert + Final-Basis getrennt), JS-Guards erweitert. Suite **829/829**, Hartgate 0, Node 3/3.
+
+## [3.1.125] - 2026-10-24
+
+### 🔴 Live-Rangliste: Null-Zustand sichtbar gemacht („±0") — und (154) verifiziert ((155) — Nutzer-Feedback)
+
+- **Verifikation von (154):** neuer Integrationstest rendert `/live` mit auseinanderliegenden Quellen (Final 81/Platz 6 vs. Live 83/Platz 5) und beweist, dass die Zeilen `data-base-rank="6"`/`data-base-points="81"` tragen — die Basis-Kette funktioniert bis in den Browser-DOM. **Die leeren Pfeile im Screenshot waren also die ehrliche Null:** BVB 0:0 in der 58. bringt (ohne exakte 0:0-Tipps) niemandem Punkte → Live-Stand == Final-Stand → Δ=0. Das vorherige „+2 ▲1" war ein Artefakt des veralteten Leaderboard-Caches.
+- **Sichtbarkeit:** bei laufendem Spiel zeigen die Ranglisten-Zeilen jetzt im Null-Fall ein gedämpftes **„±0"** (Rang- und Punkte-Marker) — so ist erkennbar, dass die Deltaberechnung lebt; mit dem ersten Tor erscheinen sofort echte ▲▼/+n. Titel-Tooltip erklärt die Basis („Stand ohne laufende Spiele"). Ohne laufendes Spiel bleibt die Liste clean (keine Marker).
+- Tooltips der Deltas präzisiert: „Platzvorteil/Rückstand durch laufende Spiele". **+1 Test** (DOM-Beweis data-base-*) + erweiterte JS-Guards. Suite **828/828**, Hartgate 0, Node 3/3.
+
+## [3.1.124] - 2026-10-24
+
+### 🔴 Live-Rangliste: ▲▼/+n wieder da — jetzt mit der richtigen Basis ((154) — Nutzer-Screenshot)
+
+- **Folgeauswirkung von (153):** der Punktestand war zwar sofort aktuell, aber die Pfeile (+n/▲▼) blieben leer — der erste Live-Stand war plötzlich seine **eigene** Vergleichsbasis (Δ = 0). Vorher war die Basis zufällig der gecachte Final-Render gewesen (das hatte die Deltas ungewollt „funktionierend" gemacht).
+- **Fix mit richtiger Semantik:** `/live` liefert jetzt zusätzlich den **Final-Stand** (Punkte-Tabelle ohne laufende Spiele, `get_leaderboard()`) als `data-base-rank`/`data-base-points` an die Zeilen; live.js vorbelegt damit die Delta-Basis. Die Anzeigen bedeuten ab jetzt sauber: **▲n / ▼n / +n = was die laufenden Spiele bisher ausgemacht haben** (Lara: +2, ▲1 gegenüber dem Stand ohne das Live-Spiel) — passend zum Untertitel „Punkte während laufender Spiele". Änderungen während des Zuschauens stapeln sich weiter oben drauf (bekannte „seit Seitenöffnung"-Persistenz).
+- **+2 Wächter** (Route nutzt beide Quellen in den richtigen Rollen; Template-Attribute + JS-Basis-Vorbelegung). Suite **827/827**, Hartgate 0, Node 3/3.
+
+## [3.1.123] - 2026-10-24
+
+### 🔴 Live-Rangliste:alter Punktestand beim Zurückkommen — Endgültige Ursache behoben ((153) — Nutzer-Screenshots)
+
+- **Die eigentliche Ursache (seit jeher):** die `/live`-Seite renderte die Live-Rangliste aus `get_leaderboard()` — die zählt **nur Final-Punkte und ist gecached**. Laufende Spiele zählten im Erstrender also nicht: Wer von einem anderen Menüpunkt zurückkam, sah erst den alten Stand (Lara 81/Platz 6), bis der erste Poll-Tick (bis 20 s) die Live-Punkte nachschob (Lara 83/Platz 5). Screenshots zeigten exakt beide Zustände.
+- **Fix:** `/live` rendert jetzt ab Erstrender aus `get_live_leaderboard()` — **dieselbe dynamische Quelle wie `/api/live/center`** (laufende Spiele fließen ein, inkl. live Punkte/Exakt/Diff/Tendenz). Zusätzlich feuert live.js den **ersten Abruf sofort** beim Start statt erst nach 20 s — die blinde Fenster nach dem Laden ist weg; bfcache-/Tab-Rückkehr deckt der (150)-Mechanik weiter ab.
+- **Wächter:** `/live` darf die Final-Punkte-Quelle nicht mehr aufrufen (Test mit Fall- back-Falle), plus JS-Guard für den Sofort-Abruf. Suite **826/826**, Hartgate 0, Node 3/3.
+- **Einordnung:** (150) war richtig, aber nur die halbe Wahrheit — der Browser-Cache-Fix stand, die serverseitige Altstand-Quelle blieb.
+
+## [3.1.122] - 2026-10-24
+
+### 📱 Live-Tabelle mobil: Die eigentliche Wurzel behoben — !important-Regeln trafen die falschen Spalten ((152) — Nutzer-Screenshot)
+
+- **Warum (151) nichts sichtbar änderte:** ein älterer Mobile-Block ((144)-Ära, „volle Vereinsnamen lesbar") setzt Spaltenbreiten mit **`!important` auf `.bl-table` global** — gebaut für die Gesamt-Tabelle (dort Pos. 3 = Sp). In der Live-Tabelle (seit (148) 11 Spalten) traf `width: 28px !important` genau die **Vereinspalte** → Buchstabenschnipsel („B/o."), und `display:block !important` auf die Kurzform übersteh den (151)-Fix. Klassischer Doppel-Wahrheits-Konflikt zweier Mobile-Blöcke.
+- **Fix:** die alten `!important`-Breiten auf `.bl-gesamt` gescopet (Verhalten der geliebten Gesamt-Tabelle **unverändert**), `.bl-live` bekommt sein eigenes, korrekt um 1 verschobenes Set (# 26px · Δ 30px · Verein **ohne Breite = flexibel** · Sp 26px · ± 34px · Pkt 40px). Name bleibt 2-zeilig klemmbar wie in der Gesamt-Tabelle, Kurzform-Darunter bleibt Teil des Gesamt-Looks.
+- **Wächter geschärft:** Tests verbieten jetzt JEDE globale `.bl-table`-nth-child-Breite (0 im CSS verifiziert) und verlangen die `!important`-Scoped-Sets. Suite **825/825**, Hartgate 0, Node 3/3.
+- **Lektion:** bevor Breiten-Regeln neu geschrieben werden, erst ALLE bestehenden Regeln auf die Selektoren greppen (`bl-team-full`/`nth-child` hatten ein zweites Leben in einem späteren Block).
+
+## [3.1.121] - 2026-10-24
+
+### 📱 Smartphone: Live-Tabelle schön — volle Namen + saubere Δ-Spalte ((151) — Nutzerwunsch)
+
+- **Eigentliche Ursache des hässlichen Mobile-Looks:** die kompakten Spaltenbreiten im Mobile-Block wurden für die **Gesamt**-Tabelle (10 Spalten) gebaut. Seit der (148)-Δ-Spalte (11 Spalten) fielen sie in der Live-Tabelle auf die **falschen Spalten** — die Vereinspalte wurde auf 28 px gequetscht, deshalb der chaotische Look.
+- **Fix:** Spaltenbreiten jetzt **pro Tabellentyp gescopet** (`bl-live` / `bl-gesamt` / `bl-ts`): Gesamt wie gehabt, Live um 1 Position verschoben (Δ schmal 30 px, Verein flexibel), Topscorer eigene schlanke Regeln.
+- **Vollständige Namen auch mobil:** der 54px-Ellipsis auf den Vereinsnamen ist weg — der Name darf umbrechen und ist komplett lesbar (wie die Gesamt-Tabelle); die Kurzform-Darunter entfällt als Duplikat. ▲/▼ bleiben als schmale eigene Spalte erhalten.
+- **+1 Test** (Scope-Klassen, gescopete Breiten, kein globaler nth-child-Klump mehr, Namensregeln). Suite **825/825**, Hartgate 0, Node 3/3.
+
+## [3.1.120] - 2026-10-24
+
+### 🔴 Live-Center: kein veralteter Punktestand mehr nach dem Zurücknavigieren ((150) — Nutzerwunsch)
+
+- **Fehlerbild:** Live-Bereich aktualisiert → anderer Menüpunkt → zurück zum Live-Bereich → **alter Punktestand**, erst manueller Reload brachte den aktuellen Stand.
+- **Ursache (zwei Schichten):** ① Die HTML-Seiten selbst (Live-Center, Liga-Tabelle) waren **nicht** im (111)-Cache-Schutz — nur ausgewählte API-Pfade; der Browser durfte die Seite beim Rücksprung aus dem Cache (bfcache/Disk-Cache) mit altem Stand zeigen. ② live.js hatte keinen `pageshow`-Handler — nach einem bfcache-Rücksprung blieb der alte DOM bis zum nächsten 20-s-Tick stehen.
+- **Fix:** ① (111)-Erweiterung: `Cache-Control: no-store` jetzt für **alle** `/api/`-Antworten **und** die HTML-Seiten `/live*` + `/bundesliga-tabelle` (setdefault — bewusste Header einzelner Endpunkte bleiben unangetastet). ② live.js zieht jetzt **sofort nach**: bei bfcache-Rücksprung (`pageshow`, `persisted`) immer, bei Tab-Rückkehr (`visibilitychange`) sobald der letzte Sync älter als ein Intervall ist. Pausiertes Auto wird bewusst respektiert (manueller 🔄-Button bleibt).
+- **+2 Tests** (no-store auf den HTML-Seiten + computed-API; JS-Wächter für beide Listener). Suite **824/824**, Hartgate 0, Node 3/3.
+
+## [3.1.119] - 2026-10-24
+
+### 🥇 Topscorer: automatische Vereinszuordnung geschärft + Logo & voller Vereinsname ((149) — Nutzerwunsch)
+
+- **Weniger Handarbeit:** die automatische Vereinszuordnung scheiterte, wenn TheSportsDB englische/kurze Schreibweisen liefert („Bayern Munich“, „Bor. Mönchengladbach“, „Cologne“) — der Token-Match ging leer und es blieb nur der manuelle Picker. Neu: Synonym-Ebene im Matcher (`_TEAM_SYNONYMS` + Punktauflösung), die genau diese Fälle automatisch trifft; weiter kein Raten bei echten Fremdvereinen („Hertha BSC Berlin“ → keine Zuordnung). Bestehende Aliasse/der Admin-Picker bleiben für Ausnahmen.
+- **Anzeige:** beide Topscorer-Ansichten (Torjäger-Seite **und** der Topscorer-Tab der Liga-Tabelle) zeigen jetzt das **Vereinslogo** neben dem Spieler und den **ausgeschriebenen Vereinsnamen** — auf schmalen Screens stattdessen die Kurzform, damit die Zeile hält.
+- **+2 Tests** (Matcher-Matrix inkl. Negativ-Fall, Anzeige-Wächter). Suite **822/822**, Hartgate 0, Node 3/3.
+
+## [3.1.118] - 2026-10-24
+
+### ▲▼ Platzverschiebung in der Livetabelle ((148) — Nutzerwunsch)
+
+- **Neue Δ-Spalte** in der Livetabelle direkt neben dem Rang: „▲2“ (grün, aufgerückt), „▼1“ (rot, gefallen), „—“ (unverändert/keine Referenz) — mit Tooltip („Platz N vor dem Spieltag“). Aktualisiert sich mit dem 30-s-Poll mit.
+- **Referenz nach der verbindlichen Konvention der Tipprunden-Rangliste ((119)/(120)):** Vergleichsbasis ist der **Stand nach dem letzten vollständigen Spieltag** — Ergebnisse desselben (laufenden) Spieltags verschieben die Referenz nicht, auch wenn sie schon abgeschlossen sind. Läuft kein Spiel, gibt es keine Pfeile (wie „ST 1 → keine Pfeile“). Die Gesamttabelle bleibt bewusst pfeilfrei (sie IST die Referenz).
+- Implementierung: `prev_rank_map()` in stats_live (eigene kompakte Rechnung, Sortierung identisch: Punkte → Differenz → Tore → Name), Annotation serverseitig (erste Renderung) und im `/api/standings/computed` (Poll).
+- **+5 Tests** (Referenz-Isolation des laufenden Spieltags, Leer-Map ohne Live-Spiele, Route+Endpoint-Deltas inkl. Tordifferenz-Kaskade, Semantik-/CSS-Wächter). Suite **820/820**, Hartgate 0, Node 3/3.
+
+## [3.1.117] - 2026-10-24
+
+### 🩹 Doppeltor-Bug: Füllkrug erschien doppelt doppelt ((147) — Nutzer-Screenshot)
+
+- **Ursache:** zwei Quellen, zwei Minuten-Angaben — OpenLigaDB meldete „N. Füllkrug, 7./25.‘ (Elfmeter)“, TheSportsDB „Niclas Füllkrug, 6./24.‘“ (Quellen zählen Nachspielzeit/Korrekturen teils um eine Minute unterschiedlich). Das Dedupe verglich auf **exakte Minuten-Übereinstimmung** und ließ daher dasselbe Tor doppelt in die Liste.
+- **Fix (Fuzzy nur Cross-Source):** Tor-Zeilen **unterschiedlicher** Quelle kollidieren jetzt, wenn Seite, Elfmeter-/Eigentor-Flag und Spielernachname übereinstimmen und die Minute ±1 beträgt — gleiche Quellzeilen (echte Tore in Folgeminuten) kollidieren bewusst nie. Beim Konflikt gewinnt die reichhaltigere Quelle (API-Football > TSDB > OLB), Vorlagen werden übertragen.
+- **Selbstheilung:** bereits verseuchte Spiele (4 Zeilen statt 2) kollabieren automatisch beim nächsten Sync-Lauf (2-Tage-Fenster greift) — im Screenshot-Fall „Werder–Mainz“ ohne Zutun.
+- **+8 Tests** (Konfliktmatrix inkl. „gleiche Quelle nie“, Screenshot-Muster heilt auf 2 Zeilen, Vorlagen-Transfer, Quellen-Priorität, OLB-Seite inkl. Frühausstieg-Reihenfolge). Suite **815/815**, Hartgate 0, Node 3/3.
+
+## [3.1.116] - 2026-10-24
+
+### 🗂️ Liga-Tabelle als Tabs: Livetabelle ↔ Gesamttabelle ↔ Topscorer ((146) — Nutzerwunsch)
+
+- **Eine Seite, drei Tabs:** „🔴 Livetabelle" (laufende Spiele eingerechnet, Auto-Refresh 30 s), „📋 Gesamttabelle" (nur fertige Spiele — football-data.org, bei Ausfall lokal berechnet; Auto-Refresh still nebenher) und „🥇 Topscorer" (kompakte Torjäger-Liste mit Verein + Toren, Link zur ausführlichen Seite). Der Default wählt sich wie bisher sinnvoll: läuft ein Spiel → Livetabelle, sonst Gesamttabelle. Beide Tabellen kommen serverseitig vorgeneriert — kein Blinken beim ersten Umschalten.
+- **Technik:** `compute_live_standings(include_live=…)` rechnet optional ohne laufende Spiele; Route liefert beide Zeilensätze + Topscorer (try/gesichert, ehrliche Leerzeile mit letztem Fehlergrund statt Crash). Topscorer-Daten bleiben OLB-keyfrei (0 €).
+- **+4 Tests** (Gesamttabelle-Option zählt wirklich nur fertig, Default-Tabs in beiden Richtungen, Topscorer-Inhalt + ehrliche Leerzeile, CSS-Wächter), (144)-Guard auf Tab-Semantik aktualisiert. Suite **807/807**, Hartgate 0, Node 3/3.
+
+## [3.1.115] - 2026-10-24
+
+### 🩹 Regression: „${r.team_name} als Text" nach Tabellen-Refresh ((145) — Nutzer-Screenshot)
+
+- **Ursache:** der (144)-Patch hatte `\${…}` (Backslash-Dollar) ins JS-Template geschrieben — in Template-Literalen bedeutet `\$` aber **buchstabieren statt interpolieren**. Der erste Render kam serverseitig korrekt; nach dem ersten Auto-Refresh standen dann `${r.team_name}${livePill}` als Text in den Zeilen (Teamname weg, Zahlen weiterhin korrekt). Nur Weg-nach-zurück half.
+- **Fix:** Backslashes entfernt, `\$`-Reste per Test verboten; Regressionstest sichert die korrekte Interpolation. Suite **803/803**, Hartgate 0, Node 3/3.
+
+## [3.1.114] - 2026-10-24
+
+### 📊 Bundesliga-Livetabelle: laufende Spiele eingerechnet ((144) — Nutzerwunsch)
+
+- **Ausgangslage:** die Liga-Tabelle (`/bundesliga-tabelle`) bezog sich auf football-data.org (aktualisiert erst nach Spielschluss) bzw. eine lokale Berechnung, die **nur fertige Spiele** zählte — während laufender Spiele war sie also nicht live.
+- **Jetzt:** `compute_live_standings` rechnet **laufende Spiele mit ihren aktuellen DB-Ständen ein** (denselben Weg, den der OLB-Live-Boost füttert — 0 €) und markiert beteiligte Teams (`in_play`). Spielt die Seite einen Spieltag mit laufenden Spielen, schaltet sie automatisch auf diese **Livetabelle** (Label „🔴 Livetabelle · laufende Spiele eingerechnet"), sonst bleibt football-data.org die Primärquelle. Auto-Refresh: 60 s für fd, **30 s** für die Livetabelle über den neuen schmalen Endpoint `/api/standings/computed` (gleiche Zeilenform + `in_play`); laufende Teams tragen einen pulsierenden Live-Punkt.
+- Sortierung wie gehabt: Punkte → Tordifferenz → Tore; LAuftende Spiele zählen (wie in TV-Tabellen).
+- **+6 Tests** (Live-Einrechnung, Baseline unverändert, Live-Zähler, Routenschaltung fd↔Livetabelle, Endpoint-Shape). Suite **802/802**, Hartgate 0, Node 3/3.
+
 ## [3.1.113] - 2026-10-20
 
 ### ✅ Optimizer → Tipps: Empfehlungen per Knopfdruck übernehmen ((143) — Nutzerwunsch)

@@ -9,7 +9,8 @@ from sqlalchemy import func
 
 from extensions import db
 from models import Match, MatchdayWinner, Prediction, Prize, User, UserBadge
-from scoring import compute_pot_summary, filter_active_users, get_leaderboard, get_setting
+from scoring import (compute_pot_summary, filter_active_users,
+                     get_leaderboard, get_live_leaderboard, get_setting)
 from stats import (
     compute_live_standings,
     get_eternal_table,
@@ -446,7 +447,16 @@ def _live_center():
             )
             live_matches = filter_matches_for_active_competition(live_day_q).order_by(Match.kickoff.asc()).all()
 
-    leaderboard = get_leaderboard()
+    # (153) Live-Rangliste ab Erstrender LIVE: die Anzeige kommt aus
+    # get_live_leaderboard() (dynamisch inkl. laufender Spiele, dieselbe
+    # Quelle wie /api/live/center).
+    # (154) get_leaderboard() (Final-Punkte, gecached) dient JETZT als
+    # DELTA-BASIS: {user_id: Final-rank/-points} wandert als data-base-*
+    # in die Zeilen; live.js vorbelegt damit baseLb. Vorher war der erste
+    # Live-Stand die eigene Basis -> ▲/+ blieben unsichtbar.
+    leaderboard = get_live_leaderboard()
+    base_lb = {r["user"].id: {"rank": r["rank"], "points": r["points"]}
+               for r in get_leaderboard()}
     user_preds = {
         p.match_id: p
         for p in Prediction.query.filter_by(user_id=current_user.id).all()
@@ -468,6 +478,7 @@ def _live_center():
         live_clock=live_clock,
         is_today=is_today,
         has_live=has_live,
+        base_lb=base_lb,
         shown_date=shown_date,
     )
 
@@ -477,21 +488,45 @@ def _live_center():
 @main_bp.route("/bundesliga-tabelle", endpoint="bl_standings")
 @login_required
 def _bl_standings():
-    source = "lokal"
-    error_msg = None
-    standings, err = fetch_live_standings()
-    if standings:
-        source = "football-data.org (live)"
-        if len(standings) < 18:
-            error_msg = f"Hinweis: API-Tabelle enthält nur {len(standings)} erkannte Teams. Bitte Sync/Team-Mapping prüfen."
+    # (144)/(146) Laufen Spiele, rechnet die Seite die Tabelle lokal aus
+    # der DB (inkl. der Live-Boost-Staende) - football-data.org aktualisiert
+    # die Tabelle erst nach Spielschluss. Seit (146) als Tabs: Livetabelle
+    # (mit laufenden Spielen), Gesamttabelle (nur fertige Spiele; fd, sonst
+    # lokal) und Topscorer - auf einer Seite, per Klick umschaltbar.
+    from stats_live import count_live_matches, compute_live_standings
+    try:
+        live_n = count_live_matches()
+    except Exception:
+        live_n = 0
+    live_rows = compute_live_standings()
+    # (148) Platz-Verschiebung vs. letzter vollstaendiger Spieltag
+    from stats_live import prev_rank_map as _prev_map
+    try:
+        prev = _prev_map()
+    except Exception:
+        prev = {}
+    for _r in live_rows:
+        _pv = prev.get(_r["team"].id)
+        _r["rank_delta"] = (_pv - _r["rank"]) if _pv else None
+    fd_rows, fd_err = fetch_live_standings()
+    if fd_rows:
+        gesamt_rows, gesamt_source = fd_rows, "football-data.org"
+        if len(fd_rows) < 18:
+            gesamt_source = "football-data.org (unvollständig - Team-Mapping prüfen)"
     else:
-        error_msg = err
-        standings = compute_live_standings()
+        gesamt_rows = compute_live_standings(include_live=False)
+        gesamt_source = "lokal"
+    # (161) Topscorer-Tab entfernt (doppelt zur Torjaeger-Seite, die auch
+    # die Admin-Zuordnung haelt) - keine scorers mehr hier.
     return render_template(
         "standings.html",
-        standings=standings,
-        source=source,
-        error_msg=error_msg,
+        live_rows=live_rows,
+        gesamt_rows=gesamt_rows,
+        gesamt_source=gesamt_source,
+        live_n=live_n,
+        default_tab="live" if live_n else "gesamt",
+        source="football-data.org (live)" if fd_rows else "lokal",
+        error_msg=fd_err if not fd_rows else None,
     )
 
 @main_bp.route("/torjaeger", endpoint="top_scorers")
@@ -606,6 +641,12 @@ def _matchday_winners():
         u = db.session.get(User, row.user_id)
         if u:
             top_winners.append({"user": u, "wins": row.wins, "total_pts": row.total_pts or 0})
+    # (160) Deterministische Reihenfolge: meiste Siege, bei Gleichstand die
+    # hoechsten Punkte aus den Sieges-Spieltagen, dann Name. Vorher wurde
+    # NUR nach Siegezahl sortiert - innerhalb gleicher Siegzahl entschied
+    # die DB-Beliebigkeit (35 Pkt auf Platz 1 vor 38 Pkt auf Platz 2).
+    top_winners.sort(key=lambda w: (-w["wins"], -w["total_pts"],
+                                    w["user"].username.lower()))
 
     return render_template(
         "matchday_winners.html",

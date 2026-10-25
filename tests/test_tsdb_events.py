@@ -204,3 +204,75 @@ def test_season_label_und_cron_hook_138():
     assert "TSDB-Events:" in src
     top = open("top_scorers.py", encoding="utf-8").read()
     assert "/json/123/" in top and "/json/3/" not in top
+
+
+# ---------------- (147) Cross-Source-Doppeltore (Füllkrug 2x doppelt) -----
+# Screenshot 24.10.: OLB meldete „N. Füllkrug" 7./25.', TSDB „Niclas Füllkrug"
+# 6./24.' -> Dedupe (gleiche Minute) griff nicht. Jetzt: Fuzzy nur
+# CROSS-SOURCE (±1 Min, gleicher Nachname, gleiche Flags).
+
+_OLB_F = {"kind": "gf", "min": 7, "team": "home", "player": "N. Füllkrug",
+          "assist": None, "penalty": True, "own_goal": False, "src": "olb"}
+_TSDB_F = {"kind": "gf", "min": 6, "team": "home", "player": "Niclas Füllkrug",
+           "assist": None, "penalty": True, "own_goal": False, "src": "tsdb"}
+
+
+def test_gf_conflict_nur_cross_source_147():
+    assert te.gf_conflict(_OLB_F, _TSDB_F) is True            # das Screenshot-Paar
+    assert te.gf_conflict(_TSDB_F, dict(_TSDB_F, min=7)) is False  # gleiche Quelle: nie
+    assert te.gf_conflict(_OLB_F, dict(_TSDB_F, player="M. Weiser")) is False
+    assert te.gf_conflict(_OLB_F, dict(_TSDB_F, min=10)) is False  # zu weit weg
+    assert te.gf_conflict(_OLB_F, dict(_TSDB_F, penalty=False)) is False
+    assert te.gf_conflict(dict(_OLB_F, team="away"), _TSDB_F) is False
+
+
+def test_collapse_heilt_screenshot_muster_147():
+    """4 Füllkrug-Zeilen (2x olb + 2x tsdb, +-1 Min versetzt) -> 2 Zeilen."""
+    rows = [
+        dict(_OLB_F, min=7), dict(_TSDB_F, min=6),
+        dict(_OLB_F, min=25), dict(_TSDB_F, min=24),
+    ]
+    kept, healed = te.collapse_duplicate_goals(rows)
+    gf = [r for r in kept if r["kind"] == "gf"]
+    assert healed is True and len(gf) == 2
+    assert {r["src"] for r in gf} == {"tsdb"}       # tsdb schlaegt olb
+    assert {r["min"] for r in gf} == {6, 24}
+
+
+def test_collapse_uebertraegt_vorlage_147():
+    olb_mit_assist_los = dict(_OLB_F)
+    tsdb_mit_vorlage = dict(_TSDB_F, assist="R. Schmid")
+    kept, healed = te.collapse_duplicate_goals([olb_mit_assist_los, tsdb_mit_vorlage])
+    gf = [r for r in kept if r["kind"] == "gf"]
+    assert healed is True and len(gf) == 1
+    assert gf[0]["assist"] == "R. Schmid"           # Vorlage nicht verloren
+
+
+def test_collapse_af_schlaegt_tsdb_147():
+    af = {"kind": "gf", "min": 7, "team": "home", "player": "Niclas Füllkrug",
+          "assist": "M. Weiser", "penalty": True, "own_goal": False, "src": "af"}
+    kept, healed = te.collapse_duplicate_goals([_TSDB_F, af])
+    gf = [r for r in kept if r["kind"] == "gf"]
+    assert healed is True and len(gf) == 1 and gf[0]["src"] == "af"
+    assert gf[0]["assist"] == "M. Weiser"
+
+
+def test_merge_skippt_cross_source_tor_147():
+    m = SimpleNamespace(events=json.dumps([dict(_OLB_F)]))
+    assert te._merge_rows(m, [_TSDB_F]) is False
+    rows = json.loads(m.events)
+    assert len([r for r in rows if r["kind"] == "gf"]) == 1
+
+
+def test_collapse_bei_merge_laeuft_selbstheilend_147():
+    """Verseuchtes Match-JSON (4 Zeilen) heilt beim naechsten Merge-Lauf."""
+    m = SimpleNamespace(events=json.dumps([
+        dict(_OLB_F, min=7), dict(_TSDB_F, min=6),
+        dict(_OLB_F, min=25), dict(_TSDB_F, min=24),
+        {"kind": "olb", "type": "card", "card": "gelb", "min": 38,
+         "team": "home", "player": "L. Reis", "src": "tsdb"},
+    ]))
+    assert te._merge_rows(m, []) is True             # nur Heilung, keine neuen
+    rows = json.loads(m.events)
+    assert len([r for r in rows if r["kind"] == "gf"]) == 2
+    assert len([r for r in rows if r.get("type") == "card"]) == 1  # Karte bleibt

@@ -188,12 +188,44 @@ def _tsdb_lookup(surname_key, initial, teams, rejected=None, olb_name=""):
     return None, True
 
 
+# (149) Bekannte Fremd-/Kurzschreibweisen der BL1-Vereine (TheSportsDB
+# liefert teils englische oder abgekartzelte Namen, die im Token-Match
+# leer ausgehen und bislang nur manuell zuordenbar waren).
+_TEAM_SYNONYMS = {
+    "munich": "münchen",
+    "moenchengladbach": "mönchengladbach",
+    "mgladbach": "mönchengladbach",
+    "gladbach": "mönchengladbach",
+    "bor": "borussia",
+    "cologne": "köln",
+    "koeln": "köln",
+}
+
+
+def _expanded_team_tokens(str_team):
+    """Token des Vereinsstrings + Synonym-Auflösung ('Bayern Munich' ergänzt
+    'münchen', 'Bor.' ergänzt 'borussia'). Punkte fallen weg."""
+    from minute_boost import _name_tokens
+    toks = set()
+    for tok in _name_tokens(str_team or ""):
+        base = tok.rstrip(".")
+        if base != tok:
+            toks.add(base)
+        syn = _TEAM_SYNONYMS.get(base)
+        if syn:
+            for s in _name_tokens(syn):
+                toks.add(s)
+        toks.add(tok)
+    return toks
+
+
 def _match_league_team(str_team, teams):
     """TheSportsDB-Vereinsstring einem DB-Team zuordnen - nur bei sicherem
     Token-Treffer (wie ueberall im Projekt): 'Freiburg' in 'SC Freiburg',
-    'Bayer 04 Leverkusen' <-> 'Bayer Leverkusen'. Kein Match -> None."""
-    from minute_boost import _name_tokens
-    toks = set(_name_tokens(str_team or ""))
+    'Bayer 04 Leverkusen' <-> 'Bayer Leverkusen'. Seit (149) mit Synonym-
+    Ebene fuer englische/kurze Schreibweisen ('Bayern Munich', 'Bor.
+    Mönchengladbach', 'Cologne'). Kein Match -> None."""
+    toks = _expanded_team_tokens(str_team)
     if not toks:
         return None
     low = str_team.strip().lower()

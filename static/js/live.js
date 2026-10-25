@@ -149,7 +149,7 @@
     lastSnapshot.matches[m.id] = { home: newHome, away: newAway, status: m.status };
   }
 
-  function rebuildLeaderboard(rows) {
+  function rebuildLeaderboard(rows, liveActive) {
     if (!lbList) return;
     // Vorher: alte Rang-Map
     const oldRanks = {};
@@ -196,15 +196,26 @@
       // Persistenter Vergleich zur Seitenbasis: wer stieg seit dem Oeffnen
       // wie viele Plaetze, wer bekam wie viele Punkte. Blinken nur bei
       // frischer Aenderung (letzter Poll), die Anzeige selbst bleibt stehen.
-      const base = baseLb[r.user_id] || { rank: r.rank, points: r.points };
+      // (157) Server-Basis ZUERST: apiBase ist in jeder Antwort frisch
+      // enthalten (= Stand ohne laufende Spiele) und damit die einzige
+      // Authoritaet. baseLb (data-base-* vom Laden) nur noch Fallback
+      // fuer alte APIs, sonst eigener Stand. Vorher konnte ein alter
+      // DOM/JS-Zustand die Basis ueberschreiben -> Pfeile blieben leer.
+      const apiBase = (r.base_rank != null && r.base_points != null)
+        ? { rank: r.base_rank, points: r.base_points } : null;
+      const base = apiBase || baseLb[r.user_id] || { rank: r.rank, points: r.points };
       baseLb[r.user_id] = base;
       const rankDelta = base.rank - r.rank;    // positiv: aufgestiegen
       const ptsDelta = r.points - base.points; // positiv: Punkte dazubekommen
 
+      // (155) Bei laufendem Spiel auch den Null-Zustand zeigen ("±0"):
+      // sonst ist nicht erkennbar, ob die Deltaberechnung lebt - ein 0:0
+      // bewegt niemanden und sah aus wie kaputt.
       const rankEl = row.querySelector('.rank-change');
       setPersistent(rankEl,
-        rankDelta > 0 ? `<span class="rank-up" title="Rang seit Seitenöffnung +${rankDelta}">▲ ${rankDelta}</span>`
-        : rankDelta < 0 ? `<span class="rank-down" title="Rang seit Seitenöffnung ${rankDelta}">▼ ${-rankDelta}</span>`
+        rankDelta > 0 ? `<span class="rank-up" title="Platzvorteil durch laufende Spiele: +${rankDelta}">▲ ${rankDelta}</span>`
+        : rankDelta < 0 ? `<span class="rank-down" title="Platzrückstand durch laufende Spiele: ${rankDelta}">▼ ${-rankDelta}</span>`
+        : liveActive ? '<span class="delta-zero" title="Basis: Stand ohne laufende Spiele - bisher keine Änderung">±0</span>'
         : '');
       if (rankBefore !== undefined && rankBefore !== r.rank) {
         flashElement(row, rankBefore > r.rank ? 'row-up' : 'row-down');
@@ -212,8 +223,9 @@
 
       const pointsEl = row.querySelector('.points-delta');
       setPersistent(pointsEl,
-        ptsDelta > 0 ? `<span class="points-up" title="Punkte seit Seitenöffnung">+${ptsDelta}</span>`
-        : ptsDelta < 0 ? `<span class="points-down" title="Punkte seit Seitenöffnung">${ptsDelta}</span>`
+        ptsDelta > 0 ? `<span class="points-up" title="Punkte durch laufende Spiele: +${ptsDelta}">+${ptsDelta}</span>`
+        : ptsDelta < 0 ? `<span class="points-down" title="Punkte durch laufende Spiele: ${ptsDelta}">${ptsDelta}</span>`
+        : liveActive ? '<span class="delta-zero" title="Basis: Stand ohne laufende Spiele - bisher keine Änderung">±0</span>'
         : '');
       if (pointsBefore !== undefined && pointsBefore !== r.points) {
         flashElement(row.querySelector('.points-num'), 'points-flash');
@@ -245,7 +257,7 @@
       // Matches updaten
       data.matches.forEach(updateMatch);
       // Leaderboard
-      rebuildLeaderboard(data.leaderboard);
+      rebuildLeaderboard(data.leaderboard, liveCount > 0);
       updateSyncTimer();
     } catch(e) {
       console.error('Live-Refresh fehlgeschlagen:', e);
@@ -268,7 +280,7 @@
     // Matches updaten
     data.matches.forEach(updateMatch);
     // Leaderboard
-    rebuildLeaderboard(data.leaderboard);
+    rebuildLeaderboard(data.leaderboard, liveCount > 0);
     updateSyncTimer();
   }
 
@@ -288,6 +300,9 @@
 
   function startPolling() {
     stopPolling();
+    // (153) Sofort der erste Abruf: frisch geladen (oder zurueckgekehrt)
+    // stand sonst bis zu 20s der Server-Render auf dem Schirm.
+    refresh();
     intervalId = setInterval(refresh, POLL);
   }
   
@@ -315,10 +330,40 @@
     });
   }
 
+  // (150) Ruecksprung aus dem Browser-Cache (Menue -> Zurueck) oder
+  // Tab-Wechsel: der Browser zeigt sonst bis zum naechsten Poll-Tick den
+  // alten Punktestand an. Deshalb sofort nachziehen: bfcache-Rueckkehr
+  // immer, Tab-Rueckkehr wenn der letzte Sync aelter als ein Intervall
+  // ist. Bei pausiertem Auto weiter manuell (Button) - bewusst respektiert.
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted && autoRefreshOn) {
+      lastSyncTs = 0;
+      refresh();
+    }
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && autoRefreshOn && Date.now() - lastSyncTs > POLL) {
+      refresh();
+    }
+  });
+
   // Initialer Live-Count
   const initialLive = document.querySelectorAll('.live-match-card.status-live').length;
   if (liveCountPill && initialLive > 0) {
     liveCountPill.textContent = `${initialLive} LIVE`;
+  }
+
+  // (154) Delta-Basis vorbelegen: der Server liefert pro Zeile den
+  // Final-Stand (ohne laufende Spiele) als data-base-*. Ohne Vorbelegung
+  // wurde der erste Live-Stand zur eigenen Basis und ▲/+ blieben leer.
+  if (lbList) {
+    lbList.querySelectorAll('.live-lb-row').forEach(row => {
+      const br = parseInt(row.dataset.baseRank, 10);
+      const bp = parseInt(row.dataset.basePoints, 10);
+      if (!Number.isNaN(br) && !Number.isNaN(bp) && !baseLb[row.dataset.userId]) {
+        baseLb[row.dataset.userId] = { rank: br, points: bp };
+      }
+    });
   }
 
   // Starte stabiles HTTP-Polling

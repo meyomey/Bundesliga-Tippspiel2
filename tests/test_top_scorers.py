@@ -412,3 +412,50 @@ def test_post_blocked_in_player_preview(app, client, admin_user, ts_env, league_
     assert "Spieleransicht ist aktiv" in r.get_data(as_text=True)
     with app.app_context():
         assert not (get_setting(top_scorers.ALIASES_KEY, "") or "")  # nichts geschrieben
+
+
+# ------------------ (149) Automatische Vereinszuordnung geschärft ---------
+
+def test_matcher_englische_und_kurze_namen_149(app, db):
+    """(149) 'Bayern Munich', 'Bor. Mönchengladbach', 'Cologne' treffen jetzt
+    automatisch die DB-Teams - ohne manuelle Aliasse."""
+    from top_scorers import _match_league_team
+    from models import Team
+    fcb = Team.query.filter_by(short_name="FCB").first() or Team(
+        name="FC Bayern München", short_name="FCB", logo="fcb.png")
+    bmg = Team.query.filter_by(short_name="BMG").first() or Team(
+        name="Borussia Mönchengladbach", short_name="BMG", logo="bmg.png")
+    koe = Team.query.filter_by(short_name="KOE").first() or Team(
+        name="1. FC Köln", short_name="KOE", logo="koe.png")
+    db.session.add_all([t for t in (fcb, bmg, koe) if t.id is None])
+    db.session.commit()
+    teams = [(t, _toks(t.name), t.short_name) for t in (fcb, bmg, koe)]
+    assert _match_league_team("Bayern Munich", teams) is fcb
+    assert _match_league_team("Bor. Mönchengladbach", teams) is bmg
+    assert _match_league_team("Borussia Moenchengladbach", teams) is bmg
+    assert _match_league_team("Cologne", teams) is koe
+    assert _match_league_team("1. FC Köln", teams) is koe
+    assert _match_league_team("Hertha BSC Berlin", teams) is None  # kein Rätseln
+
+
+def _toks(name):
+    from minute_boost import _name_tokens
+    return set(_name_tokens(name))
+
+
+def test_topscorer_zeigen_logo_und_vollen_vereinsnamen_149():
+    """(149) Beide Ansichten (Torjäger-Seite + Tab) zeigen das Vereinslogo
+    und den ausgeschriebenen Namen (mobil Kurzform)."""
+    tj = open("templates/torjaeger.html", encoding="utf-8").read()
+    assert "ts-club-logo" in tj
+    assert 'hidden-mobile">{{ e.team_name or e.team }}' in tj
+    # (161) nur EIN Logo pro Zeile: das grosse ts-photo ist weg (zeigte
+    # dasselbe Vereinslogo nochmal).
+    assert 'class="ts-photo"' not in tj
+    st = open("templates/standings.html", encoding="utf-8").read()
+    # (161) Topscorer-Tab entfernt; Torjaeger bleibt verlinkt.
+    assert 'data-tab="scorer"' not in st
+    assert "url_for('main.top_scorers')" in st
+    css = open("static/css/style.css", encoding="utf-8").read()
+    assert ".ts-club-logo" in css
+    assert ".ts-photo" not in css

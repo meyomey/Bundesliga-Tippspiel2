@@ -319,20 +319,40 @@ def compute_pot_summary():
 
 
 def recompute_matchday_winners():
-    """Berechnet die Spieltagsieger neu."""
+    """Berechnet die Spieltagsieger neu.
+
+    (159) Nur VOLLSTAENDIG abgeschlossene Spieltage erhalten Siegerzeilen:
+    waehrend ein Spieltag lief, konnten Teilstaende sonst einen
+    "Zwischenstand-Sieger" schreiben, der uebte (wenn ein spaeterer
+    Re-Compute per try/except still fehlschlug) bis zum Abend — genau die
+    Klasse von falschem "Spieltagsieger" im Dashboard. Alt-Zeilen von
+    inzwischen-Teil-Spieltagen werden beim Lauf mit entfernt (Heilung).
+    """
     season = get_setting("current_season", "2025/26")
 
     comp = get_active_competition()
-    finished_q = db.session.query(Match.matchday).filter(Match.status == "finished")
+    status_q = db.session.query(Match.matchday, Match.status)
     if comp:
-        finished_q = finished_q.filter(Match.competition_id == comp.id)
-    finished_mds = finished_q.distinct().all()
-    finished_md_set = {md for (md,) in finished_mds}
+        status_q = status_q.filter(Match.competition_id == comp.id)
+    pro_md = {}
+    for md, status in status_q.all():
+        pro_md.setdefault(md, []).append(status)
+    finished_md_set = {
+        md for md, staende in pro_md.items()
+        if staende and all(s == "finished" for s in staende)
+    }
 
     mdw_delete_q = MatchdayWinner.query.filter_by(season=season)
     if comp:
         mdw_delete_q = mdw_delete_q.filter(MatchdayWinner.competition_id == comp.id)
-    mdw_delete_q.delete()
+    # (159) Alles entfernen, was nicht zu einem vollstaendigen Spieltag
+    # gehoert (Heilung alter Teilstand-Zeilen) + saemtliche Zeilen wie
+    # bisher neu schreiben.
+    for row in mdw_delete_q.all():
+        if row.matchday not in finished_md_set:
+            db.session.delete(row)
+    mdw_delete_q.filter(MatchdayWinner.matchday.in_(finished_md_set)
+                        if finished_md_set else db.false()).delete(synchronize_session=False)
 
     for md in sorted(finished_md_set):
         results_q = db.session.query(

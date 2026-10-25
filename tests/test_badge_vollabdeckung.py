@@ -499,3 +499,81 @@ def test_seed_karriere_badges_nennen_die_saison():
     for code, name, desc, icon, color, ttype, thresh in DEFAULT_BADGES:
         if ttype in karriere_types:
             assert "Saison" in desc, code
+
+
+# ------------------ (159) Keine Siegerzeilen fuer Teilstaende -------------
+
+def test_recompute_unvollstaendiger_spieltag_keine_zeile_159(
+        db, competition, teams, user, user2):
+    """(159) Ein nur TEILWEISE fertiger Spieltag bekommt keine
+    Siegerzeile - sonst lief der "Zwischenstand-Sieger" tagelang falsch
+    im Dashboard (Nutzerfall 24.10.)."""
+    from scoring import recompute_matchday_winners
+    m1 = make_match(db, competition, teams, 1, 3, 1)
+    m2 = make_match(db, competition, teams, 1, 1, 1,
+                    home=teams[2], away=teams[3], status="scheduled")
+    tip(db, user, m1, 3, 1)   # exakt 4 -> "fuehrt" im Teilstand
+    tip(db, user2, m1, 2, 0)  # diff 3
+    recompute_matchday_winners()
+    assert MatchdayWinner.query.count() == 0
+
+
+def test_recompute_heilt_partielle_altzeile_159(db, competition, teams,
+                                                user, user2):
+    """(159) Eine existierende Alt-Zeile fuer einen (noch) unvollstaendigen
+    Spieltag wird beim Lauf ENTFERNT (Heilung), nicht weitergetragen."""
+    from scoring import recompute_matchday_winners
+    m1 = make_match(db, competition, teams, 1, 3, 1)
+    m2 = make_match(db, competition, teams, 1, 2, 2,
+                    home=teams[2], away=teams[3], status="live")
+    tip(db, user, m1, 3, 1)
+    tip(db, user2, m1, 1, 1)
+    db.session.add(MatchdayWinner(competition_id=competition.id, matchday=1,
+                                  user_id=user.id, points=4, exact_count=1,
+                                  is_shared=False, season="2026/27"))
+    db.session.commit()
+    assert MatchdayWinner.query.count() == 1   # der falsche Teilstand steht
+    recompute_matchday_winners()
+    assert MatchdayWinner.query.count() == 0   # ... und ist weg
+
+
+# ------------------ (160) Hall of Fame: deterministische Sortierung -------
+
+def test_hall_of_fame_gleichstand_nach_punkten_160(client, app, db,
+                                                   competition, user):
+    """(160) Gleiche Siegezahl -> mehr Punkte aus den Sieges-Spieltagen
+    zuerst; danach weniger Siege. Vorher entschied die DB-Beliebigkeit
+    (35 Pkt auf Platz 1 vor 38 Pkt auf Platz 2 - Nutzer-Meldung)."""
+    from models import User, MatchdayWinner
+
+    namen_punkte = [("aaa", 2, 35), ("bbb", 2, 38),
+                    ("ccc", 1, 18), ("ddd", 1, 17)]
+    ids = {}
+    for name, _, _ in namen_punkte:
+        u = User(username=name, email=f"{name}@example.com")
+        u.set_password("testpass123")
+        db.session.add(u)
+        db.session.flush()
+        ids[name] = u.id
+    for name, siege, punkte in namen_punkte:
+        for i in range(siege):
+            db.session.add(MatchdayWinner(
+                competition_id=competition.id, matchday=10 + i,
+                user_id=ids[name], points=punkte // siege,
+                exact_count=0, is_shared=False, season="2026/27"))
+    db.session.commit()
+
+    client.post("/auth/login", data={"email": user.email,
+                                     "password": "testpass123"},
+                follow_redirects=True)
+    with client.session_transaction() as sess:
+        sess["competition_code"] = competition.code
+    r = client.get("/spieltagsieger")
+    assert r.status_code == 200
+    html = r.data.decode("utf-8")
+    liste = html.split('md-top-list', 1)[1].split('</ol>', 1)[0]
+    pos = {name: liste.index(f"<strong>{name}</strong>")
+           for name, _, _ in namen_punkte}
+    assert pos["bbb"] < pos["aaa"]      # 2 Siege, 38 vor 35
+    assert pos["aaa"] < pos["ccc"]      # mehr Siege zuerst
+    assert pos["ccc"] < pos["ddd"]      # 1 Sieg, 18 vor 17
