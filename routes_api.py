@@ -285,9 +285,20 @@ def api_save_tip(match_id):
     if use_joker:
         conflict = locked_joker_conflict(current_user.id, match.matchday, match.competition_id, match_id)
         if conflict:
+            # (163) Konkret benennen, WO der Joker steckt - sonst rätselt
+            # der User, was gemeint ist.
+            spiel = ""
+            try:
+                _m = conflict.match
+                if _m is not None:
+                    spiel = (f" ({_m.home_team.short_name}-"
+                             f"{_m.away_team.short_name})")
+            except Exception:
+                spiel = ""
             return jsonify({
                 "ok": False,
-                "error": "Joker kann nicht mehr verschoben werden – das bisherige Joker-Spiel hat bereits begonnen oder ist beendet.",
+                "error": (f"Dein Joker steckt im bereits gestarteten Spiel"
+                          f"{spiel} – er kann nicht verschoben werden."),
             }), 400
         existing = Prediction.query.join(Match).filter(
             Prediction.user_id == current_user.id,

@@ -12,6 +12,11 @@ class Config:
     REQUIRE_SECURE_CONFIG = os.environ.get("REQUIRE_SECURE_CONFIG", "").lower() in ("1", "true", "yes")
     APP_ENV = os.environ.get("APP_ENV", os.environ.get("FLASK_ENV", "")).lower()
     WTF_CSRF_ENABLED = True
+    # (164) Kein Zeit-Limit auf dem CSRF-Token (Standard waere 1h): Tipp-
+    # seiten stehen beim Countdown STUNDENLANG offen, dann war der Token
+    # weg und das Speichern lief in "Unerwartete Antwort (400)". Der Token
+    # bleibt an die Session gebunden (Schutz wirkt weiter).
+    WTF_CSRF_TIME_LIMIT = None
 
     # Datenbank
     SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL") or \

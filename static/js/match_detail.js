@@ -67,6 +67,12 @@
     jokerToggle.addEventListener('change', () => {
       lbl.classList.toggle('is-on', jokerToggle.checked);
       markDirty();
+      // (164) klare Rueckmeldung, was der Joker-Klick bedeutet
+      if (statusEl) {
+        statusEl.innerHTML = jokerToggle.checked
+          ? '⚡ Joker aktiv – bitte speichern'
+          : '⚡ Joker entfernt – bitte speichern';
+      }
     });
   }
 
@@ -109,18 +115,35 @@
           joker: !!(jokerToggle && jokerToggle.checked),
         }),
       });
-      const data = await res.json();
-      if (data.ok) {
+      // (163)/(164) Antwort robust lesen: erst Text, dann JSON-Versuch.
+      // Fehler koennen als JSON (klare Meldung) oder als HTML kommen
+      // (Sitzung, CSRF-Token, 429, Serverfehler).
+      let data = null;
+      const txt = await res.text();
+      try { data = JSON.parse(txt); } catch (e) { /* nicht-JSON */ }
+      if (data && data.ok) {
         isDirty = false;
         if (statusEl) statusEl.innerHTML = '✅ Gespeichert';
         setTimeout(() => { if (statusEl && !isDirty) statusEl.innerHTML = ''; }, 2000);
         return true;
-      } else {
-        if (statusEl) statusEl.innerHTML = `❌ ${data.error || 'Fehler'}`;
-        return false;
       }
+      if (!statusEl) return false;
+      if (data && data.error) {
+        statusEl.innerHTML = `❌ ${data.error}`;
+      } else if (res.status === 400 && /csrf/i.test(txt)) {
+        statusEl.innerHTML = '🔒 Sicherheitstoken abgelaufen – bitte Seite neu laden';
+      } else if (res.status === 401 || res.status === 419) {
+        statusEl.innerHTML = '🔒 Sitzung abgelaufen – bitte neu einloggen';
+      } else if (res.status === 429) {
+        statusEl.innerHTML = '⏳ Zu viele Versuche – bitte kurz warten';
+      } else if (res.status >= 500) {
+        statusEl.innerHTML = `🛠 Serverfehler (${res.status}) – bitte später erneut versuchen`;
+      } else {
+        statusEl.innerHTML = `⚠️ Unerwartete Antwort (${res.status}) – bitte Seite neu laden`;
+      }
+      return false;
     } catch (e) {
-      if (statusEl) statusEl.innerHTML = '❌ Netzwerkfehler';
+      if (statusEl) statusEl.innerHTML = '📡 Keine Verbindung zum Server – bitte Internet prüfen';
       return false;
     } finally {
       isSaving = false;

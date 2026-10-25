@@ -36,6 +36,25 @@
 
 
 
+## [3.1.134] - 2026-10-25
+
+### ⚡ Joker-Speichern im Popup repariert — CSRF-Lücken geschlossen ((164) — Nutzer-Screenshots)
+
+- **Die echte Wurzel des (163)-Fehlerbilds:** der Nutzer testete in der **Popup-/Embed-Ansicht** des Match-Details — und die Embed-Shell (`base_embed.html`) hatte **nie ein CSRF-Token-Meta**. Jeder Speicherversuch aus dem Popup ging mit leerem `X-CSRFToken`-Header raus → **400 ohne JSON** → „Netzwerkfehler" (vor (163)) bzw. „Unerwartete Antwort (400)" (nach (163) — der Text stimmte, aber die Ursache war eine andere als gedacht).
+- **Fix ①:** Embed-Shell trägt jetzt das CSRF-Meta → **Speichern aus dem Popup funktioniert**.
+- **Fix ②:** `WTF_CSRF_TIME_LIMIT = None` — der Standard (1 h) ließ den Token auf lange offen stehenden Tippseiten (Countdown läuft Stunden!) ablaufen; der Token bleibt an die Session gebunden, der Schutz wirkt weiter.
+- **Fix ③:** die Formulare lesen Antworten jetzt Text-zuerst und erkennen CSRF-400-Antworten gezielt („🔒 Sicherheitstoken abgelaufen – bitte Seite neu laden"). Und der Joker-Klick meldet klar **„⚡ Joker aktiv – bitte speichern"** statt des generischen „Änderungen ungespeichert".
+- **+3 Tests** (Embed-CSRF-Meta + Text-erst-Muster, Token ohne Zeitlimit, Joker-Rückmeldung). Suite **838/838**, Hartgate 0, Node 3/3.
+
+## [3.1.133] - 2026-10-25
+
+### 💬 Joker-Ablehnung: klare Meldung statt „Netzwerkfehler" ((163) — Nutzer-Screenshot)
+
+- **Fehlerbild:** beim testweisen Versuch, einen zweiten Joker zu setzen, erschien nur „❌ Netzwerkfehler" — nicht aussagekräftig (Nutzer-Feedback). Der Server hatte zwar korrekt abgelehnt, aber jede Antwort, die kein JSON ist (Session abgelaufen, 429-Drosselung, Serverfehler), lief ins pauschale Netzwerk-Fallback.
+- **Fix Backend:** die Joker-Konflikt-Antwort benennt jetzt **konkret das Spiel**, in dem der Joker steckt — *„Dein Joker steckt im bereits gestarteten Spiel (TSG-B04) – er kann nicht verschoben werden."*
+- **Fix Frontend (Match-Detail UND Schnelltipp):** Antworten werden robust gelesen — Server-JSON-Fehler erscheinen als **echter Text**, und jeder Nicht-JSON-Fall bekommt seinen eigenen Hinweis: *🔒 Sitzung abgelaufen – bitte neu einloggen* · *⏳ Zu viele Versuche – bitte kurz warten* · *🛠 Serverfehler (500) – bitte später erneut* · *📡 Keine Verbindung – bitte Internet prüfen*. Bonus im Schnelltipp: der vorab angezeigte „Gespeichert"-Status wartet jetzt auf die Serverantwort („⏳ Speichern…").
+- **+2 Tests** (Konflikt-Antwort nennt das Spiel; beide Formulare haben die spezifischen Meldungen, Pauschalfloskeln verboten). Suite **835/835**, Hartgate 0, Node 3/3.
+
 ## [3.1.132] - 2026-10-25
 
 ### 🔐 Voll-Audit ((162)): Abhängigkeiten saniert, Heilung beweiskräftig gemacht, Regeln verifiziert

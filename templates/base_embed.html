@@ -5,6 +5,10 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  {# (164) CSRF-Token auch in der Embed-Shell: das Match-Detail-Speichern
+     aus dem Popup schickte sonst einen LEEREN X-CSRFToken-Header und
+     scheiterte immer mit 400 ("Unerwartete Antwort"). #}
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>{% block title %}Wulmstörper Tipprunde{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.min.css', v=asset_version) }}" />
   {% block extra_css %}{% endblock %}

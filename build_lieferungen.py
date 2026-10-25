@@ -324,6 +324,10 @@ GITHUB_UPLOAD_FILES = [
     # Liste (seit Anbeginn unveraendert, deshalb nie aufgefallen) - mit
     # der (160)-Aenderung nachreichen.
     "templates/matchday_winners.html",
+    # 25.10.2026 (163): static/js/quick_tip.js war NIE in der Liste
+    # (seit Anbeginn unveraendert) - mit den (163)-Fehlermeldungen
+    # nachreichen.
+    "static/js/quick_tip.js",
 ]
 
 # (83) Duplikat-Schutz: Reihenfolge bewahren, Doppelnaennungen automatisch

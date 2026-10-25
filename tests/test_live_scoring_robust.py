@@ -191,3 +191,87 @@ def test_remis_getippt_anderes_remis_ist_tendenz_2punkte_158():
     assert classify_prediction_live(SimpleNamespace(
         home_tip=2, away_tip=0, joker=False), SimpleNamespace(
         status="live", home_score=0, away_score=0)) == "wrong"
+
+
+def test_zweiter_joker_antwort_nennt_das_spiel_163(app, client, db, user,
+                                                  competition, teams):
+    """(163) Der Joker-Konflikt nennt konkret das Spiel, in dem der Joker
+    steckt - statt einer austauschbaren Floskel (Nutzer-Feedback
+    "Netzwerkfehler ist nicht aussagekraeftig")."""
+    from datetime import datetime, timedelta, timezone as tz
+    from models import Match, Prediction
+    from scoring import set_setting
+    set_setting("current_season", "2026/27")
+    now = datetime.now(tz.utc)
+    a = Match(competition_id=competition.id, matchday=8,
+              home_team_id=teams[0].id, away_team_id=teams[1].id,
+              kickoff=now - timedelta(hours=2), status="live",
+              home_score=1, away_score=0)
+    b = Match(competition_id=competition.id, matchday=8,
+              home_team_id=teams[2].id, away_team_id=teams[3].id,
+              kickoff=now + timedelta(hours=3), status="scheduled")
+    db.session.add_all([a, b]); db.session.flush()
+    db.session.add(Prediction(user_id=user.id, match_id=a.id,
+                              home_tip=1, away_tip=0, joker=True, points=0))
+    db.session.commit()
+
+    client.post("/auth/login", data={"email": user.email,
+                                     "password": "testpass123"},
+                follow_redirects=True)
+    with client.session_transaction() as sess:
+        sess["competition_code"] = competition.code
+    r = client.post(f"/api/tip/{b.id}",
+                    json={"home_tip": 2, "away_tip": 1, "joker": True})
+    assert r.status_code == 400
+    body = r.get_json()
+    assert body["ok"] is False
+    assert "steckt im bereits gestarteten Spiel" in body["error"]
+    assert f"{teams[0].short_name}-{teams[1].short_name}" in body["error"]
+
+
+def test_tip_fehler_anzeigen_sind_spezifisch_163():
+    """(163) Beide Tipp-Formulare zeigen die echte Ursache: Server-JSON-
+    Fehler als Text, Session/429/Serverfehler je eigener Hinweis statt
+    pauschalem "Netzwerkfehler"/"Fehler beim Speichern"."""
+    md = open("static/js/match_detail.js", encoding="utf-8").read()
+    assert "res.status === 429" in md
+    assert "res.status === 401" in md
+    assert "res.status >= 500" in md
+    assert "Sitzung abgelaufen" in md
+    assert "'❌ Netzwerkfehler'" not in md
+    qt = open("static/js/quick_tip.js", encoding="utf-8").read()
+    assert "res.status === 429" in qt
+    assert "data.error" in qt
+    assert "'Fehler beim Speichern'" not in qt
+
+
+def test_embed_shell_hat_csrf_meta_164():
+    """(164) Die Embed-Shell (Popup) traegt das csrf-token-Meta - sonst
+    schickt jedes Match-Detail-Speichern aus dem Popup einen LEEREN
+    CSRF-Header und scheitert immer mit 400 (Nutzer-Case 25.10.)."""
+    emb = open("templates/base_embed.html", encoding="utf-8").read()
+    assert 'name="csrf-token"' in emb
+    md = open("static/js/match_detail.js", encoding="utf-8").read()
+    # Text-erst-Lesen + CSRF-Erkennung statt pauschaler 400-Meldung
+    assert "await res.text()" in md
+    assert "/csrf/i" in md
+    assert "Sicherheitstoken abgelaufen" in md
+    qt = open("static/js/quick_tip.js", encoding="utf-8").read()
+    assert "await res.text()" in qt
+    assert "/csrf/i" in qt
+
+
+def test_csrf_token_ohne_zeitlimit_164(app):
+    """(164) Der CSRF-Token hat kein 1h-Zeitlimit mehr: Tippseiten stehen
+    beim Countdown stundenlang offen; der Standard-WTF_CSRF_TIME_LIMIT
+    (3600) liess das Speichern dann mit 400 sterben."""
+    from config import Config
+    assert Config.WTF_CSRF_TIME_LIMIT is None
+
+
+def test_joker_klick_erklaert_speichern_164():
+    """(164) Der Joker-Klick meldet konkret 'Joker aktiv – bitte
+    speichern' statt des generischen 'Änderungen ungespeichert'."""
+    md = open("static/js/match_detail.js", encoding="utf-8").read()
+    assert "Joker aktiv – bitte speichern" in md
+    assert "Joker entfernt – bitte speichern" in md

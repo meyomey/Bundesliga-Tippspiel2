@@ -117,7 +117,7 @@
 
     const card = document.querySelector(`.qt-match-card[data-match-id="${matchId}"]`);
     if (card) card.classList.add('save-flash');
-    setStatus('✅', 'Gespeichert', 'ok');
+    setStatus('⏳', 'Speichern...', '');
 
     try {
       const res = await fetch('/api/tip/' + matchId, {
@@ -132,16 +132,35 @@
           joker: !!useJoker,
         }),
       });
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error);
-      
-      setTimeout(() => {
+      // (163)/(164) Antwort robust lesen: erst Text, dann JSON-Versuch.
+      let data = null;
+      const txt = await res.text();
+      try { data = JSON.parse(txt); } catch (e) { /* nicht-JSON */ }
+
+      if (data && data.ok) {
+        setTimeout(() => {
+          card?.classList.remove('save-flash');
+          setStatus('💡', 'Auto-Save aktiv · Joker ×2', '');
+        }, 1000);
+      } else {
         card?.classList.remove('save-flash');
-        setStatus('💡', 'Auto-Save aktiv · Joker ×2', '');
-      }, 1000);
+        if (data && data.error) {
+          setStatus('⚠️', data.error, 'err');
+        } else if (res.status === 400 && /csrf/i.test(txt)) {
+          setStatus('🔒', 'Sicherheitstoken abgelaufen – bitte Seite neu laden', 'err');
+        } else if (res.status === 401 || res.status === 419) {
+          setStatus('🔒', 'Sitzung abgelaufen – bitte neu einloggen', 'err');
+        } else if (res.status === 429) {
+          setStatus('⏳', 'Zu viele Versuche – bitte kurz warten', 'err');
+        } else if (res.status >= 500) {
+          setStatus('🛠', `Serverfehler (${res.status}) – bitte später erneut versuchen`, 'err');
+        } else {
+          setStatus('⚠️', `Unerwartete Antwort (${res.status}) – bitte Seite neu laden`, 'err');
+        }
+      }
     } catch (e) {
       card?.classList.remove('save-flash');
-      setStatus('⚠️', 'Fehler beim Speichern', 'err');
+      setStatus('📡', 'Keine Verbindung zum Server – bitte Internet prüfen', 'err');
     }
   }
 
