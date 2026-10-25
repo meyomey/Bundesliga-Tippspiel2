@@ -345,14 +345,15 @@ def recompute_matchday_winners():
     mdw_delete_q = MatchdayWinner.query.filter_by(season=season)
     if comp:
         mdw_delete_q = mdw_delete_q.filter(MatchdayWinner.competition_id == comp.id)
-    # (159) Alles entfernen, was nicht zu einem vollstaendigen Spieltag
-    # gehoert (Heilung alter Teilstand-Zeilen) + saemtliche Zeilen wie
-    # bisher neu schreiben.
+    # (159) Alle bestehenden Zeilen verwerfen (inkl. Heilung alter
+    # Teilstand-Zeilen), dann vollstaendig neu schreiben.
+    # (162) Bewusst ORM-Delete statt Bulk-Delete mit
+    # synchronize_session=False: der Bulk-Pfad liess die geladenen Objekte
+    # in der Identity-Map zurueck - Stale-Zeilen "ueberlebten" so im
+    # selben Prozess (SAWarning + Heilung wirkte nicht, Audit 25.10.).
     for row in mdw_delete_q.all():
-        if row.matchday not in finished_md_set:
-            db.session.delete(row)
-    mdw_delete_q.filter(MatchdayWinner.matchday.in_(finished_md_set)
-                        if finished_md_set else db.false()).delete(synchronize_session=False)
+        db.session.delete(row)
+    db.session.flush()
 
     for md in sorted(finished_md_set):
         results_q = db.session.query(

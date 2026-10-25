@@ -57,7 +57,13 @@ def sieger_text(matchday, competition_id=None):
         recompute_matchday_winners()
     except Exception:
         pass
-    winners = q.all()
+    # (162) bevorzugt Zeilen der AKTUELLEN Saison (Archive anderer Saisons
+    # duerfen die Ansage nicht verfaelschen); ohne Treffer (Legacy-Bestand
+    # ohne Season-Setting) gilt der ungefilterte Stand weiter.
+    from scoring import get_setting as _gs
+    saison = _gs("current_season", "")
+    gewaehlt = q.filter_by(season=saison).all() if saison else []
+    winners = gewaehlt or q.all()
     if not winners:
         return None
 

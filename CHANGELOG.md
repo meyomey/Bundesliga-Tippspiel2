@@ -36,6 +36,18 @@
 
 
 
+## [3.1.132] - 2026-10-25
+
+### 🔐 Voll-Audit ((162)): Abhängigkeiten saniert, Heilung beweiskräftig gemacht, Regeln verifiziert
+
+**Vollumfängliches Audit (25.10.) — Ergebnisse und Sofortmaßnahmen:**
+
+- **Abhängigkeiten (pip-audit):** 37 Advisories gegen **Pillow 12.3.0** → **Pillow 13.0.0** (Fix-Version), `pip-audit` jetzt wieder sauber („No known vulnerabilities"). Suite 833/833 unter Pillow 13 grün; requirements.txt gepinnt; **05er-Vendor neu gebaut** (3017 Dateien) — damit wird der sonst **rote CI-Job „Security Audit"** wieder grün (pip-audit ist hartes Gate).
+- **Spieltagsieger-Heilung beweiskräftig:** der (159)-Heilungstest lief nur durch glückliche Umstände (Season-Setting fehlte im Fixture, Competition-Pin griff wegen modul-top-level-Import nicht). Jetzt: Fixture realistisch (Season gesetzt, beide Import-Bindungen gepinnt) — der Test beweist die Heilung wirklich. Dazu in `recompute` bewusst **ORM-Delete statt Bulk-Delete** (`synchronize_session=False` ließ geladene Objekte in der Identity-Map → Stale-Zeilen „überlebten" im selben Prozess + SAWarning). Und `sieger_text` bevorzugt Zeilen der **aktuellen Saison** (Archive verfälschen Ansagen nicht mehr).
+- **Regeln verifiziert:** „Tippschluss" nur in Kommentaren + als CSS-Klassenname (= erlaubte Style-Anker), Sparklines nur in Entfernungs-Kommentaren, kein `\${` in standings.html, Workflow-YAML parse-t, Versions-Marker im Footer aktiv, requirements vollständig gepinnt, keine Müll-Dateien in den Zips, alte 05er-Zips entfernt.
+- **Parität:** lokal = GitHub main (6cf8f08) = Produktion (healthz 3.1.131 → mit diesem Release 3.1.132). flake8-Gate 0; Voll-Report ~900 Stil-Befunde (F401/W293/…) = rein informativ, CI-gatet nur E9/F63/F7/F82.
+- **Empfehlungen (offen):** Dependabot #33 (Pillow) ist damit überholt — schließen; #32 (redis 8.x, Major) nur nach Testrunde; #30/#29/#31 nach Grün-Merge wie gehabt.
+
 ## [3.1.131] - 2026-10-25
 
 ### 🥇 Torjäger/Topscorer: Doppelansicht aufgelöst — eine Seite, ein Logo, Admin-Zuordnung bleibt ((161) — Nutzerwunsch)

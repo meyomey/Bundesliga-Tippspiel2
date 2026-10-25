@@ -14,6 +14,21 @@ from extensions import db
 from models import Match, MatchdayWinner, Prediction, User
 
 
+@pytest.fixture(autouse=True)
+def _pin_comp(monkeypatch, competition):
+    """(162) wie in Produktion: der aktive Wettbewerb ist gepinnt — sonst
+    sieht recompute_matchday_winners hier den BL1-Conftest-Bestand statt
+    der Test-Comp und die (159)-Heilung "tut nichts" (Audit-Befund).
+    WICHTIG: scoring importiert den Namen modul-top-level, deshalb BOTH
+    Bindungen patchen (competition_helpers UND scoring)."""
+    import competition_helpers
+    import scoring
+    monkeypatch.setattr(competition_helpers, "get_active_competition",
+                        lambda: competition)
+    monkeypatch.setattr(scoring, "get_active_competition",
+                        lambda: competition)
+
+
 def _fertig(db, competition, teams, user):
     """Spieltag 5 komplett (2 Spiele), Spieltag 6 laeuft noch."""
     for hs, as_ in ((2, 1), (0, 0)):
@@ -71,6 +86,10 @@ def lage(db, competition, teams, user):
     db.session.add(MatchdayWinner(competition_id=competition.id, matchday=5,
                                   user_id=u2.id, points=13, exact_count=0,
                                   is_shared=False, season="2026/27"))
+    # (162) wie in Produktion: aktuelle Saison ist gesetzt (sonst targetiert
+    # die (159)-Heilung die falsche Season und Stale-Zeilen ueberleben).
+    from scoring import set_setting
+    set_setting("current_season", "2026/27")
     # user mit WhatsApp, u2 ohne, u3 als Bot mit WA-Konfig
     user.whatsapp_phone = "+491701111111"
     user.whatsapp_apikey = "k1"
