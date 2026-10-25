@@ -24,20 +24,20 @@ reportlab==5.0.1
 
 # Optional - nur fuer Standalone-Server (NICHT fuer Plesk/Netcup):
 gunicorn==23.0.0
-APScheduler==3.10.4
+APScheduler==3.11.3
 
 # Optional - fuer Web Push Benachrichtigungen (haeufig nicht auf Shared Hosting verfuegbar):
 # pywebpush==2.0.0
 
 # Optional - fuer PostgreSQL/MySQL statt SQLite:
-psycopg2-binary==2.9.12
+psycopg2-binary==2.9.13
 # PyMySQL==1.1.1
 
 # =====================================================
 # Neue Features: Redis, Testing, KI-Tippgegner
 # =====================================================
 redis==5.0.8
-flask-caching==2.3.0
+flask-caching==2.5.1
 
 # Testing
 pytest==9.0.3
