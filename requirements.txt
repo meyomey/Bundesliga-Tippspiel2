@@ -13,7 +13,7 @@ Flask-SQLAlchemy==3.1.1
 Flask-Login==0.6.3
 Flask-WTF==1.2.1
 Flask-Mail==0.10.0
-WTForms==3.1.2
+WTForms==3.3.1
 email-validator==2.3.0
 Werkzeug==3.1.9
 requests==2.33.0
