@@ -20,7 +20,7 @@ requests==2.33.0
 python-dotenv==1.2.2
 itsdangerous==2.2.0
 Pillow==13.0.0
-reportlab==5.0.1
+reportlab==5.1.0
 
 # Optional - nur fuer Standalone-Server (NICHT fuer Plesk/Netcup):
 gunicorn==23.0.0
