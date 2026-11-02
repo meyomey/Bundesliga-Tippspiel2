@@ -43,11 +43,19 @@ def test_theme_js_engine_und_app_delegate():
 
 
 def test_ci_laeuft_theme_test_und_neue_deps():
-    """CI: Theme-Node-Test eingebunden; neue Test-Abhaengigkeiten gepinnt."""
+    """CI: Theme-Node-Test eingebunden; neue Test-Abhaengigkeiten gepinnt.
+
+    (174) Nach Dependabot-Desaster: der Guard prueft das PIN-FORMAT
+    (``paket==X.Y.Z``), nicht mehr die exakte Version - sonst reisst
+    jeder Dependabot-Bump die komplette CI mit (Fall #34: alle 6
+    Python-Jobs rot wegen hartcodiertem 2.3.1)."""
+    import re
     ci = open('.github/workflows/tests.yml', encoding='utf-8').read()
     assert 'node tests/js/theme_test.js' in ci
     req = open('requirements.txt', encoding='utf-8').read()
-    assert 'pytest-timeout==2.3.1' in req
-    assert 'csscompressor==0.9.5' in req
+    assert re.search(r'^pytest-timeout==\d+\.\d+\.\d+$', req, re.M), \
+        "pytest-timeout muss gepinnt bleiben (==X.Y.Z)"
+    assert re.search(r'^csscompressor==\d+\.\d+\.\d+$', req, re.M), \
+        "csscompressor muss gepinnt bleiben (==X.Y.Z)"
     ini = open('pytest.ini', encoding='utf-8').read()
     assert 'timeout = 120' in ini

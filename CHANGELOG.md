@@ -36,6 +36,14 @@
 
 
 
+## [3.1.143] - 2026-11-02
+
+### 🧯 Dependabot-#34 aufgelöst: Guard-Test enthärtet + pytest-timeout 2.4.0 ((174))
+
+- **Wurzel des CI-Desasters (alle 6 Python-Jobs rot):** der Guard `test_ci_laeuft_theme_test_und_neue_deps` prüfte das **exakte Pin** `pytest-timeout==2.3.1` in der requirements.txt — jeder Dependabot-Bump riss also die komplette CI mit. Lokal unsichtbar, weil der Test die **Datei** liest, nicht die installierte Version (deshalb war mein „exakter CI-Lauf" grün: Datei unverändert).
+- **Fix in zwei Teilen:** ① requirements.txt auf **pytest-timeout==2.4.0** übernommen (lokal in der vollen Suite incl. Coverage/Timeout verifiziert: 858/858). ② Guard prüft jetzt das **Pin-Format** (`paket==X.Y.Z` per Regex) statt der exakten Version — künftige Dependabot-Bumps reißen die CI nicht mehr mit; „gepinnt bleibt gepinnt" bleibt geprüft.
+- **Ablöse für #34:** nach dem Upload dieses Releases ist das Requirement auf main erfüllt — Dependabot schließt den PR von selbst. Suite **858/858** (exakter CI-Modus), Hartgate 0, Node 3/3.
+
 ## [3.1.142] - 2026-11-02
 
 ### 📌 Admin-Bereich: „Website-Einbettung“ — Snippets jetzt in der App ((172) — Nutzer-Frage „Finde ich das im Adminbereich?")
