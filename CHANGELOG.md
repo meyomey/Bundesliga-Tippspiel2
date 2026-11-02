@@ -36,6 +36,76 @@
 
 
 
+## [3.1.142] - 2026-11-02
+
+### 📌 Admin-Bereich: „Website-Einbettung“ — Snippets jetzt in der App ((172) — Nutzer-Frage „Finde ich das im Adminbereich?")
+
+- **Neu:** Admin-Seite **`/admin/einbetten`** mit allen Copy-Paste-Blöcken (zuvor nur als externe Datei): Theme-Tabelle (hell/dunkel/auto), **Variante A** Live-iFrame (mit Auto-Höhen-Empfänger-Skript), **B1** statisch dunkel, **B2** statisch hell — jeweils mit **📋 Kopieren**-Knopf (dasselbe Inline-Muster wie der Gruppentext-Block).
+- **Auffindbarkeit:** neue Karte **„📌 Website-Einbettung“** auf **Admin → API-Sync** verlinkt dorthin.
+- Nur Admin (`admin_required`, 403 für andere) — Inhalt sind ohnehin öffentliche URLs/Snippets.
+- **+3 Tests** (Seite + Marker, 403 für Nicht-Admins, Sync-Karte verlinkt). Suite **858/858**, Hartgate 0, Node 3/3. Neue Dateien in GITHUB_UPLOAD_FILES nachgetragen (Falle (160)/(169)).
+
+## [3.1.141] - 2026-11-02
+
+### 📏 Embed-Widget: automatische iFrame-Höhe ((171) — Nutzer-Feedback „man muss ein bisschen scrollen")
+
+- **Problem:** der iFrame im Snippet hatte eine feste Höhe (470 px) — das Widget wurde unten abgeschnitten (CTA halb sichtbar, Scrollbar im Frame).
+- **Lösung:** das Widget **misst sich selbst** (`load`/`resize`/`ResizeObserver`) und meldet die nötige Höhe per **postMessage** an das übergeordnete Fenster; das aktualisierte Snippet (Variante A) hört zu (mit Origin-Check auf `tipp.wulmstorf.net`) und stellt die iFrame-Höhe exakt ein. Fallback-Höhen im Snippet großzügiger (520/720 px) — ohne Empfänger-Skript scrollt der Frame wie bisher, nichts wird abgeschnitten.
+- **+1 Test** (postMessage-Skript aktiv in allen Themes). Suite **855/855**, Hartgate 0, Node 3/3.
+
+## [3.1.140] - 2026-11-02
+
+### 🌗 Embed-Widget: Hell/Dunkel-Schalter ((170) — Nutzer-Frage „Snippet auf Hell und Dunkel umstellbar?")
+
+- **Neu:** `/embed/podium` versteht **`?theme=hell`**, **`?theme=dunkel`** (Default) und **`?theme=auto`** (folgt dem System des Besuchers per `matchMedia`).
+- **Keine zweiten Farbwerte:** `hell` setzt `data-theme="light"` am `<html>` und nutzt damit den **vorhandenen Light-Block** aus `style.css` — derselbe Schalter wie in der App. Unsinnige theme-Werte fallen still auf dunkel zurück.
+- **Snippet-Anleitung aktualisiert** (`podium_einbetten.html`): Variante A zeigt jetzt den hellen iFrame (passend zur weißen Vereinsseite) plus Theme-Tabelle; Variante B gibt es als **B1 dunkel / B2 hell** mit Vorschauen für beide.
+- **+4 Tests** (Default dunkel, hell, auto, unbekannter Wert → dunkel). Suite **854/854**, Hartgate 0, Node 3/3.
+
+## [3.1.139] - 2026-11-02
+
+### 🏆 Embed-Widget: Rangliste auf der Vereins-Website ((169) — Nutzer-Wunsch „responsive einbetten")
+
+- **Neu:** öffentliche Route **`/embed/podium`** — das Top-3-Podium („🏆 Wer führt die Liga an?") als eigenständiges, responsives Widget für iframes auf fremden Seiten (z. B. Wulmstorf-Net). Mit CTA-Link zurück zur Tipprunde und Leer-Hinweis, wenn noch keine Punkte vergangen sind.
+- **Kein Parallel-System:** Landingpage und Embed nutzen jetzt dasselbe Partial `_lp_podium.html` (aus der Landingpage extrahiert) — dieselben `lp-podium*`-Style-Anker, dieselbe Datenquelle `get_leaderboard()[:3]`. Auf schmalen Breiten stapeln sich die Karten kompakt (CSS-only Restyle im Embed).
+- **iframe-Freigabe präzise:** `app.py` nimmt `/embed/` aus `X-Frame-Options: SAMEORIGIN` heraus (stattdessen CSP `frame-ancestors *`) und stellt `no-store` — alle anderen Pfade bleiben geschützt. Öffentliche Datenlage identisch zur Landingpage (die das Podium ohnehin jedem zeigt).
+- **+4 Tests** (öffentlich + Podium gerendert, Leer-Fall harmlos, iframe-Header & SAMEORIGIN-Schutz anderswo intakt, Landing rendert weiter das geteilte Partial). Suite **850/850**, Hartgate 0, Node 3/3.
+- Copy-Paste-Snippets (live + statisch) liefert die Anleitung `podium_einbetten.html` im Lieferpaket-Dialog.
+
+## [3.1.138] - 2026-11-02
+
+### ⚖️ Backtest: 50/50-Blend — verbinden Trefferquote UND Punkte? ((168) — Nutzer: „ja mach das")
+
+- **Idee:** die (167)-Analyse zeigte das Dilemma — der Anker gewinnt Trefferquote/Brier, die blinde Basis gewinnt EP (kühne Exakt-Tipps). Der Backtest rechnet jetzt eine **dritte Variante** mit: Wahrscheinlichkeiten aus blind + Anker **je 50 % gemischt**, daraus Tipp, 1X2-Prognose und Brier wie üblich.
+- **Wo zu sehen:** in der Anker-Tabelle steht je Zeile (und in der Σ-Gesamt-Zeile) ein **drittes Segment** „→ 50/50"; die Kopf-Zeile ergänzt „⚖️ 50/50-Blend: EP · 1X2 · Brier". Hinweis unten erklärt: rein experimentelle Backtest-Messung — der **Live-Tipp bleibt** bei der Anker-Pipeline.
+- **Technik:** arithmetisches Mittel der beiden Prognose-Matrizen (dieselbe ρ-Korrektur, bleibt gültige Verteilung); Tipp/1X2/Brier aus der Misch-Verteilung. Guards im JS, falls alte Backends ohne Blend-Felder antworten.
+- **+1 Test** (Blend-Gesamt + je-Spieltag-Felder + JS-Verdrahtung). Suite **846/846**, Hartgate 0, Node 3/3.
+
+## [3.1.137] - 2026-11-02
+
+### 📊 Optimizer-Backtest: Gesamt-Zeile + Lesart-Hilfe ((167) — Nutzer-Einordnung „letzte beiden Spieltage sehr schlecht")
+
+- **Anlass:** die Anker-Backtest-Tabelle zeigte für ST 7/8 schwache Werte (33 % 1X2) — ohne Kontext, wie einzuordnen das ist.
+- **Neu in der Tabelle:** eine **Σ-Gesamt-Zeile** (EP, 1X2, Brier über alle bewerteten Spiele — fett unter den Spieltagen) und eine **Lesart-Hilfe** unter der Tabelle: 9 Spiele je Zeile bedeuten, dass **1 Spiel ±0,11 EP/Spiel bzw. ±11 %-Punkte 1X2** ausmacht; Einzel-Spieltage schwanken entsprechend stark. Dazu die ehrliche Systematik: Der Anker verbessert typischerweise **Trefferquote und Brier (Kalibrierung)**, kann aber **EP kosten** — die 4/3/2-Regel honoriert kühne Exakt-Tipps, der Anker zieht die Tipps Richtung Markt-Mainstream (mehr sichere Tendenz, weniger Exakt-Lotto).
+- **+1 Test** (Gesamt-Zeile konsistent mit Header-Kennzahlen, Lesart im Note). Suite **845/845**, Hartgate 0, Node 3/3. (README-Badge mitgezogen, hing noch auf 842.)
+
+## [3.1.136] - 2026-10-27
+
+### 📣 Gruppentext-Erinnerung: Archiv-Schuld nervt nicht mehr ((166) — Nutzer-Screenshot „Hinweis erscheint weiterhin")
+
+- **Was passierte:** der Admin markierte den Gruppentext (Flash „Spieltag 4 als geteilt markiert") — doch der Hinweis sprang zum **nächsten älteren** Spieltag weiter. Ursache: die Erinnerung war über **jeden** unmarkierten Spieltag definiert — und da die Marker erst mit dem heutigen Feature existieren, war die komplette Saison-Historie „Schuld". Markieren wäre ein Sisyphos-Amt geworden.
+- **Korrektur der Semantik:** offen ist nur der **höchste abgeschlossene Spieltag, der neuer ist als die letzte Markierung**. Ältere unmarkierte Tage (Archiv) erscheinen nie; frisch eingeführt nagt die Erinnerung nur den neuesten Tag; nach dem Markieren ist Ruhe, bis der **nächste** Spieltag abschließt — dann startet der Kreis neu.
+- **+2 Tests** (Historie nervt nicht; neuer Spieltag startet den Kreis neu). Suite **844/844**, Hartgate 0, Node 3/3.
+
+## [3.1.135] - 2026-10-26
+
+### 📣 Admin vergisst den WhatsApp-Gruppentext nie wieder ((165) — Nutzerwunsch)
+
+- **Ausgangslage:** dieprivate Automatik versendet die Sieger-Ansage längst an alle Mitglieder — aber der **Gruppen-Post** bleibt manuell (CallMeBot kann keine Gruppen), und der Text versteckte sich unten auf der Admin-Sync-Seite. Ergebnis: vergessen (heute passiert).
+- **Dreifache Absicherung:** ① **Dashboard-Banner für Admins** — „🏆 Gruppentext für Spieltag N noch nicht geteilt" mit „📋 Text kopieren" (direkt zur Sync-Seite) und **„✅ Als geteilt markieren"** direkt im Banner. ② Der Sync-Seiten-Karte zeigt den Status und denselben Markier-Knopf. ③ **Private WhatsApp-Erinnerung an Admins** über den Cron — höchstens **1× pro Tag**, solange nicht markiert; nach dem Markieren schweigt alles.
+- Der Merker (`md_grouptext_geteilt_<comp>_<md>`) ist pro Spieltag — neue Spieltage starten den Kreis neu.
+- **+4 Tests** (Lifecycle, 1×/Tag-Erinnerung + Schluss nach Markierung, Cron-Hook-Integration, Banner nur für Admins und nur bis markiert). Suite **842/842**, Hartgate 0, Node 3/3.
+
 ## [3.1.134] - 2026-10-25
 
 ### ⚡ Joker-Speichern im Popup repariert — CSRF-Lücken geschlossen ((164) — Nutzer-Screenshots)

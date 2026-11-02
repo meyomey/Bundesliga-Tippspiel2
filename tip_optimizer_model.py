@@ -577,7 +577,8 @@ def backtest_odds_anchored(matches, snapshots, grid=0.05):
             mds.append((m.matchday, [m]))
 
     tot = {"n": 0, "a_ep": 0.0, "a_hit": 0, "a_pge2": 0, "a_brier": 0.0,
-           "b_ep": 0.0, "b_hit": 0, "b_brier": 0.0}
+           "b_ep": 0.0, "b_hit": 0, "b_brier": 0.0,
+           "x_ep": 0.0, "x_hit": 0, "x_brier": 0.0}
     per_md = []
     preceding = []
     for md, group in mds:
@@ -594,7 +595,8 @@ def backtest_odds_anchored(matches, snapshots, grid=0.05):
             continue
         r0, rD, r1 = model["rho"]
         row = {"md": md, "n": 0, "a_ep": 0.0, "a_hit": 0, "a_pge2": 0,
-               "a_brier": 0.0, "b_ep": 0.0, "b_hit": 0, "b_brier": 0.0}
+               "a_brier": 0.0, "b_ep": 0.0, "b_hit": 0, "b_brier": 0.0,
+               "x_ep": 0.0, "x_hit": 0, "x_brier": 0.0}
         for m in snap_matches:
             h, a = m.home_score, m.away_score
             outcome = 1 if h > a else ("X" if h == a else 2)
@@ -617,6 +619,24 @@ def backtest_odds_anchored(matches, snapshots, grid=0.05):
             pts_a, pts_b = tip_points(h, a, th, ta), tip_points(h, a, bth, bta)
             pred_a = max(((st["p1"], 1), (st["px"], "X"), (st["p2"], 2)), key=lambda t: t[0])[1]
             pred_b = max(((bst["p1"], 1), (bst["px"], "X"), (bst["p2"], 2)), key=lambda t: t[0])[1]
+            # --- Blend (168): Wahrscheinlichkeiten blind+Anker je 50 % ---
+            # Beide Matrizen teilen dieselbe rho-Korrektur; das arithmetische
+            # Mittel bleibt eine gueltige Verteilung. Tipp/1X2/Brier aus der
+            # Misch-Verteilung - mischt "kuehne Basis" und "Markt-Kalibrierung".
+            Mx = [[0.5 * (M[i][j] + Mb[i][j]) for j in range(len(M))]
+                  for i in range(len(M))]
+            (bxh, bxa), xep = _argmax_tip(ep_table(Mx))
+            p1x = pxx = p2x = 0.0
+            for i in range(len(Mx)):
+                for j in range(len(Mx)):
+                    if i > j:
+                        p1x += Mx[i][j]
+                    elif i == j:
+                        pxx += Mx[i][j]
+                    else:
+                        p2x += Mx[i][j]
+            pred_x = max(((p1x, 1), (pxx, "X"), (p2x, 2)), key=lambda t: t[0])[1]
+            pts_x = tip_points(h, a, bxh, bxa)
             row["n"] += 1
             row["a_ep"] += ep
             row["a_hit"] += 1 if pred_a == outcome else 0
@@ -625,10 +645,14 @@ def backtest_odds_anchored(matches, snapshots, grid=0.05):
             row["b_ep"] += bep
             row["b_hit"] += 1 if pred_b == outcome else 0
             row["b_brier"] += _brier(bst["p1"], bst["px"], bst["p2"], outcome)
+            row["x_ep"] += xep
+            row["x_hit"] += 1 if pred_x == outcome else 0
+            row["x_brier"] += _brier(p1x, pxx, p2x, outcome)
             preceding.append(m)
         if row["n"] == 0:
             continue
-        for k in ("a_ep", "a_hit", "a_pge2", "a_brier", "b_ep", "b_hit", "b_brier"):
+        for k in ("a_ep", "a_hit", "a_pge2", "a_brier", "b_ep", "b_hit", "b_brier",
+                  "x_ep", "x_hit", "x_brier"):
             tot[k] += row[k]
         tot["n"] += row["n"]
         per_md.append({
@@ -640,6 +664,9 @@ def backtest_odds_anchored(matches, snapshots, grid=0.05):
             "blind_ep": round(row["b_ep"] / row["n"], 2),
             "blind_hit": round(row["b_hit"] / row["n"], 3),
             "blind_brier": round(row["b_brier"] / row["n"], 4),
+            "blend_ep": round(row["x_ep"] / row["n"], 2),
+            "blend_hit": round(row["x_hit"] / row["n"], 3),
+            "blend_brier": round(row["x_brier"] / row["n"], 4),
         })
 
     if tot["n"] == 0:
@@ -656,11 +683,35 @@ def backtest_odds_anchored(matches, snapshots, grid=0.05):
         "blind_ep_per_match": round(tot["b_ep"] / n, 3),
         "blind_hit1x2": round(tot["b_hit"] / n, 3),
         "blind_brier": round(tot["b_brier"] / n, 4),
+        "blend": {
+            "n": n,
+            "ep": round(tot["x_ep"] / n, 3),
+            "hit": round(tot["x_hit"] / n, 3),
+            "brier": round(tot["x_brier"] / n, 4),
+        },
         "per_md": per_md,
+        "gesamt": {
+            "n": n,
+            "anchored_ep": round(tot["a_ep"] / n, 2),
+            "anchored_hit": round(tot["a_hit"] / n, 3),
+            "anchored_brier": round(tot["a_brier"] / n, 4),
+            "blind_ep": round(tot["b_ep"] / n, 2),
+            "blind_hit": round(tot["b_hit"] / n, 3),
+            "blind_brier": round(tot["b_brier"] / n, 4),
+        },
         "note": ("Mit Odds-Anker: Anker = erster gespeicherter Quoten-Stand je Spiel "
                  "(„Quoten online laden“); bewertet werden nur Spiele mit Snapshot, "
                  "daneben dieselben Spiele blind (Modell-Grundlage). Erhöht nichts — "
-                 "reine Messung der Live-Pipeline."),
+                 "reine Messung der Live-Pipeline. "
+                 "Lesart: 9 Spiele je Zeile — 1 Spiel entspricht ±0,11 EP/Spiel bzw. "
+                 "±11 %-Punkten 1X2, Einzel-Spieltage schwanken daher stark; die "
+                 "Gesamt-Zeile ist aussagekräftiger. Der Anker verbessert typischerweise "
+                 "Trefferquote und Brier (Kalibrierung), kann aber EP kosten: die "
+                 "4/3/2-Regel honoriert kühne Exakt-Tipps, der Anker zieht die Tipps "
+                 " Richtung Markt-Mainstream (mehr Tendenz, weniger Exakt-Lotto). "
+                 "⚖️ 50/50-Blend: Wahrscheinlichkeiten aus blind + Anker je zur Hälfte "
+                 "gemischt — rein experimentell (nur Backtest-Messung); der Live-Tipp "
+                 "nutzt weiterhin die Anker-Pipeline."),
     }
 
 

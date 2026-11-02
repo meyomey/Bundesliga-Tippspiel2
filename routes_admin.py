@@ -147,8 +147,53 @@ def sync():
                 gruppen_text = sieger_text(gruppen_md, _comp.id)
     except Exception:
         pass
+    gruppen_geteilt = False
+    try:
+        from matchday_announce import _grouptext_marke
+        from scoring import get_setting
+        from notification_center import _truthy
+        _comp = get_active_competition()
+        if _comp and gruppen_md:
+            gruppen_geteilt = _truthy(get_setting(
+                _grouptext_marke(_comp.id, gruppen_md), False), False)
+    except Exception:
+        pass
     return render_template("admin/sync.html", diag=get_sync_diagnostics(),
-                           gruppen_text=gruppen_text, gruppen_md=gruppen_md)
+                           gruppen_text=gruppen_text, gruppen_md=gruppen_md,
+                           gruppen_geteilt=gruppen_geteilt)
+
+
+@admin_bp.route("/spieltag/gruppentext-geteilt", methods=["POST"])
+@login_required
+@admin_required
+def gruppentext_geteilt():
+    """(165) Admin markiert: Gruppentext ist in die WhatsApp-Gruppe
+    gepostet -> Banner + Erinnerungen stellen ein."""
+    from matchday_announce import markiere_gruppentext_geteilt
+    try:
+        md = int(request.form.get("matchday", 0))
+    except (TypeError, ValueError):
+        md = 0
+    if md and markiere_gruppentext_geteilt(md):
+        log_admin_action("gruppentext_geteilt", "competition", None,
+                         f"Spieltag {md} als in Gruppe geteilt markiert")
+        flash(f"🏆 Gruppentext für Spieltag {md} als geteilt markiert.",
+              "success")
+    else:
+        flash("Markieren nicht möglich (Spieltag unklar).", "warning")
+    return redirect(request.form.get("next") or url_for("admin.sync"),
+                    code=303)
+
+
+@admin_bp.route("/einbetten")
+@login_required
+@admin_required
+def einbetten():
+    """(172) Copy-Paste-Snippets, um die aktuelle Rangliste (Top-3-Podium)
+    responsive in eine externe Website einzubetten — live per iFrame
+    (/embed/podium, Hell/Dunkel-Schalter, automatische Höhe) oder statisch
+    als reines HTML. Nutzer-Weg: Admin → API-Sync → Karte „Website“."""
+    return render_template("admin/einbetten.html")
 
 
 @admin_bp.route("/purge-demo", methods=["POST"])

@@ -263,6 +263,16 @@ GITHUB_UPLOAD_FILES = [
     "templates/base_embed.html",
     "static/js/match_popup.js",
     "tests/test_match_popup.py",
+    # 02.11.2026 (172): Admin-Seite „Website-Einbettung“ (Snippets)
+    "templates/admin/einbetten.html",
+    "tests/test_admin_einbetten.py",
+    # 02.11.2026 (169): Embed-Podium für Fremd-Websites + Landing-Partial
+    # (landing.html stand hier NIE drin — erst der Partial-Extract machte
+    # das zum Problem; neue Dateien gehören immer NACHTRAGEND in diese Liste!)
+    "templates/landing.html",
+    "templates/_lp_podium.html",
+    "templates/embed_podium.html",
+    "tests/test_embed_podium.py",
     # 20.10.2026 (144): Bundesliga-Livetabelle (laufende Spiele eingerechnet)
     "tests/test_livetabelle.py",
     # 18.10.2026 (137): Live-Stand im Spieldetail

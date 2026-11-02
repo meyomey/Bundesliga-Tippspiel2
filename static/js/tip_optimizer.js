@@ -598,15 +598,28 @@
           if (d.anchored && d.anchored.n_matches > 0) {
             var a = d.anchored;
             var arows = (a.per_md || []).map(function (r) {
-              return "<tr><td>ST " + r.md + "</td><td>" + r.n + "</td><td>" + fmt(r.blind_ep) + " → <b>" + fmt(r.anchored_ep) + "</b></td>" +
-                "<td>" + pct(r.blind_hit) + " → " + pct(r.anchored_hit) + "</td><td>" + fmt(r.blind_brier, 3) + " → " + fmt(r.anchored_brier, 3) + "</td></tr>";
+              // (168) 50/50-Blend als drittes Segment (Guard: alte Backends liefern die Felder nicht)
+              return "<tr><td>ST " + r.md + "</td><td>" + r.n + "</td><td>" + fmt(r.blind_ep) + " → <b>" + fmt(r.anchored_ep) + "</b>" +
+                (r.blend_ep != null ? " → " + fmt(r.blend_ep) : "") + "</td>" +
+                "<td>" + pct(r.blind_hit) + " → " + pct(r.anchored_hit) +
+                (r.blend_hit != null ? " → " + pct(r.blend_hit) : "") + "</td><td>" + fmt(r.blind_brier, 3) + " → " + fmt(r.anchored_brier, 3) +
+                (r.blend_brier != null ? " → " + fmt(r.blend_brier, 3) : "") + "</td></tr>";
             }).join("");
+            // (167) Gesamt-Zeile: einzelne Spieltage (n=9) schwanken stark
+            if (a.gesamt) {
+              var g = a.gesamt;
+              arows += "<tr style=\"font-weight:800; border-top:2px solid var(--border)\"><td>Σ Gesamt</td><td>" + g.n + "</td><td>" + fmt(g.blind_ep) + " → <b>" + fmt(g.anchored_ep) + "</b>" +
+                (a.blend ? " → " + fmt(a.blend.ep) : "") + "</td>" +
+                "<td>" + pct(g.blind_hit) + " → " + pct(g.anchored_hit) + (a.blend ? " → " + pct(a.blend.hit) : "") + "</td><td>" + fmt(g.blind_brier, 3) + " → " + fmt(g.anchored_brier, 3) +
+                (a.blend ? " → " + fmt(a.blend.brier, 3) : "") + "</td></tr>";
+            }
             html +=
               '<div class="to-row" style="margin-top:8px"><b>🎯 Mit Odds-Anker</b> — erste gespeicherte Quoten je Spiel („Quoten online laden“), dieselben Spiele wie blind: ' +
               "EP/Spiel <b>" + fmt(a.ep_per_match) + "</b> vs. blind " + fmt(a.blind_ep_per_match) +
               " · 1X2-Treffer <b>" + pct(a.hit1x2) + "</b> vs. " + pct(a.blind_hit1x2) +
-              " · Brier <b>" + fmt(a.brier, 3) + "</b> vs. " + fmt(a.blind_brier, 3) + "</div>" +
-              '<div class="to-tblwrap"><table class="to-tblwide-narrow"><thead><tr><th title="Spieltag">ST</th><th>Spiele</th><th title="Punkte je Spiel: blind (Modell-Grundlage) → mit Quoten-Anker (Live-Pipeline)">EP/Spiel blind → Anker</th><th title="1X2-Trefferquote: blind → mit Anker">1X2 blind → Anker</th><th title="Brier der 1X2-Prognosen: blind → mit Anker (kleiner = besser)">Brier blind → Anker</th></tr></thead><tbody>' + arows + "</tbody></table></div>" +
+              " · Brier <b>" + fmt(a.brier, 3) + "</b> vs. " + fmt(a.blind_brier, 3) +
+              (a.blend ? " · ⚖️ 50/50-Blend: EP <b>" + fmt(a.blend.ep) + "</b> · " + pct(a.blend.hit) + " · Brier " + fmt(a.blend.brier, 3) : "") + "</div>" +
+              '<div class="to-tblwrap"><table class="to-tblwide-narrow"><thead><tr><th title="Spieltag">ST</th><th>Spiele</th><th title="Punkte je Spiel: blind (Modell-Grundlage) → mit Quoten-Anker (Live-Pipeline) → 50/50-Blend">EP/Spiel blind → Anker → 50/50</th><th title="1X2-Trefferquote: blind → mit Anker → 50/50-Blend">1X2 blind → Anker → 50/50</th><th title="Brier der 1X2-Prognosen: blind → mit Anker → 50/50-Blend (kleiner = besser)">Brier blind → Anker → 50/50</th></tr></thead><tbody>' + arows + "</tbody></table></div>" +
               '<div class="muted" style="font-size:12px">' + esc(a.note || "") + "</div>";
           }
           bt.innerHTML = html;

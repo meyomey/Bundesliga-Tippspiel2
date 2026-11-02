@@ -1,0 +1,93 @@
+<!doctype html>
+{# ============================================================ (169) EMBED-PODIUM #}
+{# Öffentliches Einbettungs-Widget „Wer führt die Liga an?“ — für iframes auf #}
+{# fremden Seiten (z. B. Vereins-Website). Dasselbe Podium wie die Landingpage #}
+{# (Partial _lp_podium.html, Klassen lp-podium* aus style.css — kein Parallel-#}
+{# system). app.py nimmt /embed/ aus X-Frame-Options heraus (CSP #}
+{# frame-ancestors stattdessen) und stellt no-store (immer aktuelle Punkte). #}
+{# (170) Theme-Schalter: ?theme=dunkel (Default) | hell | auto. "hell" setzt #}
+{# data-theme="light" am <html> und nutzt damit den vorhandenen Light-Block #}
+{# aus style.css — KEINE zweiten Farbwerte. "auto" folgt per matchMedia dem #}
+{# System des Besuchers. #}
+<html lang="de" data-emb-theme="{{ emb_theme or 'dunkel' }}"{% if (emb_theme or 'dunkel') == 'hell' %} data-theme="light"{% endif %}>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Aktuelle Rangliste · Wulmstörper Tipprunde</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <style>
+    /* Embed-Selbstversorgung: Panel immer in App-Dunkel (Gastseiten-Theme
+       egal), html/body transparent, damit das Widget in jeder Seite sitzt. */
+    html, body { margin: 0; padding: 0; background: transparent; }
+    .emb-panel {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 28px 18px 22px;
+      color: var(--text);
+      max-width: 760px;
+      margin: 0 auto;
+      box-sizing: border-box;
+    }
+    .emb-head { text-align: center; margin-bottom: 20px; }
+    .emb-head h2 {
+      margin: 8px 0 0; font-size: 24px; font-weight: 800; color: var(--text);
+    }
+    @media (min-width: 640px) { .emb-head h2 { font-size: 30px; } }
+    .emb-empty { text-align: center; color: var(--text-muted); padding: 14px 0 4px; }
+    .emb-cta { text-align: center; margin-top: 18px; }
+    .emb-cta a {
+      color: var(--primary-text); text-decoration: none;
+      font-size: 14px; font-weight: 700;
+    }
+    .emb-cta a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="emb-panel">
+    <div class="emb-head">
+      <span class="overline">AKTUELLE RANGLISTE</span>
+      <h2>🏆 Wer führt die Liga an?</h2>
+    </div>
+    {% if top3 and top3[0].points > 0 %}
+      {% include "_lp_podium.html" %}
+    {% else %}
+      <div class="emb-empty">Noch keine Punkte vergangen — ab dem 1. Spieltag steht hier das Podium. ⚽</div>
+    {% endif %}
+    <div class="emb-cta">
+      <a href="{{ request.url_root.rstrip('/') }}/" target="_blank" rel="noopener">👉 Zur Tipprunde: {{ request.url_root.rstrip('/').replace('https://', '').replace('http://', '') }}</a>
+    </div>
+  </div>
+  {% if (emb_theme or 'dunkel') == 'auto' %}
+  <script>
+    /* (170) auto: folgt dem System des Besuchers (nutzt denselben
+       [data-theme="light"]-Block wie der explizite hell-Modus). */
+    try {
+      var _hell = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
+      if (_hell) document.documentElement.setAttribute("data-theme", "light");
+    } catch (e) { /* bleibt dunkel */ }
+  </script>
+  {% endif %}
+  <script>
+    /* (171) Auto-Hoehe: das Widget misst sich selbst und meldet dem
+       uebergeordneten Fenster (iFrame-Rahmen) die noetige Hoehe. Ohne
+       Empfänger-Skript bleibt es beim Fallback-Wert im Snippet — der
+       iFrame scrollt dann wie gehabt (kein Abschneiden von Inhalten). */
+    (function () {
+      function melden() {
+        if (!window.parent || window.parent === window) return;
+        var h = Math.max(document.body.scrollHeight,
+                         document.documentElement.scrollHeight);
+        if (h > 0) {
+          try { window.parent.postMessage({ typ: "wt-embed-hoehe", hoehe: h }, "*"); } catch (e) {}
+        }
+      }
+      window.addEventListener("load", melden);
+      window.addEventListener("resize", melden);
+      if (window.ResizeObserver) {
+        try { new ResizeObserver(melden).observe(document.body); } catch (e) {}
+      }
+    })();
+  </script>
+</body>
+</html>

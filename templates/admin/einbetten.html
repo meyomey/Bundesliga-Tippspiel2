@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}Admin · Website-Einbettung{% endblock %}
+{% block content %}
+<a href="{{ url_for('admin.dashboard') }}" class="back-link">← Admin</a>
+<div class="page-header">
+  <div>
+    <span class="overline">WEBSITE</span>
+    <h1>🏆 Rangliste in die Website einbetten</h1>
+    <p class="muted small">Copy-Paste-Blöcke für die Vereins-Website — hell &amp; dunkel, responsiv. Die Live-Variante holt sich das Podium direkt von hier und aktualisiert sich nach jedem Spieltag von selbst.</p>
+  </div>
+</div>
+
+<div class="card">
+  <h2>🎚️ Theme wählen (nur Live-Variante)</h2>
+  <p class="muted small">Der Schalter steckt in der iFrame-URL:</p>
+  <table style="width:100%; border-collapse:collapse; font-size:14px;">
+    <tr><td style="padding:6px 10px; border:1px solid var(--border);"><code>/embed/podium?theme=hell</code></td><td style="padding:6px 10px; border:1px solid var(--border);">Hell — passt zu hellen Webseiten</td></tr>
+    <tr><td style="padding:6px 10px; border:1px solid var(--border);"><code>/embed/podium</code></td><td style="padding:6px 10px; border:1px solid var(--border);">Dunkel (wie in der App)</td></tr>
+    <tr><td style="padding:6px 10px; border:1px solid var(--border);"><code>/embed/podium?theme=auto</code></td><td style="padding:6px 10px; border:1px solid var(--border);">Folgt dem System des Besuchers</td></tr>
+  </table>
+</div>
+
+<div class="card">
+  <h2>✨ Variante A — Live-Podium (iFrame, empfohlen)</h2>
+  <p class="muted small">Immer aktuell (hier gezeigt in Hell). Die Höhe stellt sich automatisch ein — das Widget meldet sie dem iFrame (ab App-Version 3.1.141; davor greift die Fallback-Höhe). Dunkel: <code>?theme=hell</code> aus der URL streichen.</p>
+  <button type="button" class="btn-primary" onclick="var t=document.getElementById('wtSnipA'); if (navigator.clipboard) { navigator.clipboard.writeText(t.textContent); } this.textContent='✓ Kopiert';">📋 Kopieren</button>
+  <pre id="wtSnipA" style="margin-top:10px; padding:12px; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; overflow-x:auto; font-size:12px; user-select:all;">&lt;!-- Wulmstörper Tipprunde — aktuelle Rangliste (live, hell) --&gt;
+&lt;div style="max-width:820px;margin:0 auto"&gt;
+  &lt;iframe class="wt-rangliste-iframe"
+          src="https://tipp.wulmstorf.net/embed/podium?theme=hell"
+          title="Aktuelle Rangliste – Wulmstörper Tipprunde"
+          style="width:100%;height:520px;border:0;display:block"
+          loading="lazy"&gt;&lt;/iframe&gt;
+&lt;/div&gt;
+&lt;style&gt;
+  @media (max-width: 639px) {
+    .wt-rangliste-iframe { height: 720px !important; }
+  }
+&lt;/style&gt;
+&lt;script&gt;
+  /* Passt die iFrame-Hoehe automatisch an (das Widget meldet sich selbst). */
+  window.addEventListener("message", function (e) {
+    if (e.origin !== "https://tipp.wulmstorf.net") return;
+    if (e.data &amp;&amp; e.data.typ === "wt-embed-hoehe" &amp;&amp; e.data.hoehe) {
+      document.querySelectorAll(".wt-rangliste-iframe").forEach(function (f) {
+        f.style.height = (e.data.hoehe + 6) + "px";
+      });
+    }
+  });
+&lt;/script&gt;</pre>
+</div>
+
+<div class="card">
+  <h2>🌑 Variante B1 — Statisch, dunkel</h2>
+  <p class="muted small">Ohne iFrame, reines HTML/CSS — funktioniert überall. Zahlen bei Leadership-Wechseln per Hand anpassen.</p>
+  <button type="button" class="btn-primary" onclick="var t=document.getElementById('wtSnipB1'); if (navigator.clipboard) { navigator.clipboard.writeText(t.textContent); } this.textContent='✓ Kopiert';">📋 Kopieren</button>
+  <pre id="wtSnipB1" style="margin-top:10px; padding:12px; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; overflow-x:auto; font-size:12px; user-select:all;">&lt;!-- Wulmstörper Tipprunde — Rangliste (statisch, dunkel) --&gt;
+&lt;div class="wt-pod" style="max-width:820px;margin:0 auto"&gt;
+&lt;style&gt;
+  .wt-pod { background:#0b1220; border:1px solid #1e2a44; border-radius:18px; padding:28px 18px 22px; color:#e8eefc; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; box-sizing:border-box; }
+  .wt-pod .wt-over { display:block; text-align:center; font-size:11px; letter-spacing:.18em; color:#5eead4; font-weight:700; }
+  .wt-pod h2 { text-align:center; font-size:24px; margin:8px 0 20px; color:#e8eefc; }
+  .wt-pod .wt-grid { display:grid; grid-template-columns:1fr; gap:12px; max-width:720px; margin:0 auto; }
+  .wt-pod .wt-card { background:#141414; border:1px solid #262626; border-radius:18px; padding:18px; text-align:center; }
+  .wt-pod .wt-med { font-size:34px; line-height:1; margin-bottom:8px; }
+  .wt-pod .wt-ava { width:56px; height:56px; border-radius:50%; margin:0 auto 10px; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:22px; color:#fff; background:#0d9488; border:2px solid #262626; }
+  .wt-pod .wt-card strong { display:block; font-size:15px; margin-bottom:6px; }
+  .wt-pod .wt-pts { font-size:24px; font-weight:800; color:#5eead4; font-variant-numeric:tabular-nums; }
+  .wt-pod .wt-pts small { font-size:13px; color:#a3a3a3; font-weight:500; }
+  .wt-pod .wt-team { display:inline-flex; align-items:center; gap:4px; margin-top:10px; padding:4px 10px; border-radius:999px; background:#1c1c1c; font-size:11px; color:#a3a3a3; }
+  .wt-pod .wt-dot { width:10px; height:10px; border-radius:3px; background:#5eead4; display:inline-block; }
+  .wt-pod .wt-r1 { background:linear-gradient(135deg,rgba(251,191,36,.15),transparent); border-color:rgba(251,191,36,.4); padding:26px 18px; }
+  .wt-pod .wt-r1 .wt-med { font-size:46px; } .wt-pod .wt-r1 .wt-ava { border-color:#fbbf24; box-shadow:0 0 0 4px rgba(251,191,36,.2); }
+  .wt-pod .wt-r1 .wt-pts { font-size:30px; color:#fbbf24; } .wt-pod .wt-r1 strong { font-size:17px; }
+  .wt-pod .wt-cta { text-align:center; margin-top:18px; }
+  .wt-pod .wt-cta a { color:#5eead4; text-decoration:none; font-size:14px; font-weight:700; }
+  @media (min-width:640px) {
+    .wt-pod .wt-grid { grid-template-columns:1fr 1.15fr 1fr; align-items:end; }
+    .wt-pod .wt-r1 { order:2; } .wt-pod .wt-r2 { order:1; } .wt-pod .wt-r3 { order:3; }
+  }
+&lt;/style&gt;
+&lt;span class="wt-over"&gt;AKTUELLE RANGLISTE&lt;/span&gt;
+&lt;h2&gt;🏆 Wer führt die Liga an?&lt;/h2&gt;
+&lt;div class="wt-grid"&gt;
+  &lt;div class="wt-card wt-r1"&gt;&lt;div class="wt-med"&gt;🥇&lt;/div&gt;&lt;div class="wt-ava"&gt;M&lt;/div&gt;&lt;strong&gt;Moorkicker&lt;/strong&gt;&lt;div class="wt-pts"&gt;110 &lt;small&gt;Pkt&lt;/small&gt;&lt;/div&gt;&lt;div class="wt-team"&gt;&lt;span class="wt-dot"&gt;&lt;/span&gt;SVW&lt;/div&gt;&lt;/div&gt;
+  &lt;div class="wt-card wt-r2"&gt;&lt;div class="wt-med"&gt;🥈&lt;/div&gt;&lt;div class="wt-ava" style="background:#0d9488"&gt;M&lt;/div&gt;&lt;strong&gt;MehmetC&lt;/strong&gt;&lt;div class="wt-pts"&gt;108 &lt;small&gt;Pkt&lt;/small&gt;&lt;/div&gt;&lt;div class="wt-team"&gt;&lt;span class="wt-dot"&gt;&lt;/span&gt;SVW&lt;/div&gt;&lt;/div&gt;
+  &lt;div class="wt-card wt-r3"&gt;&lt;div class="wt-med"&gt;🥉&lt;/div&gt;&lt;div class="wt-ava" style="background:#475569"&gt;r&lt;/div&gt;&lt;strong&gt;rudolfo13&lt;/strong&gt;&lt;div class="wt-pts"&gt;108 &lt;small&gt;Pkt&lt;/small&gt;&lt;/div&gt;&lt;div class="wt-team"&gt;&lt;span class="wt-dot"&gt;&lt;/span&gt;SVW&lt;/div&gt;&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="wt-cta"&gt;&lt;a href="https://tipp.wulmstorf.net"&gt;👉 Zur Tipprunde: tipp.wulmstorf.net&lt;/a&gt;&lt;/div&gt;
+&lt;/div&gt;</pre>
+</div>
+
+<div class="card">
+  <h2>☀️ Variante B2 — Statisch, hell</h2>
+  <p class="muted small">Derselbe Block in Hell (weiße Karten, dunkle Schrift) — empfohlen für helle Vereinsseiten.</p>
+  <button type="button" class="btn-primary" onclick="var t=document.getElementById('wtSnipB2'); if (navigator.clipboard) { navigator.clipboard.writeText(t.textContent); } this.textContent='✓ Kopiert';">📋 Kopieren</button>
+  <pre id="wtSnipB2" style="margin-top:10px; padding:12px; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; overflow-x:auto; font-size:12px; user-select:all;">&lt;!-- Wulmstörper Tipprunde — Rangliste (statisch, hell) --&gt;
+&lt;div class="wt-podh" style="max-width:820px;margin:0 auto"&gt;
+&lt;style&gt;
+  .wt-podh { background:#f8fafc; border:1px solid #e2e8f0; border-radius:18px; padding:28px 18px 22px; color:#0f172a; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; box-sizing:border-box; }
+  .wt-podh .wt-over { display:block; text-align:center; font-size:11px; letter-spacing:.18em; color:#0d9488; font-weight:700; }
+  .wt-podh h2 { text-align:center; font-size:24px; margin:8px 0 20px; color:#0f172a; }
+  .wt-podh .wt-grid { display:grid; grid-template-columns:1fr; gap:12px; max-width:720px; margin:0 auto; }
+  .wt-podh .wt-card { background:#ffffff; border:1px solid #e2e8f0; border-radius:18px; padding:18px; text-align:center; box-shadow:0 4px 14px rgba(15,23,42,.05); }
+  .wt-podh .wt-med { font-size:34px; line-height:1; margin-bottom:8px; }
+  .wt-podh .wt-ava { width:56px; height:56px; border-radius:50%; margin:0 auto 10px; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:22px; color:#fff; background:linear-gradient(135deg,#14b8a6,#0f766e); border:2px solid #e2e8f0; }
+  .wt-podh .wt-card strong { display:block; font-size:15px; margin-bottom:6px; color:#0f172a; }
+  .wt-podh .wt-pts { font-size:24px; font-weight:800; color:#0d9488; font-variant-numeric:tabular-nums; }
+  .wt-podh .wt-pts small { font-size:13px; color:#475569; font-weight:500; }
+  .wt-podh .wt-team { display:inline-flex; align-items:center; gap:4px; margin-top:10px; padding:4px 10px; border-radius:999px; background:#f1f5f9; font-size:11px; color:#475569; }
+  .wt-podh .wt-dot { width:10px; height:10px; border-radius:3px; background:#0d9488; display:inline-block; }
+  .wt-podh .wt-r1 { background:linear-gradient(135deg,rgba(251,191,36,.18),transparent); border-color:rgba(217,119,6,.45); padding:26px 18px; }
+  .wt-podh .wt-r1 .wt-med { font-size:46px; } .wt-podh .wt-r1 .wt-ava { border-color:#f59e0b; box-shadow:0 0 0 4px rgba(245,158,11,.18); }
+  .wt-podh .wt-r1 .wt-pts { font-size:30px; color:#b45309; } .wt-podh .wt-r1 strong { font-size:17px; }
+  .wt-podh .wt-cta { text-align:center; margin-top:18px; }
+  .wt-podh .wt-cta a { color:#0d9488; text-decoration:none; font-size:14px; font-weight:700; }
+  @media (min-width:640px) {
+    .wt-podh .wt-grid { grid-template-columns:1fr 1.15fr 1fr; align-items:end; }
+    .wt-podh .wt-r1 { order:2; } .wt-podh .wt-r2 { order:1; } .wt-podh .wt-r3 { order:3; }
+  }
+&lt;/style&gt;
+&lt;span class="wt-over"&gt;AKTUELLE RANGLISTE&lt;/span&gt;
+&lt;h2&gt;🏆 Wer führt die Liga an?&lt;/h2&gt;
+&lt;div class="wt-grid"&gt;
+  &lt;div class="wt-card wt-r1"&gt;&lt;div class="wt-med"&gt;🥇&lt;/div&gt;&lt;div class="wt-ava"&gt;M&lt;/div&gt;&lt;strong&gt;Moorkicker&lt;/strong&gt;&lt;div class="wt-pts"&gt;110 &lt;small&gt;Pkt&lt;/small&gt;&lt;/div&gt;&lt;div class="wt-team"&gt;&lt;span class="wt-dot"&gt;&lt;/span&gt;SVW&lt;/div&gt;&lt;/div&gt;
+  &lt;div class="wt-card wt-r2"&gt;&lt;div class="wt-med"&gt;🥈&lt;/div&gt;&lt;div class="wt-ava" style="background:#0f766e"&gt;M&lt;/div&gt;&lt;strong&gt;MehmetC&lt;/strong&gt;&lt;div class="wt-pts"&gt;108 &lt;small&gt;Pkt&lt;/small&gt;&lt;/div&gt;&lt;div class="wt-team"&gt;&lt;span class="wt-dot"&gt;&lt;/span&gt;SVW&lt;/div&gt;&lt;/div&gt;
+  &lt;div class="wt-card wt-r3"&gt;&lt;div class="wt-med"&gt;🥉&lt;/div&gt;&lt;div class="wt-ava" style="background:#64748b"&gt;r&lt;/div&gt;&lt;strong&gt;rudolfo13&lt;/strong&gt;&lt;div class="wt-pts"&gt;108 &lt;small&gt;Pkt&lt;/small&gt;&lt;/div&gt;&lt;div class="wt-team"&gt;&lt;span class="wt-dot"&gt;&lt;/span&gt;SVW&lt;/div&gt;&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="wt-cta"&gt;&lt;a href="https://tipp.wulmstorf.net"&gt;👉 Zur Tipprunde: tipp.wulmstorf.net&lt;/a&gt;&lt;/div&gt;
+&lt;/div&gt;</pre>
+</div>
+
+<div class="card" style="margin-top:16px;">
+  <h2>📌 Kurz gefasst</h2>
+  <p class="muted small">🔗 Live-URLs: <code>/embed/podium?theme=hell</code> · <code>/embed/podium</code> (dunkel) · <code>/embed/podium?theme=auto</code> — das Widget passt seine iFrame-Höhe selbst an (postMessage), verantwortlich für den Empfänger ist das Skript in Variante A.</p>
+</div>
+{% endblock %}

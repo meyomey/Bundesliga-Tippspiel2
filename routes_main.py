@@ -7,7 +7,7 @@ import re
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from flask import Blueprint, current_app, render_template, redirect, url_for, flash, request
+from flask import Blueprint, current_app, render_template, redirect, url_for, flash, request, session
 from flask_login import login_required, current_user
 
 from extensions import db
@@ -49,6 +49,27 @@ def index():
         top3=top3,
         current_md=get_current_matchday(),
     )
+
+
+@main_bp.route("/embed/podium")
+def embed_podium():
+    """(169) Öffentliches Einbettungs-Widget „Wer führt die Liga an?“.
+
+    Dasselbe Top-3-Podium wie die Landingpage: dieselbe Datenquelle
+    (get_leaderboard[:3]) und dasselbe Partial (_lp_podium.html) —
+    kein Parallel-System. Für iframes auf fremden Seiten (z. B. der
+    Vereins-Website) frei gegeben: app.py nimmt /embed/ aus X-Frame-
+    Options heraus (stattdessen CSP frame-ancestors) und stellt
+    no-store, damit die Punkte immer aktuell sind. Keine Login-Pflicht —
+    die Daten sind identisch mit der öffentlichen Landingpage.
+    Param ``?theme=``: ``dunkel`` (Default), ``hell`` (nutzt den
+    vorhandenen [data-theme="light"]-Block aus style.css — keine
+    zweiten Farbwerte) oder ``auto`` (folgt dem System des Besuchers)."""
+    theme = (request.args.get("theme") or "dunkel").strip().lower()
+    if theme not in ("dunkel", "hell", "auto"):
+        theme = "dunkel"
+    top3 = get_leaderboard()[:3]
+    return render_template("embed_podium.html", top3=top3, emb_theme=theme)
 
 
 @main_bp.route("/dashboard")
@@ -123,6 +144,16 @@ def dashboard():
     tip_status = {"tipped": tipped_count, "total": total_count, "open": len(open_md_matches)}
     pot = compute_pot_summary()
 
+    # (165) Admin-Erinnerung: Gruppentext des letzten abgeschlossenen
+    # Spieltags noch nicht in die WhatsApp-Gruppe gepostet?
+    grouptext_md = None
+    if getattr(current_user, "is_admin", False) and not session.get("player_preview_mode"):
+        try:
+            from matchday_announce import gruppentext_offen
+            grouptext_md = gruppentext_offen()
+        except Exception:
+            grouptext_md = None
+
     # (90) N+1-fix: alle Tipps der kommenden Spiele in EINER Query vorladen
     # (war: get_user_prediction-Lambda = 1 Query pro Template-Zeile)
     upcoming_ids = [m.id for m in upcoming]
@@ -137,6 +168,7 @@ def dashboard():
 
     return render_template(
         "dashboard.html",
+        grouptext_md=grouptext_md,
         upcoming=upcoming,
         user_points=user_points,
         leaderboard=leaderboard,

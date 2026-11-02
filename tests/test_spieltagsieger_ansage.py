@@ -185,3 +185,133 @@ def test_cron_verdrahtung_ruft_ansage(app, db, lage, monkeypatch, capsys):
     cron_jobs.run_sync()
     assert aufgerufe == [1]
     assert "SPIELTAGSSIEGER" in capsys.readouterr().out
+
+
+# ------------------ (165) Gruppentext: Erinnerung + Marker ----------------
+
+def test_gruppentext_offen_und_marker_lifecycle_165(app, db, lage):
+    """(165) Der letzte abgeschlossene Spieltag gilt solange als 'offen'
+    (Gruppentext nicht gepostet), bis der Admin ihn markiert."""
+    from matchday_announce import gruppentext_offen, markiere_gruppentext_geteilt
+    comp_id = lage["comp"].id
+    assert gruppentext_offen(comp_id) == 5
+    assert markiere_gruppentext_geteilt(5, comp_id) is True
+    assert gruppentext_offen(comp_id) is None
+
+
+def test_admin_erinnerung_einmal_pro_tag_165(app, db, lage, monkeypatch):
+    """(165) Solange der Gruppentext nicht als geteilt markiert ist,
+    bekommt der Admin max. 1x pro Tag eine private WhatsApp-Erinnerung;
+    nach dem Markieren keine mehr."""
+    import matchday_announce
+    from models import User as _U
+    admin = lage["user"]
+    admin.is_admin = True
+    db.session.commit()
+
+    gesendet = []
+    monkeypatch.setattr("whatsapp.send_whatsapp_message",
+                        lambda phone, key, text: gesendet.append(text) or True)
+    monkeypatch.setattr(matchday_announce.time, "sleep", lambda s: None)
+
+    res = matchday_announce.erinnere_admins_gruppentext()
+    assert res["erinnert"] == 1
+    assert "Spieltag 5" in gesendet[0] and "Kopieren" in gesendet[0]
+    # gleicher Tag -> keine zweite Erinnerung
+    assert matchday_announce.erinnere_admins_gruppentext()["erinnert"] == 0
+    # markieren -> Schluss mit Erinnerung
+    matchday_announce.markiere_gruppentext_geteilt(5, lage["comp"].id)
+    assert matchday_announce.erinnere_admins_gruppentext()["erinnert"] == 0
+
+
+def test_cron_hook_rouft_admin_erinnerung_165(app, db, lage, monkeypatch):
+    """(165) Der Cron-Hook (pruefe_und_sende_offene_sieger) ruft die
+    Admin-Erinnerung - Integration ueber den echten Pfad."""
+    import matchday_announce
+    gerufen = []
+    monkeypatch.setattr(matchday_announce, "erinnere_admins_gruppentext",
+                        lambda: gerufen.append(1) or {"ok": True, "erinnert": 0})
+    monkeypatch.setattr(matchday_announce.time, "sleep", lambda s: None)
+    matchday_announce.pruefe_und_sende_offene_sieger()
+    assert gerufen == [1]
+
+
+def test_dashboard_banner_nur_admin_und_bis_markiert_165(
+        client, db, competition, teams, user, monkeypatch):
+    """(165) Das Dashboard zeigt Admins den Gruppentext-Hinweis (mit
+    Markier-Knopf), bis markiert; normale Spieler sehen ihn nie."""
+    from datetime import datetime, timedelta, timezone as tz
+    from models import Match, Prediction
+    from scoring import set_setting
+    set_setting("current_season", "2026/27")
+    now = datetime.now(tz.utc)
+    m = Match(competition_id=competition.id, matchday=7,
+              home_team_id=teams[0].id, away_team_id=teams[1].id,
+              kickoff=now - timedelta(hours=3), status="finished",
+              home_score=2, away_score=1)
+    db.session.add(m); db.session.flush()
+    db.session.add(Prediction(user_id=user.id, match_id=m.id,
+                              home_tip=2, away_tip=1, points=4))
+    user.is_admin = True
+    db.session.commit()
+
+    client.post("/auth/login", data={"email": user.email,
+                                     "password": "testpass123"},
+                follow_redirects=True)
+    with client.session_transaction() as sess:
+        sess["competition_code"] = competition.code
+    html = client.get("/dashboard").get_data(as_text=True)
+    assert "noch nicht geteilt" in html
+    assert "Als geteilt markieren" in html
+
+    r = client.post("/admin/spieltag/gruppentext-geteilt",
+                    data={"matchday": 7,
+                          "next": "/dashboard"},
+                    follow_redirects=True)
+    assert r.status_code == 200
+    html = client.get("/dashboard").get_data(as_text=True)
+    assert "noch nicht geteilt" not in html
+
+    # normale Spieler sehen den Banner nie
+    user.is_admin = False
+    db.session.commit()
+    html = client.get("/dashboard").get_data(as_text=True)
+    assert "Als geteilt markieren" not in html
+
+
+def test_historische_tage_nerven_nicht_166(app, db, lage):
+    """(166) Der Hinweis gilt nur fuer Tage NEUER als die letzte Markierung:
+    aeltere unmarkierte Spieltage (Archiv-Schuld) erscheinen nicht - sonst
+    springt der Hinweis nach dem Markieren zum naechsten aelteren Tag
+    weiter und hoert nie auf (Nutzer-Case 26.10.: ST4 markiert, ST3
+    erschien)."""
+    from matchday_announce import (gruppentext_offen,
+                                   markiere_gruppentext_geteilt)
+    comp_id = lage["comp"].id
+    # Fixture: MD5 fertig, nichts markiert -> offen = 5 (der neueste Tag)
+    assert gruppentext_offen(comp_id) == 5
+    # Aelteren Tag markieren (wie der User: Sync-Knopf traf ST4 aequivalent)
+    markiere_gruppentext_geteilt(5, comp_id)
+    # ... jetzt ist still (kein neuerer Tag existiert)
+    assert gruppentext_offen(comp_id) is None
+
+
+def test_neuer_spieltag_startet_kreis_neu_166(app, db, lage):
+    """(166) Nach Markierung von ST5 erscheint der Hinweis wieder, sobald
+    ein neuerer Spieltag (99) abgeschlossen ist."""
+    from datetime import datetime, timedelta, timezone as tz
+    from models import Match, Prediction
+    from matchday_announce import (gruppentext_offen,
+                                   markiere_gruppentext_geteilt)
+    comp = lage["comp"]
+    markiere_gruppentext_geteilt(5, comp.id)
+    # Spieltag 99 = frei im Fixture (die BL1-Vorbelegung hat dort nichts)
+    m = Match(competition_id=comp.id, matchday=99,
+              home_team_id=1, away_team_id=2,
+              kickoff=datetime.now(tz.utc) - timedelta(hours=2),
+              status="finished", home_score=1, away_score=0)
+    db.session.add(m); db.session.flush()
+    db.session.add(Prediction(user_id=lage["user"].id, match_id=m.id,
+                              home_tip=1, away_tip=0, points=4))
+    db.session.commit()
+    assert gruppentext_offen(comp.id) == 99

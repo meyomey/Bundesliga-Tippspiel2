@@ -1,6 +1,25 @@
 {% extends "base.html" %}
 {% block title %}Dashboard{% endblock %}
 {% block content %}
+
+{% if grouptext_md %}
+{# (165) Admin-Erinnerung: Gruppentext noch nicht in die WA-Gruppe gepostet #}
+<div class="card flat" style="border-left:3px solid #f59e0b; margin-bottom:16px; display:flex; flex-wrap:wrap; align-items:center; gap:10px;">
+  <div style="flex:1 1 240px;">
+    <strong>🏆 Gruppentext für Spieltag {{ grouptext_md }} noch nicht geteilt</strong>
+    <div class="muted small">Sobald du ihn in die WhatsApp-Gruppe gepostet hast, hier markieren — dann verschwindet dieser Hinweis (und die tägliche WhatsApp-Erinnerung).</div>
+  </div>
+  <div style="display:flex; gap:8px; flex-wrap:wrap;">
+    <a href="{{ url_for('admin.sync') }}" class="btn-ghost btn-sm">📋 Text kopieren</a>
+    <form method="post" action="{{ url_for('admin.gruppentext_geteilt') }}" style="margin:0;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="matchday" value="{{ grouptext_md }}">
+      <input type="hidden" name="next" value="{{ url_for('main.dashboard') }}">
+      <button type="submit" class="btn-primary btn-sm">✅ Als geteilt markieren</button>
+    </form>
+  </div>
+</div>
+{% endif %}
 <script>document.body.classList.add('dashboard-page');</script>
 
 {% if live_count > 0 or today_matches_count > 0 %}

@@ -1,0 +1,28 @@
+{# ============================================================ TOP-3-PODIUM (geteilt) #}
+{# (169) Ein einziges Podium für Landingpage (/) und Einbettungs-Widget #}
+{# (/embed/podium) — dieselben Klassen (lp-podium*, Style-Anker) und #}
+{# dieselbe Datenquelle (get_leaderboard[:3] als `top3`). Kein Parallel-System. #}
+<div class="lp-podium">
+  {% for r in top3 %}
+    <div class="lp-podium-card lp-rank-{{ r.rank }}">
+      <div class="lp-podium-medal">
+        {% if r.rank == 1 %}🥇
+        {% elif r.rank == 2 %}🥈
+        {% else %}🥉{% endif %}
+      </div>
+      {% if r.user.avatar and r.user.avatar != 'default.png' %}
+        <img src="{{ url_for('static', filename='uploads/' + r.user.avatar) }}" class="lp-podium-avatar" alt="" />
+      {% else %}
+        <div class="lp-podium-avatar avatar-fallback">{{ r.user.username[0]|upper }}</div>
+      {% endif %}
+      <strong>{{ r.user.username }}</strong>
+      <div class="lp-podium-points">{{ r.points }} <small>Pkt</small></div>
+      {% if r.user.favorite_team %}
+      <div class="lp-podium-team">
+        <img src="{{ r.user.favorite_team.logo }}" alt="" />
+        <small>{{ r.user.favorite_team.short_name }}</small>
+      </div>
+      {% endif %}
+    </div>
+  {% endfor %}
+</div>

@@ -108,7 +108,24 @@
   <h2 style="margin-top:0;">📣 Spieltags-Sieger (Spieltag {{ gruppen_md }})</h2>
   <p class="muted small">CallMeBot kann keine Gruppen posten — Text kopieren und in die WhatsApp-Gruppe einfügen. An alle Mitglieder mit eingerichtetem WhatsApp geht die Ansage zusätzlich automatisch per Cron (privater Chat).</p>
   <textarea id="mdWinnerText" readonly class="input" style="width:100%; min-height:140px; font-family:inherit;">{{ gruppen_text }}</textarea>
-  <button type="button" class="btn-primary" style="margin-top:8px;" onclick="var t=document.getElementById('mdWinnerText'); t.select(); if (navigator.clipboard) { navigator.clipboard.writeText(t.value); } this.textContent='✓ Kopiert';">📋 Kopieren</button>
+  <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+    <button type="button" class="btn-primary" onclick="var t=document.getElementById('mdWinnerText'); t.select(); if (navigator.clipboard) { navigator.clipboard.writeText(t.value); } this.textContent='✓ Kopiert';">📋 Kopieren</button>
+    {% if gruppen_geteilt %}
+      <span class="muted small">✅ Als in die Gruppe geteilt markiert.</span>
+    {% else %}
+      <form method="post" action="{{ url_for('admin.gruppentext_geteilt') }}" style="margin:0;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="matchday" value="{{ gruppen_md }}">
+        <button type="submit" class="btn-ghost btn-sm">✅ Als geteilt markieren</button>
+      </form>
+    {% endif %}
+  </div>
 </div>
 {% endif %}
+
+<div class="card" style="margin-top:16px;">
+  <h2 style="margin-top:0;">📌 Website-Einbettung</h2>
+  <p class="muted small">Rangliste (Top-3-Podium) responsiv auf der Vereins-Website einbetten — live per iFrame mit Hell/Dunkel-Schalter oder als statischer HTML-Block. Copy-Paste-Snippets mit Kopier-Knopf.</p>
+  <a href="{{ url_for('admin.einbetten') }}" class="btn-ghost btn-sm">🏆 Zum Einbettungs-Bereich</a>
+</div>
 {% endblock %}

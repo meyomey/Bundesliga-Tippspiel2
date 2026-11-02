@@ -425,8 +425,15 @@ def create_app(config_object=Config):
         # (150) Auch die HTML-Seiten selbst (Live-Center, Liga-Tabelle) und
         # saemtliche API-Antworten: sonst zeigt der Browser beim Rueck-
         # sprung (Menue -> Zurueck / Cache) den alten Punktestand an.
-        if request.path.startswith(("/api/", "/live", "/bundesliga-tabelle")):
+        if request.path.startswith(("/api/", "/live", "/bundesliga-tabelle", "/embed/")):
             response.headers.setdefault("Cache-Control", "no-store")
+        if request.path.startswith("/embed/"):
+            # (169) Einbettungs-Widgets sind explizit zum Framen auf FREMDEN
+            # Seiten gedacht (z. B. Vereins-Website): X-Frame-Options
+            # SAMEORIGIN wuerde den iframe blockieren. Deshalb hier raus und
+            # stattdessen modern per CSP frame-ancestors freigegeben.
+            response.headers.pop("X-Frame-Options", None)
+            response.headers.setdefault("Content-Security-Policy", "frame-ancestors *")
         return response
 
     @app.route("/healthz")

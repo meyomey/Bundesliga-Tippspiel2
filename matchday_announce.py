@@ -143,6 +143,117 @@ def _marke(competition_id, matchday):
     return f"md_winner_sent_{competition_id}_{matchday}"
 
 
+def _grouptext_marke(competition_id, matchday):
+    """(165) Merker: Admin hat den Gruppentext in die WhatsApp-Gruppe
+    gepostet (manueller Schritt, den der Cron nicht uebernehmen kann)."""
+    return f"md_grouptext_geteilt_{competition_id}_{matchday}"
+
+
+def _erinnerungs_marke(competition_id, matchday):
+    return f"md_grouptext_erinnert_{competition_id}_{matchday}"
+
+
+def gruppentext_offen(competition_id=None):
+    """(165)/(166) Der hoechste abgeschlossene Spieltag, der NEUER ist als
+    der zuletzt als 'geteilt' markierte - None, wenn nichts mehr offen ist.
+
+    (166) Korrektur der Semantik: NUR Tage neuer als der letzten Markierung
+    zaehlen als offen. Alt-Bestand (aeltere unmarkierte Tage) nervt nicht -
+    ohne das haette die heute eingefuehrte Erinnerung alle historischen
+    Spieltage eingetrieben (Nutzer-Case: Markieren von ST4, Hinweis sprang
+    weiter zu ST3). Frisch eingefuehrt nagt sie also nur den NEUESTEN Tag.
+    """
+    from scoring import get_setting
+    from notification_center import _truthy
+    comp = competition_id
+    if comp is None:
+        c = _active_comp()
+        comp = c.id if c else None
+    if comp is None:
+        return None
+    fertig = abgeschlossene_spieltage(comp)
+    if not fertig:
+        return None
+    markiert = [md for md in fertig
+                if _truthy(get_setting(_grouptext_marke(comp, md), False),
+                           False)]
+    schwelle = max(markiert) if markiert else None
+    kandidaten = [md for md in fertig
+                  if schwelle is None or md > schwelle]
+    return kandidaten[-1] if kandidaten else None
+
+
+def markiere_gruppentext_geteilt(matchday, competition_id=None):
+    """(165) Setzt den 'in Gruppe geteilt'-Merker (Admin-Knopf)."""
+    from scoring import set_setting
+    comp = competition_id
+    if comp is None:
+        c = _active_comp()
+        comp = c.id if c else None
+    if comp is None:
+        return False
+    from datetime import datetime as _dt, timezone as _tz
+    set_setting(_grouptext_marke(comp, matchday),
+                _dt.now(_tz.utc).date().isoformat())
+    return True
+
+
+def _admin_wa_empfaenger():
+    """(165) Admins mit eingerichtetem WhatsApp (private Erinnerung)."""
+    from models import User
+    from notification_center import _truthy
+    from scoring import filter_active_users
+    kandidaten = User.query.filter(
+        User.is_admin.is_(True),
+        ~User.email.like("%@bot.local"),
+        User.whatsapp_phone.isnot(None),
+        User.whatsapp_apikey.isnot(None),
+        User.whatsapp_phone != "",
+        User.whatsapp_apikey != "",
+    ).all()
+    aktiv = {u.id for u in filter_active_users(kandidaten)}
+    return [u for u in kandidaten if u.id in aktiv
+            and _truthy(getattr(u, "notify_whatsapp", True), True)]
+
+
+def erinnere_admins_gruppentext():
+    """(165) Private WhatsApp-Erinnerung an Admins, solange der Gruppentext
+    des letzten abgeschlossenen Spieltags nicht als geteilt markiert ist -
+    hoechstens 1x pro Tag (Merker), damit es nicht nervt."""
+    from scoring import get_setting, set_setting
+    from notification_center import _truthy
+    from datetime import datetime as _dt, timezone as _tz
+    comp = _active_comp()
+    if not comp:
+        return {"ok": True, "erinnert": 0}
+    md = gruppentext_offen(comp.id)
+    if md is None:
+        return {"ok": True, "erinnert": 0}
+    heute = _dt.now(_tz.utc).date().isoformat()
+    if str(get_setting(_erinnerungs_marke(comp.id, md), "") or "") == heute:
+        return {"ok": True, "erinnert": 0}
+    empfaenger = _admin_wa_empfaenger()
+    if not empfaenger:
+        return {"ok": True, "erinnert": 0}
+    from whatsapp import send_whatsapp_message
+    text = (f"🏆 Hinweis: Der Gruppentext für Spieltag {md} ist bereit "
+            f"zum Kopieren (Admin → API-Sync). Sobald du ihn in der "
+            f"WhatsApp-Gruppe gepostet hast: im Dashboard 'Als geteilt "
+            f"markieren'.")
+    gesendet = 0
+    for admin in empfaenger:
+        try:
+            if send_whatsapp_message(admin.whatsapp_phone,
+                                     admin.whatsapp_apikey, text):
+                gesendet += 1
+        except Exception:
+            pass
+        time.sleep(1.0)
+    if gesendet:
+        set_setting(_erinnerungs_marke(comp.id, md), heute)
+    return {"ok": True, "erinnert": gesendet}
+
+
 def pruefe_und_sende_offene_sieger():
     """Cron-Hook: sendet Ansagen fuer neu abgeschlossene Spieltage (1x).
 
@@ -185,4 +296,11 @@ def pruefe_und_sende_offene_sieger():
             set_setting(_marke(comp.id, md),
                         datetime.now(timezone.utc).date().isoformat())
             gesendet.append(md)
+
+    # (165) Admin erinnern, solange der Gruppentext nicht als gepostet
+    # markiert ist (1x/Tag, privater Chat - nie ein Blocker).
+    try:
+        erinnere_admins_gruppentext()
+    except Exception:
+        pass
     return {"ok": True, "gesendet": gesendet}

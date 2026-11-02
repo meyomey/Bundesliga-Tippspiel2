@@ -1210,3 +1210,49 @@ def test_template_und_helper_mitspieler_guards():
     assert "nie für Spieler sichtbar" in tpl
     routes_src = open("admin_tip_optimizer_routes.py", encoding="utf-8").read()
     assert "_mitspieler_stats" in routes_src
+
+
+def test_backtest_anker_gesamtzeile_und_lesart_167(db, competition, teams):
+    """(167) Der Anker-Backtest liefert eine Gesamt-Zeile (n und Kennzahlen
+    ueber alle Spieltage) und die Lesart-Hilfe (Stichprobenschwankung,
+    Kalibrierung-vs-Punkte) - damit einzelne 'schlechte' Spieltage richtig
+    eingeordnet werden (Nutzer-Beobachtung ST7/ST8)."""
+    from tip_optimizer_model import backtest_odds_anchored
+    from models import OddsSnapshot, Match
+    _fertige_saison_machen(db, competition, teams)
+    _md5_mit_quoten_anlegen(db, competition, teams, mit_luecke=True)
+    matches = Match.query.filter_by(competition_id=competition.id).all()
+    snaps = OddsSnapshot.query.all()
+    res = backtest_odds_anchored(matches, snaps)
+    assert res is not None
+    g = res.get("gesamt")
+    assert g and g["n"] == res["n_matches"] == 4
+    assert g["anchored_ep"] == round(res["ep_per_match"], 2)
+    assert g["blind_hit"] == res["blind_hit1x2"]
+    assert "Lesart" in res["note"] and "±0,11" in res["note"]
+
+
+def test_backtest_blend_50_50_168(db, competition, teams):
+    """(168) 50/50-Blend: aus dem gemittelten Prognose-Modell (blind + Anker
+    je 50 %) werden Tipp, 1X2-Prognose und Brier wie fuer die anderen beiden
+    Varianten ausgewiesen (Gesamt + je Spieltag) - experimentell, um zu
+    sehen, ob sich 'Trefferquote des Ankers' und 'EP der blinden Basis'
+    vereinen lassen."""
+    from tip_optimizer_model import backtest_odds_anchored
+    from models import OddsSnapshot, Match
+    _fertige_saison_machen(db, competition, teams)
+    _md5_mit_quoten_anlegen(db, competition, teams, mit_luecke=True)
+    matches = Match.query.filter_by(competition_id=competition.id).all()
+    snaps = OddsSnapshot.query.all()
+    res = backtest_odds_anchored(matches, snaps)
+    assert res is not None
+    b = res.get("blend")
+    assert b and b["n"] == res["n_matches"] == 4
+    assert 0 <= b["ep"] <= 4 and 0 <= b["hit"] <= 1 and 0 <= b["brier"] < 0.67
+    row = res["per_md"][0]
+    for k in ("blend_ep", "blend_hit", "blend_brier"):
+        assert k in row
+    assert "50/50-Blend" in res["note"]
+    with open("static/js/tip_optimizer.js", encoding="utf-8") as fh:
+        js = fh.read()
+    assert "a.blend" in js and "50/50-Blend" in js
