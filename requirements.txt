@@ -36,7 +36,7 @@ psycopg2-binary==2.9.12
 # =====================================================
 # Neue Features: Redis, Testing, KI-Tippgegner
 # =====================================================
-redis==5.0.8
+redis==8.1.0
 flask-caching==2.3.0
 
 # Testing
