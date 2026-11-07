@@ -263,6 +263,12 @@ GITHUB_UPLOAD_FILES = [
     "templates/base_embed.html",
     "static/js/match_popup.js",
     "tests/test_match_popup.py",
+    # 02.11.2026 (175): Redis-Import-Fix + ehrlicher Cache-Monitor
+    "cache_monitor_routes.py",
+    "templates/admin/cache.html",
+    "tests/test_cache_monitor_routes.py",
+    # 07.11.2026 (177): aktueller Spieltag im Ranglisten-Dropdown markiert
+    "tests/test_leaderboard_aktueller_md_177.py",
     # 02.11.2026 (172): Admin-Seite „Website-Einbettung“ (Snippets)
     "templates/admin/einbetten.html",
     "tests/test_admin_einbetten.py",

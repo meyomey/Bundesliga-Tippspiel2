@@ -1002,6 +1002,15 @@ def admin_cache_flush_all():
     return _admin_cache_flush_all()
 
 
+@admin_bp.route("/cache/flush-memory", methods=["POST"])
+@login_required
+@admin_required
+def admin_cache_flush_memory():
+    """(175) Memory-Cache leeren (Setup ohne Redis, z. B. Netcup-Webhosting)."""
+    from cache_monitor_routes import _admin_cache_flush_memory
+    return _admin_cache_flush_memory()
+
+
 @admin_bp.route("/cache/flush-pattern", methods=["POST"])
 @login_required
 @admin_required

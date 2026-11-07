@@ -17,10 +17,25 @@
 </style>
 
 {% if not redis_ok %}
+  {% if nicht_konfiguriert %}
+<div class="card" style="border-color:#22c55e">
+  <p>ℹ️ <b>Redis ist nicht eingerichtet</b> — bei Netcup-Webhosting nicht enthalten und auch nicht nötig.</p>
+  <p class="muted">Die App nutzt automatisch den eingebauten <b>Memory-Cache</b> (pro Prozess, TTL 120–300&nbsp;s). Das ist das vorgesehene Setup für dein Paket — performant und wartungsfrei.</p>
+  <div class="cache-grid">
+    <div class="cache-card"><div class="value">{{ mem_stats.get('keys', 0) if mem_stats else 0 }}</div><div class="label">Memory-Einträge (lebendig)</div></div>
+    <div class="cache-card"><div class="value">{{ 'aktiv' if mem_stats and mem_stats.get('enabled') else 'aus' }}</div><div class="label">Backend: {{ mem_stats.get('backend', 'none') if mem_stats else 'none' }}</div></div>
+  </div>
+  <form method="post" action="{{ url_for('admin.admin_cache_flush_memory') }}" style="margin-top:8px">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn-ghost" onclick="return confirm('Memory-Cache wirklich leeren?')">🧹 Memory-Cache leeren</button>
+  </form>
+</div>
+  {% else %}
 <div class="card" style="border-color:#ef4444">
   <p>❌ Redis nicht verfügbar: {{ redis_error or "Unbekannter Fehler" }}</p>
-  <p class="muted">Ohne Redis wird die App ohne Cache betrieben – das ist vollkommen in Ordnung.</p>
+  <p class="muted">REDIS_URL ist gesetzt, aber nicht erreichbar — die App nutzt solange den eingebauten Memory-Cache (vollkommen in Ordnung).</p>
 </div>
+  {% endif %}
 {% else %}
 
 <div class="cache-grid">

@@ -60,6 +60,28 @@ def _olb_score(res):
     )
 
 
+def _olb_timeline_score(md):
+    """(176) Letzter gueltiger kumulativer Stand aus der goals[]-Timeline.
+
+    Jedes Tor-Item der OpenLigaDB traegt den Zwischenstand zum Zeitpunkt
+    des Tors (scoreTeam1/scoreTeam2). Diese Stufe ist granularer und
+    schneller als matchResults, das teils nachzieht oder verrutscht
+    (Nutzerfall 02.11.: Anzeige 1:1, obwohl die Timeline laengst 0:2
+    kannte - die Torschuetzen kamen ja aus ebendieser Timeline).
+    Rueckgabe (h, a) oder (None, None), wenn kein brauchbarer Stand da ist."""
+    ziele = _olb_get(md, "goals", "Goals", default=[]) or []
+    if not isinstance(ziele, list):
+        return None, None
+    for item in reversed(ziele):
+        if not isinstance(item, dict):
+            continue
+        s1 = _olb_get(item, "scoreTeam1", "ScoreTeam1")
+        s2 = _olb_get(item, "scoreTeam2", "ScoreTeam2")
+        if isinstance(s1, int) and isinstance(s2, int) and s1 >= 0 and s2 >= 0:
+            return s1, s2
+    return None, None
+
+
 # ------------------------------------------------------- OLB Match-Events -
 # OpenLigaDB fuehrt pro Spiel `matchEvents` (Tore, Gelb/Rot). Stand 13.09.2026
 # ist der BL1-Feed dort leer (alle Spieltage 0 Ereignisse, live geprueft) -
@@ -525,6 +547,23 @@ def _live_score_plausibel(old_h, old_a, new_h, new_a):
         return False
 
 
+def _timeline_korrektur_plausibel(old_h, old_a, new_h, new_a):
+    """(176) Gleitkorrektur aus der goals[]-Timeline: dieselbe Feed-Quelle,
+    nur die feinere Stufe - deshalb duerfen Standaende auch KORRIGIERT
+    werden (z. B. verrutschtes 1:1 auf echtes 0:2, Rueckschritt auf einer
+    Seite ist hier legitim). Begrenzt auf max. 3 Tore Gesamtsprung pro Tick
+    (gleiche Groessenordnung wie der (106)-Schutz gegen Feed-Ausrutscher)."""
+    try:
+        nh, na = int(new_h), int(new_a)
+        oh = int(old_h) if old_h is not None else 0
+        oa = int(old_a) if old_a is not None else 0
+    except (TypeError, ValueError):
+        return False
+    if nh < 0 or na < 0:
+        return False
+    return abs(nh - oh) + abs(na - oa) <= 3
+
+
 _OLB_BOOST_CACHE_KEY = "olb_live_boost:last_fetch"
 _OLB_BOOST_TTL_SECONDS = 20
 # In-Prozess-Fallback, wenn der Redis-Cache nicht laeuft (CacheManager ist
@@ -713,18 +752,43 @@ def boost_live_from_openligadb(matchday=None):
                 target_status, target_live = "live", True
             else:
                 continue  # noch nicht angepfiffen
+            # (176) Live: die goals[]-Timeline (dieselbe Feed-Antwort, aber
+            # die feinste Stufe - jedes Tor-Item traegt den kumulativen
+            # Stand) schlaegt matchResults, das nachzieht oder verrutscht.
+            timeline_aktiv = False
+            if target_status == "live":
+                t_h, t_a = _olb_timeline_score(md)
+                if t_h is not None:
+                    # (176) Timeline da = Timeline massgeblich (auch wenn sie
+                    # zufaellig == matchResults ist — sonst wuerde genau die
+                    # Aberkennungs-Korrektur (VAR-Tor raus) wieder in den
+                    # (106)-Vorwaertspfad laufen und den Stand einfrieren).
+                    h_score, a_score = t_h, t_a
+                    timeline_aktiv = True
             if (match.home_score, match.away_score, match.status) == (h_score, a_score, target_status):
                 continue
-            if target_status == "live" and not _live_score_plausibel(
-                    match.home_score, match.away_score, h_score, a_score):
-                # (106) Rueckschritt/Ausrutscher im Feed: lieber alter Stand.
-                current_app.logger.debug(
-                    f"OLB-Live-Boost: unplausibler Zwischenstand "
-                    f"{h_score}:{a_score} statt {match.home_score}:"
-                    f"{match.away_score} verworfen")
-                continue
+            if target_status == "live":
+                if timeline_aktiv:
+                    # (176) Gleitkorrektur: Rueckwaerts-Korrektur erlaubt
+                    # (Feed-Interna), Gesamtsprung weiterhin max. 3.
+                    if not _timeline_korrektur_plausibel(
+                            match.home_score, match.away_score, h_score, a_score):
+                        current_app.logger.debug(
+                            f"OLB-Live-Boost: Timeline-Korrektur auf "
+                            f"{h_score}:{a_score} (statt {match.home_score}:"
+                            f"{match.away_score}) verworfen - Sprung > 3")
+                        continue
+                elif not _live_score_plausibel(
+                        match.home_score, match.away_score, h_score, a_score):
+                    # (106) Rueckschritt/Ausrutscher im Feed: lieber alter Stand.
+                    current_app.logger.debug(
+                        f"OLB-Live-Boost: unplausibler Zwischenstand "
+                        f"{h_score}:{a_score} statt {match.home_score}:"
+                        f"{match.away_score} verworfen")
+                    continue
             apply_match_update(match, home_score=h_score, away_score=a_score,
-                               status=target_status, is_live=target_live)
+                               status=target_status, is_live=target_live,
+                               allow_score_correction=timeline_aktiv)
             if target_status == "finished":
                 match.live_phase = None
                 match.minute = None

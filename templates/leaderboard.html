@@ -11,7 +11,7 @@
     <select onchange="location.href=this.value">
       <option value="{{ url_for('main.leaderboard') }}">Gesamt</option>
       {% for md in matchdays %}
-      <option value="{{ url_for('main.leaderboard', matchday=md) }}" {{ 'selected' if md == current_md }}>Spieltag {{ md }}</option>
+      <option value="{{ url_for('main.leaderboard', matchday=md) }}" {{ 'selected' if md == current_md }}>Spieltag {{ md }}{% if md == aktueller_md %} · aktuell{% endif %}</option>
       {% endfor %}
     </select>
   </div>

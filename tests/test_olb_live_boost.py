@@ -24,8 +24,8 @@ class _Resp:
         return self._p
 
 
-def _olb_payload(home, away, kickoff, hs, as_, finished=False):
-    return [{
+def _olb_payload(home, away, kickoff, hs, as_, finished=False, goals=None):
+    md = {
         "matchID": 4711,
         "matchDateTimeUTC": kickoff.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "matchIsFinished": finished,
@@ -33,7 +33,17 @@ def _olb_payload(home, away, kickoff, hs, as_, finished=False):
         "team1": {"teamName": home},
         "team2": {"teamName": away},
         "matchResults": [{"resultTypeID": 2, "pointsTeam1": hs, "pointsTeam2": as_}],
-    }]
+    }
+    if goals is not None:
+        md["goals"] = goals
+    return [md]
+
+
+def _tor(minute, s1, s2, name="Torschuetze"):
+    """(176) Ein goals[]-Item mit kumulativem Zwischenstand."""
+    return {"goalID": minute, "scoreTeam1": s1, "scoreTeam2": s2,
+            "goalGetterName": name, "minute": minute,
+            "isPenalty": False, "isOwnGoal": False, "isOvertime": False}
 
 
 @pytest.fixture
@@ -192,3 +202,110 @@ def test_cron_sync_ruft_live_boost(app, db, monkeypatch):
     res = sol.sync_results()
     assert aufgerufe == [None]
     assert "OLB-Live: 2 Update(s)" in (res.get("msg") or "")
+
+
+# ------------------------------------------------------------ (176) -------
+
+def test_olb_timeline_score_liest_letzten_gueltigen_stand_176():
+    """(176) Die Timeline liefert den letzten gueltigen kumulativen Stand;
+    Items ohne Score werden uebersprungen, leere Timeline -> (None, None)."""
+    from sync_openligadb import _olb_timeline_score
+    assert _olb_timeline_score({"goals": [
+        {"scoreTeam1": 0, "scoreTeam2": 1},
+        {"scoreTeam1": None, "scoreTeam2": None},
+        {"scoreTeam1": 0, "scoreTeam2": 2},
+    ]}) == (0, 2)
+    assert _olb_timeline_score({"goals": []}) == (None, None)
+    assert _olb_timeline_score({}) == (None, None)
+    assert _olb_timeline_score({"goals": "quatsch"}) == (None, None)
+
+
+def test_timeline_korrigiert_verrutschten_zwischenstand_176(live_setup):
+    """(176) Fall Mainz-Bayern (02.11.): matchResults verrutscht (1:1),
+    die goals[]-Timeline kennt laengst 0:2 (2 Bayern-Torschuetzen standen
+    bereits im Feed). Der Boost korrigiert den Zwischenstand innerhalb der
+    Gleitgrenze - inkl. Rueckwaerts auf der Heimseite - statt den
+    Fehlstand ewig einzufrieren."""
+    import sync_openligadb
+    from cache import cache as _cache
+    m, calls, set_payload = live_setup
+    m.status, m.home_score, m.away_score, m.is_live = "live", 1, 1, True
+    db.session.commit()
+    set_payload(_olb_payload("FC Bayern München", "Borussia Dortmund", m.kickoff,
+                             1, 1, goals=[_tor(31, 0, 1, "Kroos"),
+                                          _tor(58, 0, 2, "Müller")]))
+    _cache.delete("olb_live_boost:last_fetch")
+    sync_openligadb._olb_boost_last_fetch["ts"] = 0.0
+    r = boost_live_from_openligadb()
+    assert r["updated"] == 1
+    dbm = db.session.get(Match, m.id)
+    assert (dbm.home_score, dbm.away_score, dbm.status) == (0, 2, "live")
+
+
+def test_timeline_sprung_ueber_drei_bleibt_abgewiesen_176(live_setup):
+    """(176) Auch die Timeline-Korrektur hat Grenzen: Gesamtsprung > 3
+    pro Tick ist ein Feed-Ausrutscher und wird verworfen ((106)-Geist)."""
+    import sync_openligadb
+    from cache import cache as _cache
+    m, calls, set_payload = live_setup
+    m.status, m.home_score, m.away_score, m.is_live = "live", 1, 1, True
+    db.session.commit()
+    set_payload(_olb_payload("FC Bayern München", "Borussia Dortmund", m.kickoff,
+                             1, 1, goals=[_tor(90, 5, 0)]))
+    _cache.delete("olb_live_boost:last_fetch")
+    sync_openligadb._olb_boost_last_fetch["ts"] = 0.0
+    r = boost_live_from_openligadb()
+    assert r["updated"] == 0
+    dbm = db.session.get(Match, m.id)
+    assert (dbm.home_score, dbm.away_score) == (1, 1)
+
+
+def test_matchresults_ohne_timeline_bleibt_vorwaerts_regel_176(live_setup):
+    """(176) Ohne goals[]-Timeline gilt unverändert die (106)-Vorwärts-
+    Regel (Rückschritt abweisen) - der neue Korrekturweg greift nur,
+    wenn die Timeline einen abweichenden Stand liefert."""
+    m, calls, set_payload = live_setup
+    m.status, m.home_score, m.away_score, m.is_live = "live", 2, 0, True
+    db.session.commit()
+    set_payload(_olb_payload("FC Bayern München", "Borussia Dortmund", m.kickoff, 1, 0))
+    r = boost_live_from_openligadb()
+    assert r["updated"] == 0
+    dbm = db.session.get(Match, m.id)
+    assert (dbm.home_score, dbm.away_score) == (2, 0)
+
+
+def test_timeline_heilt_fehlstand_dann_echtes_tor_176(live_setup):
+    """(176) Der reale Ablauf laut Nutzerbericht 07.11. (Mainz-Bayern):
+    App zeigte 1:1 (Verrutscher), in Wirklichkeit 0:2. Dann fiel ein ECHTES
+    Tor (1:2) - im ALTEN System heilte die Anzeige dabei nur durch Zufall,
+    weil 1:1 -> 1:2 als Vorwaertsschritt durchging; ohne dieses Tor waere
+    der Fehlstand fuer immer stehen geblieben. Im neuen System korrigiert
+    Tick 1 den Fehlstand sofort (Timeline massgeblich, auch bei Gleichheit
+    mit matchResults), Tick 2 bringt das echte Tor normal durch."""
+    import sync_openligadb
+    from cache import cache as _cache
+    m, calls, set_payload = live_setup
+    m.status, m.home_score, m.away_score, m.is_live = "live", 1, 1, True
+    db.session.commit()
+
+    # Tick 1: Feed inzwischen im Reinen (0:2 in BEIDEN Feldern gleich),
+    # App-App-Stand 1:1 ist der Verrutscher -> Korrektur auf 0:2
+    set_payload(_olb_payload("FC Bayern München", "Borussia Dortmund", m.kickoff,
+                             0, 2, goals=[_tor(31, 0, 1, "T1"), _tor(58, 0, 2, "T2")]))
+    _cache.delete("olb_live_boost:last_fetch")
+    sync_openligadb._olb_boost_last_fetch["ts"] = 0.0
+    r1 = boost_live_from_openligadb()
+    assert r1["updated"] == 1
+    dbm = db.session.get(Match, m.id)
+    assert (dbm.home_score, dbm.away_score) == (0, 2)
+
+    # Tick 2: echtes Tor zum 1:2 -> normaler Vorwaertsschritt
+    set_payload(_olb_payload("FC Bayern München", "Borussia Dortmund", m.kickoff,
+                             1, 2, goals=[_tor(31, 0, 1, "T1"), _tor(58, 0, 2, "T2"),
+                                          _tor(85, 1, 2, "T3")]))
+    _cache.delete("olb_live_boost:last_fetch")
+    sync_openligadb._olb_boost_last_fetch["ts"] = 0.0
+    r2 = boost_live_from_openligadb()
+    assert r2["updated"] == 1
+    dbm = db.session.get(Match, m.id)
+    assert (dbm.home_score, dbm.away_score) == (1, 2)

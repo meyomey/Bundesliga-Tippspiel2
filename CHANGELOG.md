@@ -36,6 +36,31 @@
 
 
 
+## [3.1.146] - 2026-11-07
+
+### 📍 Aktueller Spieltag im Ranglisten-Dropdown gekennzeichnet ((177) — „schön, wenn der aktuelle Spieltag immer gekennzeichnet ist")
+
+- Im Spieltag-Auswahlfeld der Rangliste steht der laufende Spieltag jetzt als **„Spieltag N · aktuell"** — auch dann, wenn „Gesamt" oder ein anderer Tag gewählt ist (der gewählte bleibt wie gehabt `selected`).
+- Die Route gibt dafür den **echten** aktuellen Spieltag (`get_current_matchday()`) getrennt vom gewählten Filter an das Template (`aktueller_md`) — vorher war nur der Filter im Kontext, der echte aktuelle war nicht ableitbar.
+- **+2 Tests** (Marker beim echten Tag; unabhängig vom gewählten Filter). Suite **869/869**, Hartgate 0, Node 3/3.
+
+## [3.1.145] - 2026-11-07
+
+### ⚽ Live-Score korrigiert sich selbst: OLB-goals[]-Timeline als feinste Stufe ((176) — „Mainz-Bayern zeigt 1:1, obwohl 0:2 gespielt wird, Torschützen stehen schon drin")
+
+- **Die doppelte Schutztür:** der Live-Score kam aus OLB-`matchResults`, die Torschützen aus OLB-`goals[]` — **derselbe Feed, zwei Stufen**: die Timeline (je Tor-Item mit kumulativen Stand) ist sofort aktuell, `matchResults` hinkt nach bzw. verrutscht. Zwei Monotonie-Gates ((106) „Tore nie rückwärts" im Boost, (114) „ein Tor kann nicht verschwinden" in `apply_match_update`) frierten den Fehlstand dann **ein** — 1:1 konnte nie mehr zu 0:2 werden (Heimseite rückwärts!).
+- **Fix (nur echte Feed-Daten, Dauerregel 1):** der OLB-Live-Boost liest jetzt den kumulativen Stand **aus der goals[]-Timeline** und korrigiert damit den Live-Zwischenstand (auch rückwärts, wenn der alte Stand ein Verrutscher war). Geschützt durch ein **Gleitkorrektur-Gate**: max. 3 Tore Gesamtsprung pro Tick; ohne Timeline gilt unverändert die (106)-Vorwärts-Regel; `apply_match_update` bekommt dafür den engen Parameter `allow_score_correction` (nur der Timeline-Pfad — Admin-Korrekturen und Status-Monotonie unangetastet).
+- **+5 Tests** (Timeline-Parser; der Nutzerfall 1:1→0:2; der **reale Verlauf** laut Nutzerbericht 07.11. — App 1:1 (Verrutscher) → Korrektur auf 0:2, danach das **echte** Tor zum 1:2 als normaler Vorwärtsschritt; Sprung-&gt;3 abgewiesen; ohne Timeline bleibt (106)). Der Bericht belegt zusätzlich: das **alte** System heilte den Fehlstand nur durch Zufall — das nächste echte Tor war vom Verrutscher 1:1 aus ein Vorwärtsschritt; ohne dieses Tor wäre 1:1 für immer stehen geblieben. Design-Schärfe: die Timeline gilt **immer** als maßgebliche Stufe (auch bei Gleichheit mit matchResults), sonst würde genau die Fehlstand-Korrektur wieder eingefroren. Suite **867/867**, Hartgate 0, Node 3/3.
+
+## [3.1.144] - 2026-11-02
+
+### 🧯 Redis-Import auf dem Server repariert: async-timeout explizit gepinnt ((175) — Cache-Monitor „No module named 'async_timeout'")
+
+- **Die Patch-Version-Falle:** redis (egal ob 5.x oder 8.x) verlangt laut Metadaten `async-timeout` nur bei **Python < 3.11.3**. Der Server hat **3.11.2** — braucht es also. Die CI-„Python 3.11" ist eine **neuere Patch-Version (≥ 3.11.3)** — braucht es nicht. Ergebnis: CI grün, Server-Import rot („No module named 'async_timeout'"), Cache fiel auf den Memory-Fallback zurück (die App lief dadurch korrekt weiter).
+- **Fix:** ① `async-timeout==4.0.3` **explizit** in der requirements.txt gepinnt (mit Erklärungskommentar) — jetzt installiert es jede Installationsart zuverlässig mit, unabhängig von Marker-Auflösung. ② redis bleibt bewusst auf der bewährten **5.0.8** (= Rollback des #32-Sprungs, der den Zustand auslöste; Dependabot darf später neu vorschlagen — dann ist die Abhängigkeit gesichert). ③ **Guard-Test** (Format-Prüfung nach der (174)-Lektion): redis- und async-timeout-Pin müssen als `==X.Y.Z` vorhanden bleiben.
+- ④ **Cache-Monitor ehrlich gemacht:** ohne `REDIS_URL` (Netcup-Webhosting hat keinen Redis-Dienst) zeigt er jetzt eine **ℹ️-Info-Karte** mit Memory-Cache-Statistik (Einträge, Backend) und **„🧹 Memory-Cache leeren“**-Knopf — statt ewig rotem ❌ (der Monitor riet vorher still `localhost:6379` an). Ist `REDIS_URL` gesetzt aber unerreichbar, bleibt es eine echte Fehlerkarte. Neue Route `/admin/cache/flush-memory`.
+- Suite **862/862** (exakter CI-Modus), Hartgate 0, Node 3/3.
+
 ## [3.1.143] - 2026-11-02
 
 ### 🧯 Dependabot-#34 aufgelöst: Guard-Test enthärtet + pytest-timeout 2.4.0 ((174))

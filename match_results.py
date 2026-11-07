@@ -16,7 +16,7 @@ from scoring import recalculate_all_points, recalculate_match_points, recalculat
 _LOCKED_STATES = ("finished", "live")
 
 
-def apply_match_update(match, *, home_score=None, away_score=None, status=None, kickoff=None, is_live=None, allow_status_reset=False):
+def apply_match_update(match, *, home_score=None, away_score=None, status=None, kickoff=None, is_live=None, allow_status_reset=False, allow_score_correction=False):
     """Aendert Match-Felder ohne Commit/Recalc.
 
     Gedacht fuer Bulk-Syncs. Danach `finalize_match_updates()` aufrufen.
@@ -41,6 +41,10 @@ def apply_match_update(match, *, home_score=None, away_score=None, status=None, 
         is_live = None
 
     # (114) Score-Monotonie im Live-Betrieb: ein Tor kann nicht verschwinden.
+    # (176) AUSNAHME: allow_score_correction=True (OLB goals[]-Timeline als
+    # feinste Stufe derselben Quelle) darf auch Rueckwaerts korrigieren -
+    # sonst friert ein verrutschter Zwischenstand (Fall 02.11.: 1:1
+    # angezeigt, echt 0:2) das Spiel fuer immer ein.
     # Hintergrund (Nutzerbefund 10.10., RB Leipzig): der schnelle OLB-Live-
     # Boost schrieb 1:0, danach ueberschrieb der zeitversetzte football-data-
     # Sync (Free-Tier-Verzoegerung) den Stand mit seinem veralteten 0:0 — der
@@ -52,6 +56,7 @@ def apply_match_update(match, *, home_score=None, away_score=None, status=None, 
     if (match.status == "live"
             and (status is None or status == "live")
             and not allow_status_reset
+            and not allow_score_correction  # (176) Timeline-Korrektur erlaubt Rueckwaerts
             and home_score is not None and away_score is not None
             and match.home_score is not None and match.away_score is not None
             and (home_score < match.home_score

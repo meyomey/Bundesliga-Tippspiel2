@@ -225,3 +225,18 @@ def test_tabelle_200_mit_trends(client, app, db, user, competition, teams,
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
     assert user.username in body   # Zeile gerendert
+
+
+def test_requirements_pinnen_redis_und_async_timeout_175():
+    """(175) redis und async-timeout bleiben gepinnt (==X.Y.Z). async-timeout
+    ist auf Python < 3.11.3 (Server: 3.11.2) Pflicht fuer redis - ohne den
+    expliziten Pin brach "import redis" auf dem Server (Cache-Monitor rot),
+    waehrend die CI (neuere 3.11-Patchversionen) gruen blieb. Format-Pruefung
+    statt exakter Version, damit Dependabot-Bumps die CI nicht reissen
+    (Lektion aus (174))."""
+    import re
+    req = open('requirements.txt', encoding='utf-8').read()
+    assert re.search(r'^redis==\d+\.\d+\.\d+$', req, re.M), \
+        "redis muss gepinnt bleiben (==X.Y.Z)"
+    assert re.search(r'^async-timeout==\d+\.\d+\.\d+$', req, re.M), \
+        "async-timeout muss gepinnt bleiben (Server-3.11.2 braucht es)"

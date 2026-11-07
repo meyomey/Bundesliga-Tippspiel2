@@ -4,10 +4,21 @@ from flask_login import login_required, current_user
 from audit_log import log_admin_action
 
 
+# (175) Marker: REDIS_URL nicht gesetzt = Redis schlicht nicht eingerichtet
+# (Netcup-Webhosting hat keinen Redis-Dienst) — das ist das VORGESEHENE Setup
+# (Memory-Fallback, (94)) und kein Fehler: Monitor zeigt es als Info, nicht rot.
+NICHT_KONFIGURIERT = "NICHT_KONFIGURIERT"
+
+
 def _get_redis():
+    # Kein localhost-Raten mehr (frueher: Default "redis://localhost:6379/0",
+    # was auf Servern ohne Redis ewig rote Karten malte): ohne URL ist Redis
+    # nicht eingerichtet — identische Semantik wie cache.py (init_app).
+    redis_url = current_app.config.get("REDIS_URL")
+    if not redis_url:
+        return None, NICHT_KONFIGURIERT
     try:
         import redis as redis_lib
-        redis_url = current_app.config.get("REDIS_URL", "redis://localhost:6379/0")
         r = redis_lib.from_url(redis_url, decode_responses=True, socket_timeout=2)
         r.ping()
         return r, None
@@ -18,6 +29,16 @@ def _get_redis():
 def _admin_cache_view():
     r, error = _get_redis()
     redis_ok = r is not None
+    nicht_konfiguriert = (error == NICHT_KONFIGURIERT)
+    mem_stats = {}
+    if nicht_konfiguriert:
+        # (175) Memory-Fallback sichtbar machen: Eintraege/Backend des
+        # eingebauten Cache (kein Redis noetig).
+        try:
+            from cache import cache as app_cache
+            mem_stats = app_cache.get_stats()
+        except Exception:
+            mem_stats = {"enabled": False, "backend": "none", "keys": 0}
     stats = {}
     all_keys = []
     redis_info = {}
@@ -58,8 +79,22 @@ def _admin_cache_view():
             error = str(e)
     return render_template(
         "admin/cache.html", redis_ok=redis_ok, redis_error=error,
+        nicht_konfiguriert=nicht_konfiguriert, mem_stats=mem_stats,
         stats=stats, all_keys=all_keys, redis_info=redis_info,
     )
+
+
+def _admin_cache_flush_memory():
+    """(175) Memory-Cache (Fallback ohne Redis) leeren."""
+    try:
+        from cache import cache as app_cache
+        app_cache.clear()
+        log_admin_action("cache_flush_memory", "cache", None,
+                         "Memory-Cache geleert")
+        flash("🧹 Memory-Cache geleert.", "success")
+    except Exception as e:
+        flash(f"❌ Fehler: {e}", "error")
+    return redirect(url_for("admin.admin_cache"))
 
 
 def _admin_cache_flush_all():

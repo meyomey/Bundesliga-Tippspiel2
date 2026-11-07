@@ -6,5 +6,5 @@ auseinanderlaufen. Angezeigt im Footer (vX.Y.Z) und in /healthz
 (maschinenlesbar fuer Monitoring/Deploy-Kontrolle).
 """
 
-APP_VERSION = "3.1.143"
+APP_VERSION = "3.1.146"
 APP_RELEASE = "2026-11-02"

@@ -605,9 +605,12 @@ def _leaderboard(matchday=None):
     # die (94)-Einzeltrend-Schleife (das Template nutzt nur das Delta);
     # die Referenz-Rangliste selbst kommt aus dem Cache.
     rank_deltas, ref_md = rang_deltas_berechnen(rows) if (not matchday and rows) else ({}, None)
+    # (177) Der echte aktuelle Spieltag (unabhaengig vom gewaehlten Filter)
+    # fuer die Kennzeichnung im Spieltag-Dropdown („Spieltag N · aktuell“).
     return render_template(
         "leaderboard.html",
         rows=rows, current_md=matchday, matchdays=matchdays,
+        aktueller_md=get_current_matchday(),
         md_wins=md_wins, rank_deltas=rank_deltas, ref_md=ref_md,
     )
 
