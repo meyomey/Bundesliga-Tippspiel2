@@ -36,7 +36,7 @@ psycopg2-binary==2.9.12
 # =====================================================
 # Neue Features: Redis, Testing, KI-Tippgegner
 # =====================================================
-redis==5.0.8
+redis==8.1.0
 # (175) async-timeout: von redis benoetigt, wenn Python < 3.11.3 —
 # der Server hat 3.11.2! Ohne expliziten Pin lief "import redis" auf dem
 # Server in "No module named 'async_timeout'" (Cache-Monitor rot, Memory-
