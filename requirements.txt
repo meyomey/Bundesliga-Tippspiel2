@@ -42,7 +42,7 @@ redis==5.0.8
 # Server in "No module named 'async_timeout'" (Cache-Monitor rot, Memory-
 # Fallback griff). Die CI (neuere 3.11-Patchversionen) brauchte es nicht —
 # deshalb war sie gruen, waehrend der Server streikte.
-async-timeout==4.0.3
+async-timeout==5.0.1
 flask-caching==2.3.0
 
 # Testing
